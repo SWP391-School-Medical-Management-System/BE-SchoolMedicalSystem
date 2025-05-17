@@ -16,26 +16,6 @@ public class ApplicationDbContext : DbContext
         _connectionString = configuration.GetConnectionString("local");
     }
 
-    public DbSet<ApplicationUser> Users { get; set; }
-    public DbSet<Role> Roles { get; set; }
-    public DbSet<UserRole> UserRoles { get; set; }
-    public DbSet<SchoolClass> SchoolClasses { get; set; }
-    public DbSet<MedicalRecord> MedicalRecords { get; set; }
-    public DbSet<MedicalCondition> MedicalConditions { get; set; }
-    public DbSet<HealthCheck> HealthChecks { get; set; }
-    public DbSet<HealthCheckItem> HealthCheckItems { get; set; }
-    public DbSet<HealthCheckResult> HealthCheckResults { get; set; }
-    public DbSet<HealthCheckResultItem> HealthCheckResultItems { get; set; }
-    public DbSet<HealthEvent> HealthEvents { get; set; }
-    public DbSet<MedicalItem> MedicalItems { get; set; }
-    public DbSet<MedicalItemUsage> MedicalItemUsages { get; set; }
-    public DbSet<VaccinationType> VaccinationTypes { get; set; }
-    public DbSet<VaccinationRecord> VaccinationRecords { get; set; }
-    public DbSet<Notification> Notifications { get; set; }
-    public DbSet<BlogPost> BlogPosts { get; set; }
-    public DbSet<BlogComment> BlogComments { get; set; }
-    public DbSet<Report> Reports { get; set; }
-
     public async Task<int> AsynSaveChangesAsync(CancellationToken cancellationToken)
     {
         return await base.SaveChangesAsync();
@@ -56,6 +36,27 @@ public class ApplicationDbContext : DbContext
             );
         }
     }
+
+    public DbSet<ApplicationUser> Users { get; set; }
+    public DbSet<Role> Roles { get; set; }
+    public DbSet<UserRole> UserRoles { get; set; }
+    public DbSet<SchoolClass> SchoolClasses { get; set; }
+    public DbSet<MedicalRecord> MedicalRecords { get; set; }
+    public DbSet<MedicalCondition> MedicalConditions { get; set; }
+    public DbSet<HealthCheck> HealthChecks { get; set; }
+    public DbSet<HealthCheckItem> HealthCheckItems { get; set; }
+    public DbSet<HealthCheckResult> HealthCheckResults { get; set; }
+    public DbSet<HealthCheckResultItem> HealthCheckResultItems { get; set; }
+    public DbSet<HealthEvent> HealthEvents { get; set; }
+    public DbSet<MedicalItem> MedicalItems { get; set; }
+    public DbSet<MedicalItemUsage> MedicalItemUsages { get; set; }
+    public DbSet<VaccinationType> VaccinationTypes { get; set; }
+    public DbSet<VaccinationRecord> VaccinationRecords { get; set; }
+    public DbSet<Notification> Notifications { get; set; }
+    public DbSet<BlogPost> BlogPosts { get; set; }
+    public DbSet<BlogComment> BlogComments { get; set; }
+    public DbSet<Report> Reports { get; set; }
+    public DbSet<Appointment> Appointments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
