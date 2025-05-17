@@ -1,0 +1,33 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SchoolMedicalManagementSystem.BusinessLogicLayer", "SchoolMedicalManagementSystem.BusinessLogicLayer\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj", "{4B82C4B7-58A8-4694-9077-7D4455C7B801}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SchoolMedicalManagementSystem.DataAccessLayer", "SchoolMedicalManagementSystem.DataAccessLayer\SchoolMedicalManagementSystem.DataAccessLayer.csproj", "{29F2BA1C-3E7A-4FC3-8A8C-E9A86EE1A56F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SchoolMedicalManagementSystem.API", "SchoolMedicalManagementSystem.API\SchoolMedicalManagementSystem.API.csproj", "{8C47ACE9-2C90-43A2-BD99-D0281600E245}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{7B4D8476-03BF-47B6-B97D-E6A6943FF3C3}"
+	ProjectSection(SolutionItems) = preProject
+		docker-compose.yml = docker-compose.yml
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4B82C4B7-58A8-4694-9077-7D4455C7B801}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B82C4B7-58A8-4694-9077-7D4455C7B801}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B82C4B7-58A8-4694-9077-7D4455C7B801}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B82C4B7-58A8-4694-9077-7D4455C7B801}.Release|Any CPU.Build.0 = Release|Any CPU
+		{29F2BA1C-3E7A-4FC3-8A8C-E9A86EE1A56F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29F2BA1C-3E7A-4FC3-8A8C-E9A86EE1A56F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29F2BA1C-3E7A-4FC3-8A8C-E9A86EE1A56F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29F2BA1C-3E7A-4FC3-8A8C-E9A86EE1A56F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8C47ACE9-2C90-43A2-BD99-D0281600E245}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C47ACE9-2C90-43A2-BD99-D0281600E245}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C47ACE9-2C90-43A2-BD99-D0281600E245}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C47ACE9-2C90-43A2-BD99-D0281600E245}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

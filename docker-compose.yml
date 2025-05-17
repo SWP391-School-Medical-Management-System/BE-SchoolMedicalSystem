@@ -1,0 +1,6 @@
+﻿services:
+  schoolmedicalmanagementsystem.api:
+    image: schoolmedicalmanagementsystem.api
+    build:
+      context: .
+      dockerfile: SchoolMedicalManagementSystem.API/Dockerfile
