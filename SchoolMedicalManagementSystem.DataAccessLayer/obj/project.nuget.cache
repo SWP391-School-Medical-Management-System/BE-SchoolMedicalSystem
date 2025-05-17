@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "Vk/4/zXyVa2KkTZ0CjGlgSeAV5E0B+NrqeisOcgJkwsgOuylSILX+WPcx8umcwj5MDAQJ/d69cJ/2SdpVA4izA==",
+  "dgSpecHash": "Ogf04rrH7VPlX5m/39FszEfi34RuaV+bAHZGJ5udk1VeCggRYKjqglkwlBVEynW4YnhMk0Fva/GxMrP+BuGfRw==",
   "success": true,
-  "projectFilePath": "E:\\SWP391-School Medical Management System\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.DataAccessLayer\\SchoolMedicalManagementSystem.DataAccessLayer.csproj",
+  "projectFilePath": "E:\\BE\\SchoolMedicalManagementSystem.DataAccessLayer\\SchoolMedicalManagementSystem.DataAccessLayer.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Vien Minh\\.nuget\\packages\\automapper\\14.0.0\\automapper.14.0.0.nupkg.sha512",
     "C:\\Users\\Vien Minh\\.nuget\\packages\\fluentvalidation\\11.5.1\\fluentvalidation.11.5.1.nupkg.sha512",

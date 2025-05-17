@@ -15,4 +15,5 @@ public class HealthCheckResult : BaseEntity
     public virtual ApplicationUser Student { get; set; }     // Học sinh được kiểm tra
     public virtual HealthCheck HealthCheck { get; set; }     // Đợt kiểm tra
     public virtual ICollection<HealthCheckResultItem> ResultItems { get; set; } // Kết quả chi tiết từng hạng mục
+    public virtual ICollection<Appointment> Appointments { get; set; }
 }

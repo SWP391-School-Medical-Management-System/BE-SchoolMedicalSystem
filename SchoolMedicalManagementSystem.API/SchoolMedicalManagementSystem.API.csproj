@@ -29,4 +29,8 @@
       <ProjectReference Include="..\SchoolMedicalManagementSystem.DataAccessLayer\SchoolMedicalManagementSystem.DataAccessLayer.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="ApiControllers\" />
+    </ItemGroup>
+
 </Project>

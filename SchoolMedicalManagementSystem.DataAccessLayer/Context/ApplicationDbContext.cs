@@ -140,6 +140,37 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(r => r.HealthCheckId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // ConsultationAppointment relationships
+        modelBuilder.Entity<Appointment>()
+            .HasOne(a => a.Student)
+            .WithMany()
+            .HasForeignKey(a => a.StudentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Appointment>()
+            .HasOne(a => a.Parent)
+            .WithMany()
+            .HasForeignKey(a => a.ParentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Appointment>()
+            .HasOne(a => a.Counselor)
+            .WithMany()
+            .HasForeignKey(a => a.CounselorId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Appointment>()
+            .HasOne(a => a.HealthCheckResult)
+            .WithMany(r => r.Appointments)
+            .HasForeignKey(a => a.HealthCheckResultId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Appointment>()
+            .HasOne(a => a.HealthEvent)
+            .WithMany(e => e.Appointments)
+            .HasForeignKey(a => a.HealthEventId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // HealthCheckResult relationships
         modelBuilder.Entity<HealthCheckResult>()
             .HasOne(r => r.Student)
@@ -214,6 +245,12 @@ public class ApplicationDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         // Notification relationships
+        modelBuilder.Entity<Notification>()
+            .HasOne(n => n.Appointment)
+            .WithMany(a => a.Notifications)
+            .HasForeignKey(n => n.AppointmentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         modelBuilder.Entity<Notification>()
             .HasOne(n => n.Sender)
             .WithMany(u => u.SentNotifications)

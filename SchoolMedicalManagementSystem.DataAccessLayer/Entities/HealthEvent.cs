@@ -25,4 +25,5 @@ public class HealthEvent : BaseEntity
     public virtual ICollection<MedicalItemUsage> MedicalItemsUsed { get; set; } // Thuốc và vật tư y tế đã sử dụng
     public virtual ICollection<Notification> Notifications { get; set; } // Thông báo về sự kiện
     public virtual MedicalCondition RelatedMedicalCondition { get; set; } // Tình trạng y tế liên quan
+    public virtual ICollection<Appointment> Appointments { get; set; }
 }
