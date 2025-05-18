@@ -1,0 +1,13 @@
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\bin\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.deps.json
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\bin\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.dll
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\bin\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.pdb
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj.AssemblyReference.cache
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.GeneratedMSBuildEditorConfig.editorconfig
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.AssemblyInfoInputs.cache
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.AssemblyInfo.cs
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj.CoreCompileInputs.cache
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.sourcelink.json
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.dll
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\refint\SchoolMedicalManagementSystem.BusinessLogicLayer.dll
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.BusinessLogicLayer.pdb
+E:\BE\SchoolMedicalManagementSystem.BusinessLogicLayer\obj\Debug\net8.0\ref\SchoolMedicalManagementSystem.BusinessLogicLayer.dll

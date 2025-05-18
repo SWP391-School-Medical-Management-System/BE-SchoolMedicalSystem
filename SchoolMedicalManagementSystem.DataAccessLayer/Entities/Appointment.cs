@@ -1,4 +1,6 @@
-﻿namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities;
+﻿using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
+
+namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 
 /// <summary>
 /// Lịch hẹn tư vấn y tế giữa nhà trường và phụ huynh
@@ -17,7 +19,7 @@ public class Appointment : BaseEntity
     public string Reason { get; set; }             // Lý do cần tư vấn
     public string Notes { get; set; }              // Ghi chú thêm
     
-    public string Status { get; set; }             // Trạng thái: "Scheduled", "Completed", "Cancelled", "Rescheduled"
+    public AppointmentStatus Status { get; set; }             // Trạng thái: "Scheduled", "Completed", "Cancelled", "Rescheduled"
     
     // Các trường tham chiếu đến nguồn gốc tạo lịch hẹn
     public Guid? HealthCheckResultId { get; set; } // ID kết quả kiểm tra sức khỏe (nếu lịch hẹn xuất phát từ kiểm tra)

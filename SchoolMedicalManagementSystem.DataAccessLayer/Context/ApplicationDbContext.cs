@@ -8,27 +8,30 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Context;
 
 public class ApplicationDbContext : DbContext
 {
-    private readonly string _connectionString;
-
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IConfiguration configuration) :
-        base(options)
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+        : base(options)
     {
-        _connectionString = configuration.GetConnectionString("local");
     }
 
-    public async Task<int> AsynSaveChangesAsync(CancellationToken cancellationToken)
+    public async Task<int> AsyncSaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        return await base.SaveChangesAsync();
+        return await base.SaveChangesAsync(cancellationToken);
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
         {
-            optionsBuilder.UseMySql(
-                _connectionString,
-                new MySqlServerVersion(new Version(8, 0, 21)),
-                mySqlOptions => mySqlOptions
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: false)
+                .Build();
+
+            var connectionString = configuration.GetConnectionString("local");
+
+            optionsBuilder.UseSqlServer(
+                connectionString,
+                sqlServerOptions => sqlServerOptions
                     .EnableRetryOnFailure(
                         maxRetryCount: 10,
                         maxRetryDelay: TimeSpan.FromSeconds(30),
@@ -78,20 +81,17 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<ApplicationUser>()
             .HasOne(u => u.Parent)
             .WithMany(p => p.Children)
-            .HasForeignKey(u => u.ParentId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(u => u.ParentId);
 
         modelBuilder.Entity<ApplicationUser>()
             .HasOne(u => u.Class)
             .WithMany(c => c.Students)
-            .HasForeignKey(u => u.ClassId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .HasForeignKey(u => u.ClassId);
 
         modelBuilder.Entity<ApplicationUser>()
             .HasOne(u => u.MedicalRecord)
             .WithOne(m => m.Student)
-            .HasForeignKey<MedicalRecord>(m => m.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey<MedicalRecord>(m => m.UserId);
 
         // UserRole relationships
         modelBuilder.Entity<UserRole>()
@@ -100,59 +100,53 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<UserRole>()
             .HasOne(ur => ur.User)
             .WithMany(u => u.UserRoles)
-            .HasForeignKey(ur => ur.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(ur => ur.UserId);
 
         modelBuilder.Entity<UserRole>()
             .HasOne(ur => ur.Role)
             .WithMany(r => r.UserRoles)
-            .HasForeignKey(ur => ur.RoleId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(ur => ur.RoleId);
 
         // MedicalRecord relationships
         modelBuilder.Entity<MedicalRecord>()
             .HasMany(m => m.MedicalConditions)
             .WithOne(c => c.MedicalRecord)
-            .HasForeignKey(c => c.MedicalRecordId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(c => c.MedicalRecordId);
 
         modelBuilder.Entity<MedicalRecord>()
             .HasMany(m => m.VaccinationRecords)
             .WithOne(v => v.MedicalRecord)
             .HasForeignKey(v => v.MedicalRecordId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // HealthCheck relationships
         modelBuilder.Entity<HealthCheck>()
             .HasOne(c => c.ConductedBy)
             .WithMany(u => u.ConductedHealthChecks)
-            .HasForeignKey(c => c.ConductedById)
-            .OnDelete(DeleteBehavior.SetNull);
+            .HasForeignKey(c => c.ConductedById);
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.CheckItems)
             .WithOne(i => i.HealthCheck)
-            .HasForeignKey(i => i.HealthCheckId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(i => i.HealthCheckId);
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.Results)
             .WithOne(r => r.HealthCheck)
-            .HasForeignKey(r => r.HealthCheckId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(r => r.HealthCheckId);
 
         // ConsultationAppointment relationships
         modelBuilder.Entity<Appointment>()
             .HasOne(a => a.Student)
             .WithMany()
             .HasForeignKey(a => a.StudentId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<Appointment>()
             .HasOne(a => a.Parent)
             .WithMany()
             .HasForeignKey(a => a.ParentId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<Appointment>()
             .HasOne(a => a.Counselor)
@@ -177,73 +171,66 @@ public class ApplicationDbContext : DbContext
             .HasOne(r => r.Student)
             .WithMany()
             .HasForeignKey(r => r.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<HealthCheckResult>()
             .HasMany(r => r.ResultItems)
             .WithOne(i => i.HealthCheckResult)
-            .HasForeignKey(i => i.HealthCheckResultId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(i => i.HealthCheckResultId);
 
         // HealthCheckResultItem relationships
         modelBuilder.Entity<HealthCheckResultItem>()
             .HasOne(i => i.HealthCheckItem)
             .WithMany(h => h.ResultItems)
             .HasForeignKey(i => i.HealthCheckItemId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // HealthEvent relationships
         modelBuilder.Entity<HealthEvent>()
             .HasOne(e => e.Student)
             .WithMany()
             .HasForeignKey(e => e.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<HealthEvent>()
             .HasOne(e => e.HandledBy)
             .WithMany(u => u.HandledHealthEvents)
-            .HasForeignKey(e => e.HandledById)
-            .OnDelete(DeleteBehavior.SetNull);
+            .HasForeignKey(e => e.HandledById);
 
         modelBuilder.Entity<HealthEvent>()
             .HasOne(e => e.RelatedMedicalCondition)
             .WithMany()
-            .HasForeignKey(e => e.RelatedMedicalConditionId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .HasForeignKey(e => e.RelatedMedicalConditionId);
 
         modelBuilder.Entity<HealthEvent>()
             .HasMany(e => e.MedicalItemsUsed)
             .WithOne(u => u.HealthEvent)
-            .HasForeignKey(u => u.HealthEventId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(u => u.HealthEventId);
 
         // MedicalItem relationships
         modelBuilder.Entity<MedicalItem>()
             .HasMany(m => m.Usages)
             .WithOne(u => u.MedicalItem)
-            .HasForeignKey(u => u.MedicalItemId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(u => u.MedicalItemId);
 
         // MedicalItemUsage relationships
         modelBuilder.Entity<MedicalItemUsage>()
             .HasOne(u => u.UsedBy)
             .WithMany()
-            .HasForeignKey(u => u.UsedById)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(u => u.UsedById);
 
         // VaccinationType relationships
         modelBuilder.Entity<VaccinationType>()
             .HasMany(t => t.Records)
             .WithOne(r => r.VaccinationType)
-            .HasForeignKey(r => r.VaccinationTypeId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(r => r.VaccinationTypeId);
 
         // VaccinationRecord relationships
         modelBuilder.Entity<VaccinationRecord>()
             .HasOne(r => r.Student)
             .WithMany()
             .HasForeignKey(r => r.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Notification relationships
         modelBuilder.Entity<Notification>()
@@ -256,13 +243,13 @@ public class ApplicationDbContext : DbContext
             .HasOne(n => n.Sender)
             .WithMany(u => u.SentNotifications)
             .HasForeignKey(n => n.SenderId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<Notification>()
             .HasOne(n => n.Recipient)
             .WithMany(u => u.ReceivedNotifications)
             .HasForeignKey(n => n.RecipientId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.NoAction); // Thay CASCADE bằng NO ACTION
 
         modelBuilder.Entity<Notification>()
             .HasOne(n => n.HealthCheck)
@@ -286,54 +273,47 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<BlogPost>()
             .HasOne(p => p.Author)
             .WithMany(u => u.BlogPosts)
-            .HasForeignKey(p => p.AuthorId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(p => p.AuthorId);
 
         modelBuilder.Entity<BlogPost>()
             .HasMany(p => p.Comments)
             .WithOne(c => c.Post)
-            .HasForeignKey(c => c.PostId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(c => c.PostId);
 
         // BlogComment relationships
         modelBuilder.Entity<BlogComment>()
             .HasOne(c => c.User)
             .WithMany(u => u.BlogComments)
             .HasForeignKey(c => c.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Report relationships
         modelBuilder.Entity<Report>()
             .HasOne(r => r.GeneratedBy)
             .WithMany(u => u.GeneratedReports)
-            .HasForeignKey(r => r.GeneratedById)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(r => r.GeneratedById);
     }
 
     private void ConfigureEnumConversions(ModelBuilder modelBuilder)
     {
-        // Notification type enum conversion
         modelBuilder.Entity<Notification>().Property(n => n.NotificationType)
-            .HasConversion(new EnumToStringConverter<NotificationType>());
+            .HasConversion<string>();
 
-        // Health event type enum conversion
         modelBuilder.Entity<HealthEvent>().Property(h => h.EventType)
-            .HasConversion(new EnumToStringConverter<HealthEventType>());
+            .HasConversion<string>();
 
-        // Severity enum conversion
         modelBuilder.Entity<MedicalCondition>().Property(mc => mc.Severity)
-            .HasConversion(new EnumToStringConverter<Severity>());
+            .HasConversion<string>();
 
-        // Medication form enum conversion
         modelBuilder.Entity<MedicalItem>().Property(mi => mi.Form)
-            .HasConversion(new EnumToStringConverter<MedicationForm>());
+            .HasConversion<string>();
 
-        // Report type enum conversion
         modelBuilder.Entity<Report>().Property(r => r.ReportType)
-            .HasConversion(new EnumToStringConverter<ReportType>());
+            .HasConversion<string>();
 
-        // Report format enum conversion
-        modelBuilder.Entity<Report>().Property(r => r.ReportFormat)
-            .HasConversion(new EnumToStringConverter<ReportFormat>());
+        modelBuilder.Entity<Report>().Property(r => r.ReportFormat);
+
+        modelBuilder.Entity<Appointment>().Property(a => a.Status)
+            .HasConversion<string>();
     }
 }

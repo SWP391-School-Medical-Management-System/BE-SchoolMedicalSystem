@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "wVGJQCB4wKhL+m11x6fuQY1YrbGG7vzKWtcQgwE8WBE=",
+  "Source": "SchoolMedicalManagementSystem.API",
+  "BasePath": "_content/SchoolMedicalManagementSystem.API",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}

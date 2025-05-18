@@ -24,7 +24,7 @@ public class BaseUnitOfWork<TContext> : IBaseUnitOfWork
 
     public async Task<bool> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        var result = await _context.AsynSaveChangesAsync(cancellationToken); // Gọi phương thức bất đồng bộ
+        var result = await _context.AsyncSaveChangesAsync(cancellationToken); // Gọi phương thức bất đồng bộ
         return result > 0;
     }
 

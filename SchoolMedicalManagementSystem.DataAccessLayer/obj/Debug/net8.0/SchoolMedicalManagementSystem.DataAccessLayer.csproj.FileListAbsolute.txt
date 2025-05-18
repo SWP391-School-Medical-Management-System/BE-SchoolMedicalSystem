@@ -1,0 +1,15 @@
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\bin\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.deps.json
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\bin\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.dll
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\bin\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.pdb
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.csproj.AssemblyReference.cache
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.GeneratedMSBuildEditorConfig.editorconfig
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.AssemblyInfoInputs.cache
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.AssemblyInfo.cs
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.csproj.CoreCompileInputs.cache
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.sourcelink.json
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.dll
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\refint\SchoolMedicalManagementSystem.DataAccessLayer.dll
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.pdb
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\ref\SchoolMedicalManagementSystem.DataAccessLayer.dll
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\bin\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.runtimeconfig.json
+E:\BE\SchoolMedicalManagementSystem.DataAccessLayer\obj\Debug\net8.0\SchoolMedicalManagementSystem.DataAccessLayer.genruntimeconfig.cache
