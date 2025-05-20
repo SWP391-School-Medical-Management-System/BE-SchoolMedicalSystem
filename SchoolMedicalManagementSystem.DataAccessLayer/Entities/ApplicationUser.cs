@@ -11,15 +11,15 @@ public class ApplicationUser : BaseEntity
     public DateTime? DateOfBirth { get; set; } // Ngày sinh
     public string? Gender { get; set; } // Giới tính
     public bool IsActive { get; set; } = false; // Trạng thái tài khoản (kích hoạt/không kích hoạt)
-    public string ProfileImageUrl { get; set; } // Đường dẫn đến ảnh đại diện
+    public string? ProfileImageUrl { get; set; } // Đường dẫn đến ảnh đại diện
 
-    public string StaffId { get; set; } // ID nhân viên (cho Admin/Manager/SchoolNurse)
-    public string LicenseNumber { get; set; } // Số giấy phép hành nghề (cho SchoolNurse)
-    public string Specialization { get; set; } // Chuyên môn (cho SchoolNurse)
-    public string StudentCode { get; set; } // Mã học sinh (cho Student)
+    public string StaffCode { get; set; } // ID nhân viên (cho Admin/Manager/SchoolNurse)
+    public string? LicenseNumber { get; set; } // Số giấy phép hành nghề (cho SchoolNurse)
+    public string? Specialization { get; set; } // Chuyên môn (cho SchoolNurse)
+    public string? StudentCode { get; set; } // Mã học sinh (cho Student)
     public Guid? ClassId { get; set; } // ID lớp học (cho Student)
     public Guid? ParentId { get; set; } // ID phụ huynh (cho Student - liên kết với User là parent)
-    public string Relationship { get; set; } // Quan hệ với học sinh: "Father", "Mother", "Guardian" (cho Parent)
+    public string? Relationship { get; set; } // Quan hệ với học sinh: "Father", "Mother", "Guardian" (cho Parent)
 
     public virtual ICollection<UserRole> UserRoles { get; set; }
     public virtual ApplicationUser Parent { get; set; }                     // Liên kết đến phụ huynh (nếu là học sinh)

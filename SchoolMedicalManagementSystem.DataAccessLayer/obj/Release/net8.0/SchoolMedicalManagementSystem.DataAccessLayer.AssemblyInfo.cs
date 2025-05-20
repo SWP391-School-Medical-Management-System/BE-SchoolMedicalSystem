@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SchoolMedicalManagementSystem.DataAccessLayer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+22477f7b1e16c09712d67d90ccdfe54d8a3461c0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a2181f1680e03902f8220f7c5caec15babb089c1")]
 [assembly: System.Reflection.AssemblyProductAttribute("SchoolMedicalManagementSystem.DataAccessLayer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SchoolMedicalManagementSystem.DataAccessLayer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
