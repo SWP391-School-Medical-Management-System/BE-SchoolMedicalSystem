@@ -399,3 +399,19 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 /.idea
+
+# Rider specific
+rider.project.restore.info
+rider.project.model.nuget.info
+*.AssemblyInfoInputs.cache
+*.AssemblyInfo.cs
+*.csproj.AssemblyReference.cache
+*.assets.cache
+
+# MSBuild EditorConfig
+*.GeneratedMSBuildEditorConfig.editorconfig
+
+# Additional build files
+*.genruntimeconfig.cache
+*.MvcApplicationPartsAssemblyInfo.cache
+*.GlobalUsings.g.cs

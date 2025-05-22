@@ -4813,11 +4813,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "E:\\BE\\SchoolMedicalManagementSystem.API\\SchoolMedicalManagementSystem.API.csproj",
+      "projectUniqueName": "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.API\\SchoolMedicalManagementSystem.API.csproj",
       "projectName": "SchoolMedicalManagementSystem.API",
-      "projectPath": "E:\\BE\\SchoolMedicalManagementSystem.API\\SchoolMedicalManagementSystem.API.csproj",
+      "projectPath": "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.API\\SchoolMedicalManagementSystem.API.csproj",
       "packagesPath": "C:\\Users\\Vien Minh\\.nuget\\packages\\",
-      "outputPath": "E:\\BE\\SchoolMedicalManagementSystem.API\\obj\\",
+      "outputPath": "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.API\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\Vien Minh\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -4832,11 +4832,11 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "projectReferences": {
-            "E:\\BE\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj": {
-              "projectPath": "E:\\BE\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj"
+            "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj": {
+              "projectPath": "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj"
             },
-            "E:\\BE\\SchoolMedicalManagementSystem.DataAccessLayer\\SchoolMedicalManagementSystem.DataAccessLayer.csproj": {
-              "projectPath": "E:\\BE\\SchoolMedicalManagementSystem.DataAccessLayer\\SchoolMedicalManagementSystem.DataAccessLayer.csproj"
+            "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.DataAccessLayer\\SchoolMedicalManagementSystem.DataAccessLayer.csproj": {
+              "projectPath": "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.DataAccessLayer\\SchoolMedicalManagementSystem.DataAccessLayer.csproj"
             }
           }
         }
@@ -4845,11 +4845,6 @@
         "warnAsError": [
           "NU1605"
         ]
-      },
-      "restoreAuditProperties": {
-        "enableAudit": "true",
-        "auditLevel": "low",
-        "auditMode": "direct"
       }
     },
     "frameworks": {

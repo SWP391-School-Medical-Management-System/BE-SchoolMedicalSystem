@@ -320,11 +320,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "E:\\BE\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj",
+      "projectUniqueName": "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj",
       "projectName": "SchoolMedicalManagementSystem.BusinessLogicLayer",
-      "projectPath": "E:\\BE\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj",
+      "projectPath": "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj",
       "packagesPath": "C:\\Users\\Vien Minh\\.nuget\\packages\\",
-      "outputPath": "E:\\BE\\SchoolMedicalManagementSystem.BusinessLogicLayer\\obj\\",
+      "outputPath": "E:\\BE\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.BusinessLogicLayer\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\Vien Minh\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -345,11 +345,6 @@
         "warnAsError": [
           "NU1605"
         ]
-      },
-      "restoreAuditProperties": {
-        "enableAudit": "true",
-        "auditLevel": "low",
-        "auditMode": "direct"
       }
     },
     "frameworks": {
