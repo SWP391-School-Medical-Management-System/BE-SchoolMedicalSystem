@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "dYnKKgd3/ZEK7ncwMOveS2tzIajtdbVqFeb4vBp3ZSSo5adDYDWdZ0QObZq9j+CNtyMQJIUpyMzC8Q4jAoNjMw==",
+  "dgSpecHash": "RgW3DVzVhc+Wmkt2yrCrhP6YeWCG8RzBTj1/lo6EntyLOIEDCGHyBsjxOZt9nERTclXY44Z000xh0XzNRQ6bog==",
   "success": true,
-  "projectFilePath": "E:\\BE\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj",
+  "projectFilePath": "E:\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.BusinessLogicLayer\\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Vien Minh\\.nuget\\packages\\automapper\\14.0.0\\automapper.14.0.0.nupkg.sha512",
     "C:\\Users\\Vien Minh\\.nuget\\packages\\azure.core\\1.35.0\\azure.core.1.35.0.nupkg.sha512",

@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "V27A1Wr9wkFceL9Tf9kVxJ7DN2pqD8pXJcP1v0QRuWdMOb3dHqBn3qaicVfrT4yiZSptiJZ8uos21PmhOfMBBg==",
+  "dgSpecHash": "1IkKk0ZO+2BMQDmBmkrh6qVyNHxdgTqU2QTstSos4AFniXhh4mJ8QwzI8+g7MHTJIcAkDHVf4N7DoCFRP4f5RA==",
   "success": true,
-  "projectFilePath": "E:\\BE\\SchoolMedicalManagementSystem.API\\SchoolMedicalManagementSystem.API.csproj",
+  "projectFilePath": "E:\\BE-SchoolMedicalSystem\\SchoolMedicalManagementSystem.API\\SchoolMedicalManagementSystem.API.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Vien Minh\\.nuget\\packages\\automapper\\14.0.0\\automapper.14.0.0.nupkg.sha512",
     "C:\\Users\\Vien Minh\\.nuget\\packages\\azure.core\\1.35.0\\azure.core.1.35.0.nupkg.sha512",
