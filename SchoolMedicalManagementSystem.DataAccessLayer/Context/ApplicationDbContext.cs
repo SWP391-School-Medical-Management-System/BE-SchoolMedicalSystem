@@ -1,4 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Security.Cryptography;
+using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.Configuration;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
@@ -73,6 +75,10 @@ public class ApplicationDbContext : DbContext
 
         // Default Values
         modelBuilder.Entity<ApplicationUser>().Property(u => u.IsActive).HasDefaultValue(false);
+
+        // Seed Data
+        SeedRoles(modelBuilder);
+        SeedAdminAccount(modelBuilder);
     }
 
     private void ConfigureRelationships(ModelBuilder modelBuilder)
@@ -315,5 +321,106 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<Appointment>().Property(a => a.Status)
             .HasConversion<string>();
+    }
+
+    private void SeedRoles(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Role>().HasData(
+            new Role
+            {
+                Id = Guid.Parse("1a388e2b-a398-4c6f-872c-9c318df9b000"),
+                Name = "ADMIN",
+                CreatedDate = DateTime.Now,
+                IsDeleted = false
+            },
+            new Role
+            {
+                Id = Guid.Parse("2b587a39-c4f1-4e7c-908b-0a22951a2a94"),
+                Name = "MANAGER",
+                CreatedDate = DateTime.Now,
+                IsDeleted = false
+            },
+            new Role
+            {
+                Id = Guid.Parse("3c31e27c-3c6d-4a1b-a520-5db6a8e3fdb1"),
+                Name = "SCHOOLNURSE",
+                CreatedDate = DateTime.Now,
+                IsDeleted = false
+            },
+            new Role
+            {
+                Id = Guid.Parse("4d4eddd2-3396-4b1a-981b-c82f638d1e89"),
+                Name = "PARENT",
+                CreatedDate = DateTime.Now,
+                IsDeleted = false
+            },
+            new Role
+            {
+                Id = Guid.Parse("5e0bd535-7f4b-439f-a31f-32d31c9e146a"),
+                Name = "STUDENT",
+                CreatedDate = DateTime.Now,
+                IsDeleted = false
+            }
+        );
+    }
+
+    private void SeedAdminAccount(ModelBuilder modelBuilder)
+    {
+        // Define IDs for admin account
+        var adminUserId = Guid.Parse("8a1a9e51-a0e5-4dc9-8698-9bedd2ca422d");
+        var adminRoleId = Guid.Parse("1a388e2b-a398-4c6f-872c-9c318df9b000"); // ADMIN role ID
+
+        // Hash password "Admin@2025"
+        var hashedPassword = HashPassword("Admin@2025");
+
+        // Seed admin user
+        modelBuilder.Entity<ApplicationUser>().HasData(
+            new ApplicationUser
+            {
+                Id = adminUserId,
+                Username = "admin",
+                Email = "admin@schoolmedical.com",
+                PasswordHash = hashedPassword,
+                FullName = "System Administrator",
+                PhoneNumber = "0987654321",
+                Address = "School Medical System Headquarters",
+                IsActive = true,
+                CreatedDate = DateTime.Now,
+                IsDeleted = false,
+                LicenseNumber = string.Empty,
+                StaffCode = "AD123",
+                Specialization = string.Empty,
+                StudentCode = string.Empty,
+                Relationship = string.Empty,
+                ProfileImageUrl = string.Empty
+            }
+        );
+
+        // Seed admin role assignment
+        modelBuilder.Entity<UserRole>().HasData(
+            new UserRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = adminUserId,
+                RoleId = adminRoleId,
+                CreatedDate = DateTime.Now,
+                IsDeleted = false
+            }
+        );
+    }
+
+    private string HashPassword(string password)
+    {
+        using (var sha256 = SHA256.Create())
+        {
+            var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+            var builder = new StringBuilder();
+            foreach (var b in bytes)
+            {
+                builder.Append(b.ToString("x2"));
+            }
+
+            return builder.ToString();
+        }
     }
 }

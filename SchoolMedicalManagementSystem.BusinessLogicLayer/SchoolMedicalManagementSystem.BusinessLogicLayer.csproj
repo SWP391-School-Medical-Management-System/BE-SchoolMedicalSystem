@@ -13,12 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Mappers\" />
-      <Folder Include="Models\Requests\" />
-      <Folder Include="Models\Responses\" />
-      <Folder Include="ServiceContracts\" />
-      <Folder Include="Services\" />
-      <Folder Include="Validators\" />
+      <ProjectReference Include="..\SchoolMedicalManagementSystem.DataAccessLayer\SchoolMedicalManagementSystem.DataAccessLayer.csproj" />
     </ItemGroup>
 
 </Project>

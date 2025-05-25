@@ -8,7 +8,7 @@ using SchoolMedicalManagementSystem.DataAccessLayer.Repositories;
 using SchoolMedicalManagementSystem.DataAccessLayer.RepositoryContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.RepositoryContracts.IBaseUnitOfWork;
 
-namespace SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWork;
+namespace SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks;
 
 public class BaseUnitOfWork<TContext> : IBaseUnitOfWork
     where TContext : ApplicationDbContext

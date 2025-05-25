@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Thông Tin Tài Khoản School Medical Management System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #2196F3;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            border-radius: 5px 5px 0 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .header p {
+            margin: 5px 0 0;
+            font-size: 16px;
+        }
+        .content {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-left: 1px solid #ddd;
+            border-right: 1px solid #ddd;
+        }
+        .welcome-message {
+            background-color: #e3f2fd;
+            border: 1px solid #90caf9;
+            border-radius: 5px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .welcome-icon {
+            font-size: 48px;
+            color: #2196F3;
+            margin-bottom: 15px;
+        }
+        .welcome-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #1565c0;
+            margin-bottom: 10px;
+        }
+        .welcome-text {
+            font-size: 16px;
+            color: #1976d2;
+        }
+        .account-info {
+            background-color: #fff;
+            border: 2px solid #2196F3;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .account-info h3 {
+            color: #2196F3;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        .credential-item {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: left;
+        }
+        .credential-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .credential-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2196F3;
+            word-break: break-all;
+        }
+        .login-button {
+            background-color: #2196F3;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+            margin: 15px 0;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        .login-button:hover {
+            background-color: #1976d2;
+        }
+        .footer {
+            background-color: #f5f5f5;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-radius: 0 0 5px 5px;
+            border: 1px solid #ddd;
+            border-top: none;
+        }
+        .social-links {
+            margin: 15px 0;
+        }
+        .social-links a {
+            display: inline-block;
+            margin: 0 5px;
+            color: #2196F3;
+            text-decoration: none;
+        }
+        .security-notice {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #856404;
+        }
+        .security-notice-icon {
+            color: #f39c12;
+            font-size: 18px;
+            margin-right: 10px;
+        }
+        .first-login-tips {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .first-login-tips h3 {
+            color: #1976d2;
+            margin-top: 0;
+        }
+        .first-login-tips ul {
+            padding-left: 20px;
+        }
+        .first-login-tips li {
+            margin: 8px 0;
+        }
+        .contact-support {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            margin: 15px 0;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>School Medical Management System</h1>
+        <p>THÔNG TIN TÀI KHOẢN MỚI</p>
+    </div>
+    <div class="content">
+        <p>Kính chào <strong>{USERNAME}</strong>,</p>
+
+        <div class="welcome-message">
+            <div class="welcome-icon">🎉</div>
+            <div class="welcome-title">Chào Mừng Bạn Đến Với Hệ Thống!</div>
+            <div class="welcome-text">Tài khoản của bạn đã được tạo thành công trên School Medical Management System.</div>
+        </div>
+
+        <div class="account-info">
+            <h3>🔑 Thông Tin Đăng Nhập</h3>
+            <div class="credential-item">
+                <div class="credential-label">Tên đăng nhập</div>
+                <div class="credential-value">{USERNAME}</div>
+            </div>
+            <div class="credential-item">
+                <div class="credential-label">Mật khẩu tạm thời</div>
+                <div class="credential-value">{PASSWORD}</div>
+            </div>
+            <div class="credential-item">
+                <div class="credential-label">Đường dẫn hệ thống</div>
+                <div class="credential-value"><a href="{URL}" style="color: #2196F3;">{URL}</a></div>
+            </div>
+        </div>
+
+        <div style="text-align: center;">
+            <a href="{URL}" class="login-button">🚀 Đăng Nhập Ngay</a>
+        </div>
+
+        <div class="security-notice">
+            <span class="security-notice-icon">🔐</span>
+            <strong>Thông báo bảo mật quan trọng:</strong>
+            <ul style="margin: 10px 0 0 25px; padding: 0;">
+                <li><strong>Đổi mật khẩu ngay:</strong> Vui lòng thay đổi mật khẩu ngay khi đăng nhập lần đầu</li>
+                <li><strong>Bảo mật thông tin:</strong> Không chia sẻ thông tin đăng nhập với bất kỳ ai</li>
+                <li><strong>Đăng xuất an toàn:</strong> Luôn đăng xuất khi không sử dụng hệ thống</li>
+                <li><strong>Liên hệ hỗ trợ:</strong> Báo ngay nếu gặp vấn đề bất thường</li>
+            </ul>
+        </div>
+
+        <div class="first-login-tips">
+            <h3>📋 Hướng dẫn đăng nhập lần đầu:</h3>
+            <ul>
+                <li><strong>Bước 1:</strong> Truy cập đường dẫn hệ thống ở trên</li>
+                <li><strong>Bước 2:</strong> Nhập tên đăng nhập và mật khẩu tạm thời</li>
+                <li><strong>Bước 3:</strong> Hệ thống sẽ yêu cầu đổi mật khẩu mới</li>
+                <li><strong>Bước 4:</strong> Cập nhật thông tin cá nhân nếu cần thiết</li>
+                <li><strong>Bước 5:</strong> Khám phá các tính năng của hệ thống</li>
+            </ul>
+        </div>
+
+        <div class="timestamp">
+            <p>🕒 Thời gian tạo tài khoản: {CURRENT_TIME}</p>
+            <p>🏥 Hệ thống: School Medical Management System</p>
+        </div>
+
+        <div class="contact-support">
+            <h4 style="color: #495057; margin-top: 0;">📞 Cần hỗ trợ?</h4>
+            <p>Nếu bạn gặp khó khăn khi đăng nhập hoặc sử dụng hệ thống:</p>
+            <p>📧 Email hỗ trợ: <a href="mailto:{SUPPORT_EMAIL}" style="color: #2196F3;">{SUPPORT_EMAIL}</a></p>
+            <p>🌐 Website: <a href="{URL}" style="color: #2196F3;">{URL}</a></p>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                Đội ngũ hỗ trợ kỹ thuật luôn sẵn sàng giúp đỡ bạn 24/7
+            </p>
+        </div>
+
+        <p style="margin-top: 30px;">Cảm ơn bạn đã tham gia vào School Medical Management System!</p>
+        <p style="font-weight: bold; color: #2196F3;">Chúc bạn có trải nghiệm tuyệt vời! 🌟</p>
+    </div>
+    <div class="footer">
+        <div class="social-links">
+            <a href="#">Facebook</a> |
+            <a href="#">Twitter</a> |
+            <a href="#">YouTube</a>
+        </div>
+        <p>© {YEAR} School Medical Management System. All rights reserved.</p>
+        <p>Địa chỉ: 123 Đường ABC, Quận XYZ, Thành phố HCM</p>
+        <p style="margin-top: 10px; font-size: 11px; color: #999;">
+            Email này được gửi tự động để cung cấp thông tin tài khoản. Vui lòng không trả lời trực tiếp.
+        </p>
+    </div>
+</div>
+</body>
+</html>
