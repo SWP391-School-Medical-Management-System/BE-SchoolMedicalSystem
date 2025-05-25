@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using AutoMapper;
 using FluentValidation;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
@@ -29,8 +30,10 @@ public class AuthService : IAuthService
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthService> _logger;
     private readonly IValidator<LoginRequest> _loginValidator;
-    private readonly IValidator<ResetPasswordRequest> _resetPasswordValidator;
     private readonly IValidator<ForgotPasswordRequest> _forgotPasswordValidator;
+    private readonly IValidator<VerifyOtpRequest> _verifyOtpValidator;
+    private readonly IValidator<SetForgotPasswordRequest> _setForgotPasswordValidator;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public AuthService(
         IMapper mapper,
@@ -41,7 +44,9 @@ public class AuthService : IAuthService
         ILogger<AuthService> logger,
         IValidator<LoginRequest> loginValidator,
         IValidator<ForgotPasswordRequest> forgotPasswordValidator,
-        IValidator<ResetPasswordRequest> resetPasswordValidator
+        IValidator<VerifyOtpRequest> verifyOtpValidator,
+        IValidator<SetForgotPasswordRequest> setForgotPasswordValidator,
+        IHttpContextAccessor httpContextAccessor
     )
     {
         _unitOfWork = unitOfWork;
@@ -52,7 +57,9 @@ public class AuthService : IAuthService
         _logger = logger;
         _loginValidator = loginValidator;
         _forgotPasswordValidator = forgotPasswordValidator;
-        _resetPasswordValidator = resetPasswordValidator;
+        _verifyOtpValidator = verifyOtpValidator;
+        _setForgotPasswordValidator = setForgotPasswordValidator;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<BaseResponse<LoginResponse>> LoginAsync(LoginRequest model)
@@ -264,78 +271,6 @@ public class AuthService : IAuthService
         }
     }
 
-    public async Task<BaseResponse<bool>> ResetPasswordAsync(ResetPasswordRequest request)
-    {
-        try
-        {
-            var validationResult = await _resetPasswordValidator.ValidateAsync(request);
-            if (!validationResult.IsValid)
-            {
-                string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = errors
-                };
-            }
-
-            var validatedToken = await GetValidatedResetTokenFromRedis(request.Email);
-            if (string.IsNullOrEmpty(validatedToken))
-            {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Phiên làm việc đã hết hạn. Vui lòng yêu cầu đặt lại mật khẩu mới."
-                };
-            }
-
-            var user = await GetUserByEmailAsync(request.Email);
-            if (user == null)
-            {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy người dùng với email này."
-                };
-            }
-
-            if (request.NewPassword != request.ConfirmPassword)
-            {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Mật khẩu mới và xác nhận mật khẩu không khớp."
-                };
-            }
-
-            await RemoveValidatedResetTokenFromRedis(request.Email);
-            await RemoveResetTokenFromRedis(request.Email);
-
-            await RemoveRefreshTokenFromRedis(user.Id.ToString());
-
-            user.PasswordHash = HashPassword(request.NewPassword);
-            user.LastUpdatedDate = DateTime.Now;
-
-            await _unitOfWork.SaveChangesAsync();
-
-            return new BaseResponse<bool>
-            {
-                Success = true,
-                Data = true,
-                Message = "Mật khẩu đã được đặt lại thành công. Bạn có thể đăng nhập với mật khẩu mới."
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error resetting password for email: {Email}", request.Email);
-            return new BaseResponse<bool>
-            {
-                Success = false,
-                Message = "Đã xảy ra lỗi khi đặt lại mật khẩu. Vui lòng thử lại sau."
-            };
-        }
-    }
-
     public async Task<BaseResponse<bool>> ForgotPasswordAsync(ForgotPasswordRequest request)
     {
         try
@@ -356,36 +291,155 @@ public class AuthService : IAuthService
             {
                 return new BaseResponse<bool>
                 {
-                    Success = false,
-                    Message = "Không tìm thấy người dùng với email này."
+                    Success = true,
+                    Data = true,
+                    Message = "Nếu email tồn tại trong hệ thống, mã OTP đã được gửi tới email của bạn."
                 };
             }
 
-            var resetToken = GenerateResetToken();
+            var otp = GenerateOtp();
+            var otpExpiration = TimeSpan.FromMinutes(
+                double.Parse(_configuration["SMTP:expiryInMinutes"] ?? "15")
+            );
 
-            var resetTokenExpiration = TimeSpan.FromMinutes(15);
+            await StoreOtpInRedis(request.Email, otp, otpExpiration);
 
-            await StoreResetTokenInRedis(request.Email, resetToken, resetTokenExpiration);
-
-            var resetUrl =
-                $"{_configuration["System:Url"]}/reset-password?email={Uri.EscapeDataString(request.Email)}&token={resetToken}";
-
-            await _emailService.SendPasswordResetLinkAsync(request.Email, user.Username, resetUrl);
+            await _emailService.SendForgotPasswordOtpAsync(
+                request.Email,
+                otp,
+                int.Parse(_configuration["SMTP:expiryInMinutes"] ?? "15")
+            );
 
             return new BaseResponse<bool>
             {
                 Success = true,
                 Data = true,
-                Message = "Đường dẫn đặt lại mật khẩu đã được gửi tới email của bạn."
+                Message = "Mã OTP đã được gửi tới email của bạn. Vui lòng kiểm tra email để xác nhận."
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing forgot password request");
+            _logger.LogError(ex, "Error processing forgot password request for email: {Email}", request.Email);
             return new BaseResponse<bool>
             {
                 Success = false,
-                Message = $"Lỗi xử lý yêu cầu đặt lại mật khẩu: {ex.Message}"
+                Data = false,
+                Message = "Đã xảy ra lỗi khi xử lý yêu cầu. Vui lòng thử lại sau."
+            };
+        }
+    }
+
+    public async Task<BaseResponse<VerifyOtpResponse>> VerifyForgotPasswordOtpAsync(VerifyOtpRequest request)
+    {
+        try
+        {
+            var validationResult = await _verifyOtpValidator.ValidateAsync(request);
+            if (!validationResult.IsValid)
+            {
+                string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                return new BaseResponse<VerifyOtpResponse>
+                {
+                    Success = false,
+                    Message = errors
+                };
+            }
+
+            var isValidOtp = await ValidateOtp(request.Email, request.Otp);
+            if (!isValidOtp)
+            {
+                return new BaseResponse<VerifyOtpResponse>
+                {
+                    Success = false,
+                    Message = "Mã OTP không hợp lệ hoặc đã hết hạn."
+                };
+            }
+
+            await StoreVerifiedOtpInRedis(request.Email, request.Otp);
+
+            return new BaseResponse<VerifyOtpResponse>
+            {
+                Success = true,
+                Data = new VerifyOtpResponse
+                {
+                    Success = true,
+                    Message = "Mã OTP hợp lệ. Bạn có thể thiết lập mật khẩu mới."
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error verifying OTP for email: {Email}", request.Email);
+            return new BaseResponse<VerifyOtpResponse>
+            {
+                Success = false,
+                Message = "Đã xảy ra lỗi khi xác minh OTP. Vui lòng thử lại sau."
+            };
+        }
+    }
+
+    public async Task<BaseResponse<bool>> ResetPasswordWithOtpAsync(SetForgotPasswordRequest request)
+    {
+        try
+        {
+            var validationResult = await _setForgotPasswordValidator.ValidateAsync(request);
+            if (!validationResult.IsValid)
+            {
+                string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                return new BaseResponse<bool>
+                {
+                    Success = false,
+                    Message = errors
+                };
+            }
+
+            var verifiedOtp = await GetVerifiedOtpFromRedis(request.Email);
+            if (string.IsNullOrEmpty(verifiedOtp) || verifiedOtp != request.OTP)
+            {
+                return new BaseResponse<bool>
+                {
+                    Success = false,
+                    Message = "Phiên làm việc đã hết hạn. Vui lòng yêu cầu OTP mới."
+                };
+            }
+
+            var user = await GetUserByEmailAsync(request.Email);
+            if (user == null)
+            {
+                return new BaseResponse<bool>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy người dùng với email này."
+                };
+            }
+            
+            var clientIpAddress = GetClientIpAddress();
+
+            await RemoveOtpFromRedis(request.Email);
+            await RemoveVerifiedOtpFromRedis(request.Email);
+            await RemoveRefreshTokenFromRedis(user.Id.ToString());
+
+            user.PasswordHash = HashPassword(request.NewPassword);
+            user.LastUpdatedDate = DateTime.Now;
+            user.LastUpdatedBy = "System - Password Reset";
+
+            await _unitOfWork.SaveChangesAsync();
+
+            await _emailService.SendPasswordResetConfirmationAsync(request.Email, user.FullName, clientIpAddress);
+
+            return new BaseResponse<bool>
+            {
+                Success = true,
+                Data = true,
+                Message = "Mật khẩu đã được đặt lại thành công. Bạn có thể đăng nhập với mật khẩu mới."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting password for email: {Email}", request.Email);
+            return new BaseResponse<bool>
+            {
+                Success = false,
+                Message = "Đã xảy ra lỗi khi đặt lại mật khẩu. Vui lòng thử lại sau."
             };
         }
     }
@@ -399,40 +453,109 @@ public class AuthService : IAuthService
             .FirstOrDefaultAsync(u => u.Email == email && !u.IsDeleted);
     }
 
-    private string GenerateResetToken()
+    private string GenerateOtp()
     {
-        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(12))
-            .Replace("/", "_")
-            .Replace("+", "-")
-            .Substring(0, 16);
+        var random = new Random();
+        return random.Next(100000, 999999).ToString();
     }
 
-    private async Task StoreResetTokenInRedis(string email, string resetToken, TimeSpan expiration)
+    private async Task StoreOtpInRedis(string email, string otp, TimeSpan expiration)
     {
-        var key = $"reset_token:{email}";
+        var key = $"otp:{email}";
         await _cache.SetStringAsync(
             key,
-            resetToken,
+            otp,
             new DistributedCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = expiration
             });
     }
 
-    private async Task<bool> ValidateResetToken(string email, string resetToken)
+    private async Task<bool> ValidateOtp(string email, string otp)
     {
-        var key = $"reset_token:{email}";
-        var storedToken = await _cache.GetStringAsync(key);
+        var key = $"otp:{email}";
+        var storedOtp = await _cache.GetStringAsync(key);
 
-        if (string.IsNullOrEmpty(storedToken))
+        if (string.IsNullOrEmpty(storedOtp))
             return false;
 
-        return storedToken == resetToken;
+        return storedOtp == otp;
     }
 
-    private async Task RemoveResetTokenFromRedis(string email)
+    private string GetClientIpAddress()
     {
-        var key = $"reset_token:{email}";
+        try
+        {
+            var context = _httpContextAccessor.HttpContext;
+            if (context == null) return "Unknown";
+
+            string ipAddress = null;
+
+            if (context.Request.Headers.ContainsKey("X-Forwarded-For"))
+            {
+                ipAddress = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+                if (!string.IsNullOrEmpty(ipAddress))
+                {
+                    ipAddress = ipAddress.Split(',')[0].Trim();
+                }
+            }
+
+            if (string.IsNullOrEmpty(ipAddress) && context.Request.Headers.ContainsKey("X-Real-IP"))
+            {
+                ipAddress = context.Request.Headers["X-Real-IP"].FirstOrDefault();
+            }
+
+            if (string.IsNullOrEmpty(ipAddress) && context.Request.Headers.ContainsKey("CF-Connecting-IP"))
+            {
+                ipAddress = context.Request.Headers["CF-Connecting-IP"].FirstOrDefault();
+            }
+
+            if (string.IsNullOrEmpty(ipAddress))
+            {
+                ipAddress = context.Connection.RemoteIpAddress?.ToString();
+            }
+
+            if (ipAddress == "::1")
+            {
+                ipAddress = "127.0.0.1 (localhost)";
+            }
+
+            return !string.IsNullOrEmpty(ipAddress) ? ipAddress : "Unknown";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get client IP address");
+            return "Unknown";
+        }
+    }
+
+    private async Task StoreVerifiedOtpInRedis(string email, string otp)
+    {
+        var key = $"verified_otp:{email}";
+        await _cache.SetStringAsync(
+            key,
+            otp,
+            new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+            });
+    }
+
+    private async Task<string> GetVerifiedOtpFromRedis(string email)
+    {
+        var key = $"verified_otp:{email}";
+        return await _cache.GetStringAsync(key);
+    }
+
+    private async Task RemoveOtpFromRedis(string email)
+    {
+        var key = $"otp:{email}";
+        await _cache.RemoveAsync(key);
+    }
+
+    private async Task RemoveVerifiedOtpFromRedis(string email)
+    {
+        var key = $"verified_otp:{email}";
         await _cache.RemoveAsync(key);
     }
 
@@ -477,18 +600,6 @@ public class AuthService : IAuthService
         {
             _logger.LogError(ex, "Error adding cache key");
         }
-    }
-
-    private async Task<string> GetValidatedResetTokenFromRedis(string email)
-    {
-        var key = $"validated_reset_token:{email}";
-        return await _cache.GetStringAsync(key);
-    }
-
-    private async Task RemoveValidatedResetTokenFromRedis(string email)
-    {
-        var key = $"validated_reset_token:{email}";
-        await _cache.RemoveAsync(key);
     }
 
     private string GenerateJwtToken(ApplicationUser user, List<string> roles)

@@ -40,7 +40,7 @@ public class ManagerUpdateUserRequestValidator : AbstractValidator<ManagerUpdate
                 .MaximumLength(20).WithMessage("Mã học sinh không được vượt quá 20 ký tự");
 
             RuleFor(x => x.Relationship)
-                .Empty().WithMessage("Mối quan hệ không áp dụng cho vai trò Student");
+                .Null().WithMessage("Mối quan hệ không áp dụng cho vai trò Student");
         });
 
         When(x => x.Role == "PARENT", () =>
@@ -51,7 +51,7 @@ public class ManagerUpdateUserRequestValidator : AbstractValidator<ManagerUpdate
                 .WithMessage("Mối quan hệ phải là 'Father', 'Mother', hoặc 'Guardian'");
 
             RuleFor(x => x.StudentCode)
-                .Empty().WithMessage("Mã học sinh không áp dụng cho vai trò Parent");
+                .Null().WithMessage("Mã học sinh không áp dụng cho vai trò Parent");
 
             RuleFor(x => x.ClassId)
                 .Null().WithMessage("ID lớp học không áp dụng cho vai trò Parent");

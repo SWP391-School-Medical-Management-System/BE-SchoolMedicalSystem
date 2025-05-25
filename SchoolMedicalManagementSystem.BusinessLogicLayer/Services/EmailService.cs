@@ -45,16 +45,62 @@ public class EmailService : IEmailService
         var template = await GetEmailTemplateAsync("CreateUserAccountEmailTemplate.html");
 
         var systemUrl = _configuration["System:Url"] ?? "https://schoolmedical.example.com";
-        // var supportEmail = _configuration["System:SupportEmail"] ?? "support@schoolmedical.example.com";
+        var supportEmail = _configuration["System:SupportEmail"] ?? "support@schoolmedical.example.com";
 
         var emailBody = template
             .Replace("{USERNAME}", username)
             .Replace("{PASSWORD}", password)
             .Replace("{URL}", systemUrl)
-            // .Replace("{SUPPORT_EMAIL}", supportEmail)
+            .Replace("{SUPPORT_EMAIL}", supportEmail)
+            .Replace("{CURRENT_TIME}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"))
             .Replace("{YEAR}", DateTime.Now.Year.ToString());
 
         await SendEmailInternalAsync(to, "Thông Tin Tài Khoản School Medical Management System", emailBody);
+    }
+
+
+    public async Task SendForgotPasswordOtpAsync(string to, string otp, int expiryMinutes)
+    {
+        var template = await GetEmailTemplateAsync("ForgotPasswordOtpEmailTemplate.html");
+
+        var systemUrl = _configuration["System:Url"] ?? "https://schoolmedical.example.com";
+        var supportEmail = _configuration["System:SupportEmail"] ?? "support@schoolmedical.example.com";
+
+        var username = to.Split('@')[0];
+
+        var emailBody = template
+            .Replace("{USERNAME}", username)
+            .Replace("{EMAIL}", to)
+            .Replace("{OTP_CODE}", otp)
+            .Replace("{EXPIRY_MINUTES}", expiryMinutes.ToString())
+            .Replace("{URL}", systemUrl)
+            .Replace("{SUPPORT_EMAIL}", supportEmail)
+            .Replace("{YEAR}", DateTime.Now.Year.ToString());
+
+        await SendEmailInternalAsync(to, "Mã OTP Đặt Lại Mật Khẩu - School Medical Management System", emailBody);
+    }
+
+    public async Task SendPasswordResetConfirmationAsync(string to, string fullName, string ipAddress = "Unknown")
+    {
+        var template = await GetEmailTemplateAsync("PasswordResetConfirmationEmailTemplate.html");
+
+        var systemUrl = _configuration["System:Url"] ?? "https://schoolmedical.example.com";
+        var supportEmail = _configuration["System:SupportEmail"] ?? "support@schoolmedical.example.com";
+        var loginUrl = $"{systemUrl}/login";
+
+        var emailBody = template
+            .Replace("{FULL_NAME}", fullName)
+            .Replace("{EMAIL}", to)
+            .Replace("{RESET_TIME}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"))
+            .Replace("{IP_ADDRESS}", ipAddress)
+            .Replace("{LOGIN_URL}", loginUrl)
+            .Replace("{CURRENT_TIME}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"))
+            .Replace("{URL}", systemUrl)
+            .Replace("{SUPPORT_EMAIL}", supportEmail)
+            .Replace("{YEAR}", DateTime.Now.Year.ToString());
+
+        await SendEmailInternalAsync(to, "Xác Nhận Đặt Lại Mật Khẩu Thành Công - School Medical Management System",
+            emailBody);
     }
 
     private async Task<string> GetEmailTemplateAsync(string templateFileName)
@@ -65,22 +111,5 @@ public class EmailService : IEmailService
 
         var template = await File.ReadAllTextAsync(templatePath);
         return template;
-    }
-    
-    public async Task SendPasswordResetLinkAsync(string to, string username, string resetUrl)
-    {
-        var template = await GetEmailTemplateAsync("PasswordResetLinkEmailTemplate.html");
-
-        var systemUrl = _configuration["System:Url"] ?? "https://schoolmedical.example.com";
-        var supportEmail = _configuration["System:SupportEmail"] ?? "support@schoolmedical.example.com";
-
-        var emailBody = template
-            .Replace("{USERNAME}", username)
-            .Replace("{RESET_URL}", resetUrl)
-            .Replace("{URL}", systemUrl)
-            .Replace("{SUPPORT_EMAIL}", supportEmail)
-            .Replace("{YEAR}", DateTime.Now.Year.ToString());
-
-        await SendEmailInternalAsync(to, "Yêu Cầu Đặt Lại Mật Khẩu - School Medical Management System", emailBody);
     }
 }

@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.AuthRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthService;
 
@@ -55,10 +54,23 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
-    [HttpPost("forgot-password/reset")]
-    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    [HttpPost("forgot-password/otp")]
+    public async Task<IActionResult> VerifyForgotPasswordOtp([FromBody] VerifyOtpRequest request)
     {
-        var result = await _authService.ResetPasswordAsync(request);
+        var result = await _authService.VerifyForgotPasswordOtpAsync(request);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    [HttpPost("forgot-password/reset")]
+    public async Task<IActionResult> ResetPasswordWithOtp([FromBody] SetForgotPasswordRequest request)
+    {
+        var result = await _authService.ResetPasswordWithOtpAsync(request);
 
         if (!result.Success)
         {

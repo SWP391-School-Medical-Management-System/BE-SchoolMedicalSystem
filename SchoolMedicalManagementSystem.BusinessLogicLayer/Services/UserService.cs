@@ -578,7 +578,7 @@ public class UserService : IUserService
             return new BaseResponse<UserResponse>
             {
                 Success = true,
-                Data = userResponse,
+                Data = null,
                 Message = "Tài khoản đã được tạo thành công."
             };
         }

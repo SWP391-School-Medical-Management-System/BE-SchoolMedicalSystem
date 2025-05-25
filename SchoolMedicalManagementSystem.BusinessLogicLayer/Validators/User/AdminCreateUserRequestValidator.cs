@@ -67,10 +67,10 @@ public class AdminCreateUserRequestValidator : AbstractValidator<AdminCreateUser
                 .MaximumLength(20).WithMessage("Mã nhân viên không được vượt quá 20 ký tự");
 
             RuleFor(x => x.LicenseNumber)
-                .Empty().WithMessage("Số giấy phép hành nghề không áp dụng cho vai trò Manager");
+                .Null().WithMessage("Số giấy phép hành nghề không áp dụng cho vai trò Manager");
 
             RuleFor(x => x.Specialization)
-                .Empty().WithMessage("Chuyên môn không áp dụng cho vai trò Manager");
+                .Null().WithMessage("Chuyên môn không áp dụng cho vai trò Manager");
         });
     }
 }

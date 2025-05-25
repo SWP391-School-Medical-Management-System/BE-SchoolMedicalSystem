@@ -8,6 +8,7 @@ public interface IAuthService
 {
     Task<BaseResponse<LoginResponse>> LoginAsync(LoginRequest model);
     Task<BaseResponse<LoginResponse>> RefreshTokenAsync(RefreshTokenRequest model);
-    Task<BaseResponse<bool>> ResetPasswordAsync(ResetPasswordRequest request);
     Task<BaseResponse<bool>> ForgotPasswordAsync(ForgotPasswordRequest request);
+    Task<BaseResponse<VerifyOtpResponse>> VerifyForgotPasswordOtpAsync(VerifyOtpRequest request);
+    Task<BaseResponse<bool>> ResetPasswordWithOtpAsync(SetForgotPasswordRequest request);
 }

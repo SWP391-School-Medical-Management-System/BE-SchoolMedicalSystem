@@ -13,7 +13,7 @@ public class ApplicationUser : BaseEntity
     public bool IsActive { get; set; } = false; // Trạng thái tài khoản (kích hoạt/không kích hoạt)
     public string? ProfileImageUrl { get; set; } // Đường dẫn đến ảnh đại diện
 
-    public string StaffCode { get; set; } // ID nhân viên (cho Admin/Manager/SchoolNurse)
+    public string? StaffCode { get; set; } // ID nhân viên (cho Admin/Manager/SchoolNurse)
     public string? LicenseNumber { get; set; } // Số giấy phép hành nghề (cho SchoolNurse)
     public string? Specialization { get; set; } // Chuyên môn (cho SchoolNurse)
     public string? StudentCode { get; set; } // Mã học sinh (cho Student)

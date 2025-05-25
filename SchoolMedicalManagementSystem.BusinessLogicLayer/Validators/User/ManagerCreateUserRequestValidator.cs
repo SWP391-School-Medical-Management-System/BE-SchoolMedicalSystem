@@ -52,7 +52,7 @@ public class ManagerCreateUserRequestValidator : AbstractValidator<ManagerCreate
                 .MaximumLength(20).WithMessage("Mã học sinh không được vượt quá 20 ký tự");
 
             RuleFor(x => x.Relationship)
-                .Empty().WithMessage("Mối quan hệ không áp dụng cho vai trò Student");
+                .Null().WithMessage("Mối quan hệ không áp dụng cho vai trò Student");
         });
 
         When(x => x.Role == "PARENT", () =>
