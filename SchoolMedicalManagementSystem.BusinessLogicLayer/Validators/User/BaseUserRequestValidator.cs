@@ -1,11 +1,11 @@
 ﻿using FluentValidation;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.User;
 
-public class ManagerCreateUserRequestValidator : AbstractValidator<ManagerCreateUserRequest>
+public abstract class BaseUserRequestValidator<T> : AbstractValidator<T> where T : BaseUserRequest
 {
-    public ManagerCreateUserRequestValidator()
+    protected BaseUserRequestValidator()
     {
         RuleFor(x => x.Username)
             .NotEmpty().WithMessage("Tên đăng nhập không được để trống")
@@ -37,39 +37,5 @@ public class ManagerCreateUserRequestValidator : AbstractValidator<ManagerCreate
         RuleFor(x => x.DateOfBirth)
             .Must(d => !d.HasValue || d.Value <= DateTime.Today)
             .WithMessage("Ngày sinh không được ở tương lai");
-        
-        RuleFor(x => x.Role)
-            .NotEmpty().WithMessage("Vai trò không được để trống")
-            .Must(r => r == "STUDENT" || r == "PARENT")
-            .WithMessage("Vai trò phải là 'STUDENT' hoặc 'PARENT'")
-            .Must(r => r != "ADMIN" && r != "MANAGER" && r != "SCHOOLNURSE")
-            .WithMessage("Manager chỉ có thể tạo tài khoản Student hoặc Parent");
-
-        When(x => x.Role == "STUDENT", () =>
-        {
-            RuleFor(x => x.StudentCode)
-                .NotEmpty().WithMessage("Mã học sinh là bắt buộc cho học sinh")
-                .MaximumLength(20).WithMessage("Mã học sinh không được vượt quá 20 ký tự");
-
-            RuleFor(x => x.Relationship)
-                .Null().WithMessage("Mối quan hệ không áp dụng cho vai trò Student");
-        });
-
-        When(x => x.Role == "PARENT", () =>
-        {
-            RuleFor(x => x.Relationship)
-                .NotEmpty().WithMessage("Mối quan hệ là bắt buộc cho phụ huynh")
-                .Must(r => r == "Father" || r == "Mother" || r == "Guardian")
-                .WithMessage("Mối quan hệ phải là 'Father', 'Mother', hoặc 'Guardian'");
-
-            RuleFor(x => x.StudentCode)
-                .Empty().WithMessage("Mã học sinh không áp dụng cho vai trò Parent");
-
-            RuleFor(x => x.ClassId)
-                .Null().WithMessage("ID lớp học không áp dụng cho vai trò Parent");
-
-            RuleFor(x => x.ParentId)
-                .Null().WithMessage("ID phụ huynh không áp dụng cho vai trò Parent");
-        });
     }
 }
