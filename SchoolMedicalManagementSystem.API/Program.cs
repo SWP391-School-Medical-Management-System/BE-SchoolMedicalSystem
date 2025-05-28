@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json.Serialization;
-using CloudinaryDotNet;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -134,14 +133,6 @@ catch (Exception ex)
 {
     Console.WriteLine($"Error connecting to Redis: {ex.Message}");
 }
-
-
-var cloudName = builder.Configuration["Cloudinary:CloudName"];
-var apiKey = builder.Configuration["Cloudinary:ApiKey"];
-var apiSecret = builder.Configuration["Cloudinary:ApiSecret"];
-var cloudinaryAccount = new CloudinaryDotNet.Account(cloudName, apiKey, apiSecret);
-var cloudinary = new Cloudinary(cloudinaryAccount);
-builder.Services.AddSingleton(cloudinary);
 
 var app = builder.Build();
 

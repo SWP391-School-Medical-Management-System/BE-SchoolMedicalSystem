@@ -4,7 +4,6 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserReque
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
-using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 
 namespace SchoolMedicalManagementSystem.API.ApiControllers;
 
@@ -166,7 +165,6 @@ public class UserController : ControllerBase
         [FromQuery] bool? hasMedicalRecord = null,
         [FromQuery] bool? hasParent = null,
         CancellationToken cancellationToken = default)
-
     {
         try
         {
@@ -191,34 +189,8 @@ public class UserController : ControllerBase
     [Authorize(Roles = "MANAGER")]
     public async Task<ActionResult<BaseResponse<StudentResponse>>> GetStudentById(Guid id)
     {
-       
-
         try
         {
-            if (pageIndex < 1 || pageSize < 1)
-                return BadRequest(BaseListResponse<StudentResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
-
-            var response = await _userService.GetStudentsAsync(pageIndex, pageSize, searchTerm, orderBy,
-                classId, hasMedicalRecord, hasParent, cancellationToken);
-
-            if (!response.Success)
-                return NotFound(response);
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseListResponse<StudentResponse>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
-
-    [HttpGet("students/{id}")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<StudentResponse>>> GetStudentById(Guid id)
-    {
-        try
-        {
-
             var response = await _userService.GetStudentByIdAsync(id);
             if (!response.Success)
                 return NotFound(response);
@@ -325,7 +297,6 @@ public class UserController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, BaseResponse<ParentResponse>.ErrorResult("Lỗi hệ thống."));
-
         }
     }
 
@@ -412,118 +383,5 @@ public class UserController : ControllerBase
         {
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
         }
-    }
-
-    [HttpPost("parents")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<ParentResponse>>> CreateParent([FromBody] CreateParentRequest model)
-    {
-        var result = await _userService.CreateParentAsync(model);
-
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-
-        return CreatedAtAction(nameof(GetParentById), new { id = result.Data.Id }, result);
-    }
-
-    [HttpPut("parents/{id}")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<ParentResponse>>> UpdateParent(Guid id,
-        [FromBody] UpdateParentRequest model)
-    {
-        var result = await _userService.UpdateParentAsync(id, model);
-
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
-    }
-
-    [HttpDelete("parents/{id}")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<IActionResult> DeleteParent(Guid id)
-    {
-        try
-        {
-            var result = await _userService.DeleteParentAsync(id);
-            if (!result.Success)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
-
-    [HttpPost("parents/{parentId}/students/{studentId}")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<bool>>> LinkParentToStudent(Guid parentId, Guid studentId)
-    {
-        try
-        {
-            var response = await _userService.LinkParentToStudentAsync(parentId, studentId);
-            if (!response.Success)
-                return BadRequest(response);
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
-
-    [HttpDelete("students/{studentId}/parent")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<bool>>> UnlinkParentFromStudent(Guid studentId)
-    {
-        try
-        {
-            var response = await _userService.UnlinkParentFromStudentAsync(studentId);
-            if (!response.Success)
-                return BadRequest(response);
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
-    [HttpPut("{id}/profile")]
- 
-    [RequestFormLimits(MultipartBodyLengthLimit = 4 * 1024 * 1024)]
-    [Consumes("multipart/form-data")]
-    public async Task<IActionResult> UpdateUserProfile(Guid id, [FromForm] UpdateUserProfileRequest model)
-    {
-        var result = await _userService.UpdateUserProfileAsync(id, model);
-
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
-    }
-    [HttpPut("{id}/change-password")]
-   
-    public async Task<IActionResult> ChangePassword(Guid id, [FromBody] ChangePasswordRequest model)
-    {
-        var result = await _userService.ChangePasswordAsync(id, model);
-
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
     }
 }
