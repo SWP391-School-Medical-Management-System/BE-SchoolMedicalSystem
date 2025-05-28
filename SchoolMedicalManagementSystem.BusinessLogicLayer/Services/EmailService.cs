@@ -112,4 +112,23 @@ public class EmailService : IEmailService
         var template = await File.ReadAllTextAsync(templatePath);
         return template;
     }
+    public async Task SendPasswordChangedEmailAsync(string to, string username)
+    {
+        var template = await GetEmailTemplateAsync("PasswordChangedEmailTemplate.html");
+
+        var systemUrl = _configuration["System:Url"] ?? "https://schoolmedical.example.com";
+        var supportEmail = _configuration["System:SupportEmail"] ?? "support@schoolmedical.example.com";
+        var loginUrl = $"{systemUrl}/login";
+
+        var emailBody = template
+            .Replace("{USERNAME}", username)
+            .Replace("{EMAIL}", to)
+            .Replace("{CHANGE_TIME}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"))
+            .Replace("{LOGIN_URL}", loginUrl)
+            .Replace("{URL}", systemUrl)
+            .Replace("{SUPPORT_EMAIL}", supportEmail)
+            .Replace("{YEAR}", DateTime.Now.Year.ToString());
+
+        await SendEmailInternalAsync(to, "Thông Báo Đổi Mật Khẩu Thành Công - School Medical Management System", emailBody);
+    }
 }

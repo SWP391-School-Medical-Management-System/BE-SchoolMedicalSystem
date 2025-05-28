@@ -1,6 +1,8 @@
-﻿using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
+﻿using Microsoft.AspNetCore.Http;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 
@@ -15,6 +17,12 @@ public interface IUserService
         string orderBy,
         string role = null,
         CancellationToken cancellationToken = default);
+
+
+  
+    Task<BaseResponse<bool>> DeleteUserAsync(Guid userId);
+    Task<BaseResponse<UserResponse>> UpdateUserProfileAsync(Guid userId, UpdateUserProfileRequest model);
+    Task<BaseResponse<bool>> ChangePasswordAsync(Guid userId, ChangePasswordRequest model);
 
     Task<BaseResponse<StaffUserResponse>> GetStaffUserByIdAsync(Guid userId);
 
@@ -71,4 +79,5 @@ public interface IUserService
     Task<BaseResponse<bool>> UnlinkParentFromStudentAsync(Guid studentId);
 
     #endregion
+
 }

@@ -25,6 +25,11 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICacheService, CacheService>();
 
+        services.AddScoped<CloudinaryService>();
+
+        services.AddScoped<ICacheService, CacheService>();
+
+
         // Validators
         services.AddValidatorsFromAssemblyContaining<CreateManagerRequestValidator>();
 
