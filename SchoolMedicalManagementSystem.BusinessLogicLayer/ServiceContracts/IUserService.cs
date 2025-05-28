@@ -1,6 +1,8 @@
-﻿using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
+﻿using Microsoft.AspNetCore.Http;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 
@@ -19,4 +21,6 @@ public interface IUserService
     Task<BaseResponse<UserResponse>> ManagerCreateUserAsync(ManagerCreateUserRequest model);
     Task<BaseResponse<UserResponse>> ManagerUpdateUserAsync(Guid userId, ManagerUpdateUserRequest model);
     Task<BaseResponse<bool>> DeleteUserAsync(Guid userId);
+    Task<BaseResponse<UserResponse>> UpdateUserProfileAsync(Guid userId, UpdateUserProfileRequest model);
+    Task<BaseResponse<bool>> ChangePasswordAsync(Guid userId, ChangePasswordRequest model);
 }

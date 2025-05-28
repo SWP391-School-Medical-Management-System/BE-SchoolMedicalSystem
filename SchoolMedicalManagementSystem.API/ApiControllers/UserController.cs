@@ -4,6 +4,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserReque
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
+using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 
 namespace SchoolMedicalManagementSystem.API.ApiControllers;
 
@@ -133,5 +134,33 @@ public class UserController : ControllerBase
         {
             return StatusCode(500, BaseResponse<UserResponse>.ErrorResult("Lỗi hệ thống."));
         }
+    }
+    [HttpPut("{id}/profile")]
+ 
+    [RequestFormLimits(MultipartBodyLengthLimit = 4 * 1024 * 1024)]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UpdateUserProfile(Guid id, [FromForm] UpdateUserProfileRequest model)
+    {
+        var result = await _userService.UpdateUserProfileAsync(id, model);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+    [HttpPut("{id}/change-password")]
+   
+    public async Task<IActionResult> ChangePassword(Guid id, [FromBody] ChangePasswordRequest model)
+    {
+        var result = await _userService.ChangePasswordAsync(id, model);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
     }
 }
