@@ -23,9 +23,10 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ICacheService, CacheService>();
 
         // Validators
-        services.AddValidatorsFromAssemblyContaining<AdminCreateUserRequestValidator>();
+        services.AddValidatorsFromAssemblyContaining<CreateManagerRequestValidator>();
 
         // Mappers
         services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());

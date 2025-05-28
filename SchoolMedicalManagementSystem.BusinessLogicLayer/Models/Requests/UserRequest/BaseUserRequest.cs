@@ -1,8 +1,7 @@
 ﻿namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 
-public class UserResponse
+public abstract class BaseUserRequest
 {
-    public Guid Id { get; set; }
     public string Username { get; set; }
     public string Email { get; set; }
     public string FullName { get; set; }
@@ -10,11 +9,4 @@ public class UserResponse
     public string Address { get; set; }
     public string Gender { get; set; }
     public DateTime? DateOfBirth { get; set; }
-    public string ProfileImageUrl { get; set; }
-    public string Role { get; set; }
-
-    // Fields for SchoolNurse
-    public string StaffId { get; set; }
-    public string LicenseNumber { get; set; }
-    public string Specialization { get; set; }
 }

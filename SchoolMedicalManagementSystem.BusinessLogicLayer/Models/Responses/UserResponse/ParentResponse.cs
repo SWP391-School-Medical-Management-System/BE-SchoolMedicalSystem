@@ -1,6 +1,6 @@
 ﻿namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 
-public class UserResponse
+public class ParentResponse
 {
     public Guid Id { get; set; }
     public string Username { get; set; }
@@ -11,10 +11,18 @@ public class UserResponse
     public string Gender { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public string ProfileImageUrl { get; set; }
-    public string Role { get; set; }
+    public string Relationship { get; set; }
+    
+    // Children information
+    public List<StudentSummaryResponse> Children { get; set; }
+    public int ChildrenCount { get; set; }
+    
+    public DateTime? CreatedDate { get; set; }
+    public DateTime? LastUpdatedDate { get; set; }
 
-    // Fields for SchoolNurse
-    public string StaffId { get; set; }
-    public string LicenseNumber { get; set; }
-    public string Specialization { get; set; }
+    public ParentResponse()
+    {
+        Children = new List<StudentSummaryResponse>();
+        ChildrenCount = 0;
+    }
 }
