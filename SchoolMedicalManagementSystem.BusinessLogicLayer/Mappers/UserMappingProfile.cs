@@ -74,6 +74,7 @@ public class UserMappingProfile : Profile
 
         CreateMap<UserRole, string>()
             .ConvertUsing(userRole => userRole.Role.Name);
+
         CreateMap<ApplicationUser, UserResponse>()
     .ForMember(dest => dest.Role, opt => opt.Ignore())
     .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))

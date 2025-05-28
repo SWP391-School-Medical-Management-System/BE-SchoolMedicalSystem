@@ -166,7 +166,33 @@ public class UserController : ControllerBase
         [FromQuery] bool? hasMedicalRecord = null,
         [FromQuery] bool? hasParent = null,
         CancellationToken cancellationToken = default)
+
     {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(BaseListResponse<StudentResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var response = await _userService.GetStudentsAsync(pageIndex, pageSize, searchTerm, orderBy,
+                classId, hasMedicalRecord, hasParent, cancellationToken);
+
+            if (!response.Success)
+                return NotFound(response);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseListResponse<StudentResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpGet("students/{id}")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<StudentResponse>>> GetStudentById(Guid id)
+    {
+       
+
         try
         {
             if (pageIndex < 1 || pageSize < 1)
@@ -192,6 +218,7 @@ public class UserController : ControllerBase
     {
         try
         {
+
             var response = await _userService.GetStudentByIdAsync(id);
             if (!response.Success)
                 return NotFound(response);
@@ -298,6 +325,92 @@ public class UserController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, BaseResponse<ParentResponse>.ErrorResult("Lỗi hệ thống."));
+
+        }
+    }
+
+    [HttpPost("parents")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<ParentResponse>>> CreateParent([FromBody] CreateParentRequest model)
+    {
+        var result = await _userService.CreateParentAsync(model);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return CreatedAtAction(nameof(GetParentById), new { id = result.Data.Id }, result);
+    }
+
+    [HttpPut("parents/{id}")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<ParentResponse>>> UpdateParent(Guid id,
+        [FromBody] UpdateParentRequest model)
+    {
+        var result = await _userService.UpdateParentAsync(id, model);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    [HttpDelete("parents/{id}")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<IActionResult> DeleteParent(Guid id)
+    {
+        try
+        {
+            var result = await _userService.DeleteParentAsync(id);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpPost("parents/{parentId}/students/{studentId}")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<bool>>> LinkParentToStudent(Guid parentId, Guid studentId)
+    {
+        try
+        {
+            var response = await _userService.LinkParentToStudentAsync(parentId, studentId);
+            if (!response.Success)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpDelete("students/{studentId}/parent")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<bool>>> UnlinkParentFromStudent(Guid studentId)
+    {
+        try
+        {
+            var response = await _userService.UnlinkParentFromStudentAsync(studentId);
+            if (!response.Success)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
         }
     }
 

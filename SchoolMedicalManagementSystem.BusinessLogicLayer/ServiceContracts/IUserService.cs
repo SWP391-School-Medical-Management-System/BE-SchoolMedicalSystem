@@ -23,6 +23,7 @@ public interface IUserService
     Task<BaseResponse<bool>> DeleteUserAsync(Guid userId);
     Task<BaseResponse<UserResponse>> UpdateUserProfileAsync(Guid userId, UpdateUserProfileRequest model);
     Task<BaseResponse<bool>> ChangePasswordAsync(Guid userId, ChangePasswordRequest model);
+
     Task<BaseResponse<StaffUserResponse>> GetStaffUserByIdAsync(Guid userId);
 
     Task<BaseResponse<ManagerResponse>> CreateManagerAsync(CreateManagerRequest model);
