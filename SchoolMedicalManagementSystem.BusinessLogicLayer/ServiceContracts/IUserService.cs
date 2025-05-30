@@ -1,6 +1,8 @@
-﻿using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
+﻿using Microsoft.AspNetCore.Http;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.SchoolClassResponse;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 
@@ -69,6 +71,28 @@ public interface IUserService
 
     Task<BaseResponse<bool>> LinkParentToStudentAsync(Guid parentId, Guid studentId);
     Task<BaseResponse<bool>> UnlinkParentFromStudentAsync(Guid studentId);
+
+    #endregion
+
+    #region Excel Import/Export Methods
+
+    Task<BaseResponse<ExcelImportResult<ManagerResponse>>> ImportManagersFromExcelAsync(IFormFile file);
+    Task<BaseResponse<ExcelImportResult<SchoolNurseResponse>>> ImportSchoolNursesFromExcelAsync(IFormFile file);
+    Task<BaseResponse<ExcelImportResult<StudentResponse>>> ImportStudentsFromExcelAsync(IFormFile file);
+    Task<BaseResponse<ExcelImportResult<ParentResponse>>> ImportParentsFromExcelAsync(IFormFile file);
+    Task<byte[]> ExportManagersToExcelAsync(string searchTerm = "", string orderBy = null);
+    Task<byte[]> ExportSchoolNursesToExcelAsync(string searchTerm = "", string orderBy = null);
+
+    Task<byte[]> ExportStudentsToExcelAsync(string searchTerm = "", string orderBy = null, Guid? classId = null,
+        bool? hasMedicalRecord = null, bool? hasParent = null);
+
+    Task<byte[]> ExportParentsToExcelAsync(string searchTerm = "", string orderBy = null, bool? hasChildren = null,
+        string relationship = null);
+
+    Task<byte[]> DownloadManagerTemplateAsync();
+    Task<byte[]> DownloadSchoolNurseTemplateAsync();
+    Task<byte[]> DownloadStudentTemplateAsync();
+    Task<byte[]> DownloadParentTemplateAsync();
 
     #endregion
 }

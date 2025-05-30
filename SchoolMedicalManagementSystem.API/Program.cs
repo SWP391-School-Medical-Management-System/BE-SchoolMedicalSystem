@@ -85,7 +85,7 @@ builder.Services.AddSwaggerGen(options =>
         }
     });
     options.MapType<TimeSpan>(() => new OpenApiSchema { Type = "string", Example = new OpenApiString("00:00:00") });
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = "Smart AI Door API", Version = "v1" });
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = "School Medical System API", Version = "v1" });
     options.OperationFilter<GenericResponseTypeOperationFilter>();
 });
 

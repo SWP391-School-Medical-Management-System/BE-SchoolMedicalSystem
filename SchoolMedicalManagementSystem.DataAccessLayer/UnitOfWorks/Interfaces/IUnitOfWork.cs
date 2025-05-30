@@ -8,4 +8,5 @@ public interface IUnitOfWork : IBaseUnitOfWork
     public IUserRepository UserRepository { get; }
     public IRoleRepository RoleRepository { get; }
     public IUserRoleRepository UserRoleRepository { get; }
+    public ISchoolClassRepository SchoolClassRepository { get; }
 }

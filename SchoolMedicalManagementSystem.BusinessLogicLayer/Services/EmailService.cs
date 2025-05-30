@@ -57,8 +57,7 @@ public class EmailService : IEmailService
 
         await SendEmailInternalAsync(to, "Thông Tin Tài Khoản School Medical Management System", emailBody);
     }
-
-
+    
     public async Task SendForgotPasswordOtpAsync(string to, string otp, int expiryMinutes)
     {
         var template = await GetEmailTemplateAsync("ForgotPasswordOtpEmailTemplate.html");
