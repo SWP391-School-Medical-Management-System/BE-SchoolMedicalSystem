@@ -2,11 +2,13 @@
 using System.Text;
 using AutoMapper;
 using FluentValidation;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.SchoolClassResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
@@ -19,6 +21,7 @@ public class UserService : IUserService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmailService _emailService;
     private readonly ICacheService _cacheService;
+    private readonly IExcelService _excelService;
     private readonly ILogger<UserService> _logger;
 
     private readonly IValidator<CreateManagerRequest> _createManagerValidator;
@@ -46,6 +49,7 @@ public class UserService : IUserService
         IUnitOfWork unitOfWork,
         IEmailService emailService,
         ICacheService cacheService,
+        IExcelService excelService,
         ILogger<UserService> logger,
         IValidator<CreateManagerRequest> createManagerValidator,
         IValidator<UpdateManagerRequest> updateManagerValidator,
@@ -60,6 +64,7 @@ public class UserService : IUserService
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _emailService = emailService;
+        _excelService = excelService;
         _cacheService = cacheService;
         _logger = logger;
         _createManagerValidator = createManagerValidator;
@@ -741,7 +746,8 @@ public class UserService : IUserService
             var query = _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .Include(u => u.Class)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .Where(u => !u.IsDeleted && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
@@ -795,7 +801,8 @@ public class UserService : IUserService
                 .AsSplitQuery()
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .Include(u => u.Class)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .Where(u => u.Id == studentId && !u.IsDeleted &&
@@ -881,38 +888,6 @@ public class UserService : IUserService
                 }
             }
 
-            if (model.ClassId.HasValue)
-            {
-                var classExists = await _unitOfWork.GetRepositoryByEntity<SchoolClass>().GetQueryable()
-                    .AnyAsync(c => c.Id == model.ClassId.Value && !c.IsDeleted);
-
-                if (!classExists)
-                {
-                    return new BaseResponse<StudentResponse>
-                    {
-                        Success = false,
-                        Message = "Lớp học không tồn tại."
-                    };
-                }
-            }
-
-            if (model.ParentId.HasValue)
-            {
-                var parent = await userRepo.GetQueryable()
-                    .Include(u => u.UserRoles)
-                    .ThenInclude(ur => ur.Role)
-                    .FirstOrDefaultAsync(u => u.Id == model.ParentId && !u.IsDeleted);
-
-                if (parent == null || !parent.UserRoles.Any(ur => ur.Role.Name == "PARENT"))
-                {
-                    return new BaseResponse<StudentResponse>
-                    {
-                        Success = false,
-                        Message = "Phụ huynh không tồn tại."
-                    };
-                }
-            }
-
             string defaultPassword = GenerateDefaultPassword();
             string passwordHash = HashPassword(defaultPassword);
             var managerRoleName = await GetManagerRoleName();
@@ -955,7 +930,8 @@ public class UserService : IUserService
             await InvalidateStudentCacheAsync();
 
             var studentWithRelations = await userRepo.GetQueryable()
-                .Include(u => u.Class)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == user.Id);
@@ -1027,42 +1003,6 @@ public class UserService : IUserService
                 }
             }
 
-            if (model.ClassId.HasValue && user.ClassId != model.ClassId)
-            {
-                var classExists = await _unitOfWork.GetRepositoryByEntity<SchoolClass>().GetQueryable()
-                    .AnyAsync(c => c.Id == model.ClassId.Value && !c.IsDeleted);
-
-                if (!classExists)
-                {
-                    return new BaseResponse<StudentResponse>
-                    {
-                        Success = false,
-                        Message = "Lớp học không tồn tại."
-                    };
-                }
-
-                user.ClassId = model.ClassId;
-            }
-
-            if (model.ParentId.HasValue && user.ParentId != model.ParentId)
-            {
-                var parent = await userRepo.GetQueryable()
-                    .Include(u => u.UserRoles)
-                    .ThenInclude(ur => ur.Role)
-                    .FirstOrDefaultAsync(u => u.Id == model.ParentId && !u.IsDeleted);
-
-                if (parent == null || !parent.UserRoles.Any(ur => ur.Role.Name == "PARENT"))
-                {
-                    return new BaseResponse<StudentResponse>
-                    {
-                        Success = false,
-                        Message = "Phụ huynh không tồn tại."
-                    };
-                }
-
-                user.ParentId = model.ParentId;
-            }
-
             var managerRoleName = await GetManagerRoleName();
 
             user.FullName = model.FullName;
@@ -1078,7 +1018,8 @@ public class UserService : IUserService
             await InvalidateStudentCacheAsync();
 
             var studentWithRelations = await userRepo.GetQueryable()
-                .Include(u => u.Class)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == studentId);
@@ -1198,7 +1139,8 @@ public class UserService : IUserService
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
-                .ThenInclude(c => c.Class)
+                .ThenInclude(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
                 .ThenInclude(c => c.MedicalRecord)
                 .Where(u => !u.IsDeleted && u.UserRoles.Any(ur => ur.Role.Name == "PARENT"))
@@ -1252,7 +1194,8 @@ public class UserService : IUserService
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
-                .ThenInclude(c => c.Class)
+                .ThenInclude(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
                 .ThenInclude(c => c.MedicalRecord)
                 .Where(u => u.Id == parentId && !u.IsDeleted &&
@@ -1310,7 +1253,6 @@ public class UserService : IUserService
 
             var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
 
-            // Kiểm tra trùng lặp username hoặc email
             var duplicateCheck = await userRepo.GetQueryable().AnyAsync(u =>
                 (u.Username == model.Username || u.Email == model.Email) && !u.IsDeleted);
 
@@ -1323,7 +1265,6 @@ public class UserService : IUserService
                 };
             }
 
-            // Kiểm tra trùng lặp số điện thoại với tất cả các user (Admin, Manager, School Nurse, Student, Parent)
             if (!string.IsNullOrEmpty(model.PhoneNumber))
             {
                 var phoneNumberExists = await userRepo.GetQueryable()
@@ -1382,7 +1323,8 @@ public class UserService : IUserService
 
             var parentWithRelations = await userRepo.GetQueryable()
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
-                .ThenInclude(c => c.Class)
+                .ThenInclude(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
                 .ThenInclude(c => c.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == user.Id);
@@ -1469,7 +1411,8 @@ public class UserService : IUserService
 
             var parentWithRelations = await userRepo.GetQueryable()
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
-                .ThenInclude(c => c.Class)
+                .ThenInclude(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
                 .ThenInclude(c => c.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == parentId);
@@ -1675,6 +1618,493 @@ public class UserService : IUserService
 
     #endregion
 
+    #region Excel Import/Export Methods
+
+    public async Task<byte[]> DownloadManagerTemplateAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Generating school class Excel template");
+            return await _excelService.GenerateManagerTemplateAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading school class template");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> DownloadSchoolNurseTemplateAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Generating school class Excel template");
+            return await _excelService.GenerateSchoolNurseTemplateAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading school class template");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> DownloadStudentTemplateAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Generating school class Excel template");
+            return await _excelService.GenerateStudentTemplateAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading school class template");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> DownloadParentTemplateAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Generating school class Excel template");
+            return await _excelService.GenerateParentTemplateAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading school class template");
+            throw;
+        }
+    }
+
+    public async Task<BaseResponse<ExcelImportResult<ManagerResponse>>> ImportManagersFromExcelAsync(IFormFile file)
+    {
+        try
+        {
+            var excelResult = await _excelService.ReadManagerExcelAsync(file);
+
+            if (!excelResult.Success)
+            {
+                return new BaseResponse<ExcelImportResult<ManagerResponse>>
+                {
+                    Success = false,
+                    Message = excelResult.Message
+                };
+            }
+
+            var importResult = new ExcelImportResult<ManagerResponse>
+            {
+                TotalRows = excelResult.TotalRows,
+                Success = true,
+                Message = "Import hoàn tất."
+            };
+
+            var successfulManagers = new List<ManagerResponse>();
+            var failedImports = new List<string>();
+
+            foreach (var managerData in excelResult.ValidData)
+            {
+                try
+                {
+                    var createRequest = _mapper.Map<CreateManagerRequest>(managerData);
+                    var createResult = await CreateManagerAsync(createRequest);
+
+                    if (createResult.Success)
+                    {
+                        successfulManagers.Add(createResult.Data);
+                    }
+                    else
+                    {
+                        failedImports.Add($"Manager {managerData.Username}: {createResult.Message}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failedImports.Add($"Manager {managerData.Username}: {ex.Message}");
+                }
+            }
+
+            foreach (var invalidData in excelResult.InvalidData)
+            {
+                failedImports.Add($"Manager {invalidData.Username}: {invalidData.ErrorMessage}");
+            }
+
+            importResult.ValidData = successfulManagers;
+            importResult.SuccessRows = successfulManagers.Count;
+            importResult.ErrorRows = failedImports.Count;
+            importResult.Errors = failedImports;
+
+            if (failedImports.Any())
+            {
+                importResult.Message += $" Thành công: {importResult.SuccessRows}, Lỗi: {importResult.ErrorRows}";
+            }
+
+            return new BaseResponse<ExcelImportResult<ManagerResponse>>
+            {
+                Success = true,
+                Data = importResult,
+                Message = "Import Manager hoàn tất."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing managers from Excel");
+            return new BaseResponse<ExcelImportResult<ManagerResponse>>
+            {
+                Success = false,
+                Message = $"Lỗi import Manager: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<byte[]> ExportManagersToExcelAsync(string searchTerm = "", string orderBy = null)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Exporting managers to Excel with filters - SearchTerm: {SearchTerm}, OrderBy: {OrderBy}", searchTerm,
+                orderBy);
+
+            var managersResponse = await GetStaffUsersAsync(1, int.MaxValue, searchTerm, orderBy, "MANAGER");
+
+            if (!managersResponse.Success)
+            {
+                throw new InvalidOperationException($"Failed to get managers data: {managersResponse.Message}");
+            }
+
+            return await _excelService.ExportManagersToExcelAsync(managersResponse.Data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting managers to Excel");
+            throw;
+        }
+    }
+
+    public async Task<BaseResponse<ExcelImportResult<SchoolNurseResponse>>> ImportSchoolNursesFromExcelAsync(
+        IFormFile file)
+    {
+        try
+        {
+            var excelResult = await _excelService.ReadSchoolNurseExcelAsync(file);
+
+            if (!excelResult.Success)
+            {
+                return new BaseResponse<ExcelImportResult<SchoolNurseResponse>>
+                {
+                    Success = false,
+                    Message = excelResult.Message
+                };
+            }
+
+            var importResult = new ExcelImportResult<SchoolNurseResponse>
+            {
+                TotalRows = excelResult.TotalRows,
+                Success = true,
+                Message = "Import hoàn tất."
+            };
+
+            var successfulNurses = new List<SchoolNurseResponse>();
+            var failedImports = new List<string>();
+
+            foreach (var nurseData in excelResult.ValidData)
+            {
+                try
+                {
+                    var createRequest = _mapper.Map<CreateSchoolNurseRequest>(nurseData);
+                    var createResult = await CreateSchoolNurseAsync(createRequest);
+
+                    if (createResult.Success)
+                    {
+                        successfulNurses.Add(createResult.Data);
+                    }
+                    else
+                    {
+                        failedImports.Add($"School Nurse {nurseData.Username}: {createResult.Message}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failedImports.Add($"School Nurse {nurseData.Username}: {ex.Message}");
+                }
+            }
+
+            foreach (var invalidData in excelResult.InvalidData)
+            {
+                failedImports.Add($"School Nurse {invalidData.Username}: {invalidData.ErrorMessage}");
+            }
+
+            importResult.ValidData = successfulNurses;
+            importResult.SuccessRows = successfulNurses.Count;
+            importResult.ErrorRows = failedImports.Count;
+            importResult.Errors = failedImports;
+
+            if (failedImports.Any())
+            {
+                importResult.Message += $" Thành công: {importResult.SuccessRows}, Lỗi: {importResult.ErrorRows}";
+            }
+
+            return new BaseResponse<ExcelImportResult<SchoolNurseResponse>>
+            {
+                Success = true,
+                Data = importResult,
+                Message = "Import School Nurse hoàn tất."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing school nurses from Excel");
+            return new BaseResponse<ExcelImportResult<SchoolNurseResponse>>
+            {
+                Success = false,
+                Message = $"Lỗi import School Nurse: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<byte[]> ExportSchoolNursesToExcelAsync(string searchTerm = "", string orderBy = null)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Exporting school nurses to Excel with filters - SearchTerm: {SearchTerm}, OrderBy: {OrderBy}",
+                searchTerm, orderBy);
+
+            var nursesResponse = await GetStaffUsersAsync(1, int.MaxValue, searchTerm, orderBy, "SCHOOLNURSE");
+
+            if (!nursesResponse.Success)
+            {
+                throw new InvalidOperationException($"Failed to get school nurses data: {nursesResponse.Message}");
+            }
+
+            return await _excelService.ExportSchoolNursesToExcelAsync(nursesResponse.Data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting school nurses to Excel");
+            throw;
+        }
+    }
+
+    public async Task<BaseResponse<ExcelImportResult<StudentResponse>>> ImportStudentsFromExcelAsync(IFormFile file)
+    {
+        try
+        {
+            var excelResult = await _excelService.ReadStudentExcelAsync(file);
+
+            if (!excelResult.Success)
+            {
+                return new BaseResponse<ExcelImportResult<StudentResponse>>
+                {
+                    Success = false,
+                    Message = excelResult.Message
+                };
+            }
+
+            var importResult = new ExcelImportResult<StudentResponse>
+            {
+                TotalRows = excelResult.TotalRows,
+                Success = true,
+                Message = "Import hoàn tất."
+            };
+
+            var successfulStudents = new List<StudentResponse>();
+            var failedImports = new List<string>();
+
+            var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
+            var allClasses = await classRepo.GetQueryable()
+                .Where(c => !c.IsDeleted)
+                .ToDictionaryAsync(c => c.Name, c => c.Id);
+
+            foreach (var studentData in excelResult.ValidData)
+            {
+                try
+                {
+                    var createRequest = _mapper.Map<CreateStudentRequest>(studentData);
+
+                    var createResult = await CreateStudentAsync(createRequest);
+
+                    if (createResult.Success)
+                    {
+                        successfulStudents.Add(createResult.Data);
+                    }
+                    else
+                    {
+                        failedImports.Add($"Student {studentData.Username}: {createResult.Message}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failedImports.Add($"Student {studentData.Username}: {ex.Message}");
+                }
+            }
+
+            foreach (var invalidData in excelResult.InvalidData)
+            {
+                failedImports.Add($"Student {invalidData.Username}: {invalidData.ErrorMessage}");
+            }
+
+            importResult.ValidData = successfulStudents;
+            importResult.SuccessRows = successfulStudents.Count;
+            importResult.ErrorRows = failedImports.Count;
+            importResult.Errors = failedImports;
+
+            if (failedImports.Any())
+            {
+                importResult.Message += $" Thành công: {importResult.SuccessRows}, Lỗi: {importResult.ErrorRows}";
+            }
+
+            return new BaseResponse<ExcelImportResult<StudentResponse>>
+            {
+                Success = true,
+                Data = importResult,
+                Message = "Import Student hoàn tất."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing students from Excel");
+            return new BaseResponse<ExcelImportResult<StudentResponse>>
+            {
+                Success = false,
+                Message = $"Lỗi import Student: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<byte[]> ExportStudentsToExcelAsync(string searchTerm = "", string orderBy = null,
+        Guid? classId = null, bool? hasMedicalRecord = null, bool? hasParent = null)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Exporting students to Excel with filters - SearchTerm: {SearchTerm}, OrderBy: {OrderBy}, ClassId: {ClassId}, HasMedicalRecord: {HasMedicalRecord}, HasParent: {HasParent}",
+                searchTerm, orderBy, classId, hasMedicalRecord, hasParent);
+
+            var studentsResponse = await GetStudentsAsync(1, int.MaxValue, searchTerm, orderBy, classId,
+                hasMedicalRecord, hasParent);
+
+            if (!studentsResponse.Success)
+            {
+                throw new InvalidOperationException($"Failed to get students data: {studentsResponse.Message}");
+            }
+
+            return await _excelService.ExportStudentsToExcelAsync(studentsResponse.Data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting students to Excel");
+            throw;
+        }
+    }
+
+    public async Task<BaseResponse<ExcelImportResult<ParentResponse>>> ImportParentsFromExcelAsync(IFormFile file)
+    {
+        try
+        {
+            var excelResult = await _excelService.ReadParentExcelAsync(file);
+
+            if (!excelResult.Success)
+            {
+                return new BaseResponse<ExcelImportResult<ParentResponse>>
+                {
+                    Success = false,
+                    Message = excelResult.Message
+                };
+            }
+
+            var importResult = new ExcelImportResult<ParentResponse>
+            {
+                TotalRows = excelResult.TotalRows,
+                Success = true,
+                Message = "Import hoàn tất."
+            };
+
+            var successfulParents = new List<ParentResponse>();
+            var failedImports = new List<string>();
+
+            foreach (var parentData in excelResult.ValidData)
+            {
+                try
+                {
+                    var createRequest = _mapper.Map<CreateParentRequest>(parentData);
+                    var createResult = await CreateParentAsync(createRequest);
+
+                    if (createResult.Success)
+                    {
+                        successfulParents.Add(createResult.Data);
+                    }
+                    else
+                    {
+                        failedImports.Add($"Parent {parentData.Username}: {createResult.Message}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failedImports.Add($"Parent {parentData.Username}: {ex.Message}");
+                }
+            }
+
+            foreach (var invalidData in excelResult.InvalidData)
+            {
+                failedImports.Add($"Parent {invalidData.Username}: {invalidData.ErrorMessage}");
+            }
+
+            importResult.ValidData = successfulParents;
+            importResult.SuccessRows = successfulParents.Count;
+            importResult.ErrorRows = failedImports.Count;
+            importResult.Errors = failedImports;
+
+            if (failedImports.Any())
+            {
+                importResult.Message += $" Thành công: {importResult.SuccessRows}, Lỗi: {importResult.ErrorRows}";
+            }
+
+            return new BaseResponse<ExcelImportResult<ParentResponse>>
+            {
+                Success = true,
+                Data = importResult,
+                Message = "Import Parent hoàn tất."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing parents from Excel");
+            return new BaseResponse<ExcelImportResult<ParentResponse>>
+            {
+                Success = false,
+                Message = $"Lỗi import Parent: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<byte[]> ExportParentsToExcelAsync(string searchTerm = "", string orderBy = null,
+        bool? hasChildren = null, string relationship = null)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Exporting parents to Excel with filters - SearchTerm: {SearchTerm}, OrderBy: {OrderBy}, HasChildren: {HasChildren}, Relationship: {Relationship}",
+                searchTerm, orderBy, hasChildren, relationship);
+
+            var parentsResponse =
+                await GetParentsAsync(1, int.MaxValue, searchTerm, orderBy, hasChildren, relationship);
+
+            if (!parentsResponse.Success)
+            {
+                throw new InvalidOperationException($"Failed to get parents data: {parentsResponse.Message}");
+            }
+
+            return await _excelService.ExportParentsToExcelAsync(parentsResponse.Data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting parents to Excel");
+            throw;
+        }
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private async Task<string> GetAdminRoleName()
@@ -1732,46 +2162,17 @@ public class UserService : IUserService
 
     private StudentResponse MapToStudentResponse(ApplicationUser student)
     {
-        var response = new StudentResponse
-        {
-            Id = student.Id,
-            Username = student.Username,
-            Email = student.Email,
-            FullName = student.FullName,
-            PhoneNumber = student.PhoneNumber,
-            Address = student.Address,
-            Gender = student.Gender,
-            DateOfBirth = student.DateOfBirth,
-            ProfileImageUrl = student.ProfileImageUrl,
-            StudentCode = student.StudentCode,
-            CreatedDate = student.CreatedDate,
-            LastUpdatedDate = student.LastUpdatedDate
-        };
+        var response = _mapper.Map<StudentResponse>(student);
 
-        if (student.Class != null)
+        if (student.StudentClasses != null && student.StudentClasses.Any(sc => !sc.IsDeleted))
         {
-            response.ClassId = student.Class.Id;
-            response.ClassName = student.Class.Name;
-            response.Grade = student.Class.Grade;
-            response.AcademicYear = student.Class.AcademicYear;
-        }
+            var activeStudentClasses = student.StudentClasses
+                .Where(sc => !sc.IsDeleted)
+                .OrderByDescending(sc => sc.EnrollmentDate)
+                .ToList();
 
-        if (student.Parent != null)
-        {
-            response.ParentId = student.Parent.Id;
-            response.ParentName = student.Parent.FullName;
-            response.ParentPhone = student.Parent.PhoneNumber;
-            response.ParentRelationship = student.Parent.Relationship;
-        }
-
-        if (student.MedicalRecord != null)
-        {
-            response.HasMedicalRecord = true;
-            response.BloodType = student.MedicalRecord.BloodType;
-            response.Height = student.MedicalRecord.Height;
-            response.Weight = student.MedicalRecord.Weight;
-            response.EmergencyContact = student.MedicalRecord.EmergencyContact;
-            response.EmergencyContactPhone = student.MedicalRecord.EmergencyContactPhone;
+            response.Classes = _mapper.Map<List<StudentClassInfo>>(activeStudentClasses);
+            response.ClassCount = response.Classes.Count;
         }
 
         return response;
@@ -1779,35 +2180,44 @@ public class UserService : IUserService
 
     private ParentResponse MapToParentResponse(ApplicationUser parent)
     {
-        var response = new ParentResponse
-        {
-            Id = parent.Id,
-            Username = parent.Username,
-            Email = parent.Email,
-            FullName = parent.FullName,
-            PhoneNumber = parent.PhoneNumber,
-            Address = parent.Address,
-            Gender = parent.Gender,
-            DateOfBirth = parent.DateOfBirth,
-            ProfileImageUrl = parent.ProfileImageUrl,
-            Relationship = parent.Relationship,
-            CreatedDate = parent.CreatedDate,
-            LastUpdatedDate = parent.LastUpdatedDate
-        };
+        var response = _mapper.Map<ParentResponse>(parent);
 
         if (parent.Children != null && parent.Children.Any())
         {
-            response.Children = parent.Children
-                .Where(c => !c.IsDeleted)
-                .Select(child => new StudentSummaryResponse
+            var activeChildren = parent.Children.Where(c => !c.IsDeleted).ToList();
+
+            response.Children = new List<StudentSummaryResponse>();
+
+            foreach (var child in activeChildren)
+            {
+                var studentSummary = new StudentSummaryResponse
                 {
                     Id = child.Id,
                     FullName = child.FullName,
                     StudentCode = child.StudentCode,
-                    ClassName = child.Class?.Name,
-                    Grade = child.Class?.Grade,
                     HasMedicalRecord = child.MedicalRecord != null
-                }).ToList();
+                };
+
+                if (child.StudentClasses != null)
+                {
+                    var activeClasses = child.StudentClasses.Where(sc => !sc.IsDeleted).ToList();
+                    studentSummary.ClassCount = activeClasses.Count;
+
+                    if (activeClasses.Any())
+                    {
+                        var currentClass = activeClasses.OrderByDescending(sc => sc.EnrollmentDate).First();
+                        studentSummary.CurrentClassName = currentClass.SchoolClass?.Name;
+                        studentSummary.CurrentGrade = currentClass.SchoolClass?.Grade;
+
+                        studentSummary.ClassNames = activeClasses
+                            .Select(sc => sc.SchoolClass?.Name)
+                            .Where(name => !string.IsNullOrEmpty(name))
+                            .ToList();
+                    }
+                }
+
+                response.Children.Add(studentSummary);
+            }
 
             response.ChildrenCount = response.Children.Count;
         }
@@ -1844,7 +2254,7 @@ public class UserService : IUserService
     {
         if (classId.HasValue)
         {
-            query = query.Where(u => u.ClassId == classId.Value);
+            query = query.Where(u => u.StudentClasses.Any(sc => sc.ClassId == classId.Value && !sc.IsDeleted));
         }
 
         if (hasMedicalRecord.HasValue)
@@ -1880,7 +2290,7 @@ public class UserService : IUserService
                 u.FullName.ToLower().Contains(searchTerm) ||
                 u.PhoneNumber.Contains(searchTerm) ||
                 u.StudentCode.ToLower().Contains(searchTerm) ||
-                (u.Class != null && u.Class.Name.ToLower().Contains(searchTerm)) ||
+                u.StudentClasses.Any(sc => !sc.IsDeleted && sc.SchoolClass.Name.ToLower().Contains(searchTerm)) ||
                 (u.Parent != null && u.Parent.FullName.ToLower().Contains(searchTerm)));
         }
 
@@ -1895,8 +2305,10 @@ public class UserService : IUserService
             "studentcode_desc" => query.OrderByDescending(u => u.StudentCode),
             "fullname" => query.OrderBy(u => u.FullName),
             "fullname_desc" => query.OrderByDescending(u => u.FullName),
-            "class" => query.OrderBy(u => u.Class.Name),
-            "class_desc" => query.OrderByDescending(u => u.Class.Name),
+            "class" => query.OrderBy(u =>
+                u.StudentClasses.Where(sc => !sc.IsDeleted).FirstOrDefault().SchoolClass.Name),
+            "class_desc" => query.OrderByDescending(u =>
+                u.StudentClasses.Where(sc => !sc.IsDeleted).FirstOrDefault().SchoolClass.Name),
             "parent" => query.OrderBy(u => u.Parent.FullName),
             "parent_desc" => query.OrderByDescending(u => u.Parent.FullName),
             "createdate_desc" => query.OrderByDescending(u => u.CreatedDate),
@@ -2197,7 +2609,7 @@ public class UserService : IUserService
         }
     }
 
-    private async Task InvalidateStudentCacheAsync(Guid? studentId = null)
+    public async Task InvalidateStudentCacheAsync(Guid? studentId = null)
     {
         try
         {

@@ -14,5 +14,5 @@ public class UnitOfWork : BaseUnitOfWork<ApplicationDbContext>, IUnitOfWork
     public IUserRepository UserRepository => GetRepository<IUserRepository>();
     public IRoleRepository RoleRepository => GetRepository<IRoleRepository>();
     public IUserRoleRepository UserRoleRepository => GetRepository<IUserRoleRepository>();
-
+    public ISchoolClassRepository SchoolClassRepository => GetRepository<ISchoolClassRepository>();
 }

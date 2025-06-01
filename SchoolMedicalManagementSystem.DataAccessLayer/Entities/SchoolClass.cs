@@ -9,5 +9,5 @@ public class SchoolClass : BaseEntity
     public int Grade { get; set; } // Khối lớp, ví dụ: 1, 2, 3, 4, 5
     public int AcademicYear { get; set; } // Năm học, ví dụ: 2024
 
-    public virtual ICollection<ApplicationUser> Students { get; set; } // Danh sách học sinh trong lớp
+    public virtual ICollection<StudentClass> StudentClasses { get; set; }
 }

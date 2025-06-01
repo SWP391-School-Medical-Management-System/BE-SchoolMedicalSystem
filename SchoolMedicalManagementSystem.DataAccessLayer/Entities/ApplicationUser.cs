@@ -17,14 +17,13 @@ public class ApplicationUser : BaseEntity
     public string? LicenseNumber { get; set; } // Số giấy phép hành nghề (cho SchoolNurse)
     public string? Specialization { get; set; } // Chuyên môn (cho SchoolNurse)
     public string? StudentCode { get; set; } // Mã học sinh (cho Student)
-    public Guid? ClassId { get; set; } // ID lớp học (cho Student)
     public Guid? ParentId { get; set; } // ID phụ huynh (cho Student - liên kết với User là parent)
     public string? Relationship { get; set; } // Quan hệ với học sinh: "Father", "Mother", "Guardian" (cho Parent)
 
     public virtual ICollection<UserRole> UserRoles { get; set; }
     public virtual ApplicationUser Parent { get; set; }                     // Liên kết đến phụ huynh (nếu là học sinh)
     public virtual ICollection<ApplicationUser> Children { get; set; }      // Danh sách con (nếu là phụ huynh)
-    public virtual SchoolClass Class { get; set; }                          // Lớp học (nếu là học sinh)
+    public virtual ICollection<StudentClass> StudentClasses { get; set; } 
     public virtual MedicalRecord MedicalRecord { get; set; }                // Hồ sơ y tế (nếu là học sinh)
     public virtual ICollection<HealthEvent> HandledHealthEvents { get; set; } // Các sự kiện y tế đã xử lý (nếu là y tá)
     public virtual ICollection<HealthCheck> ConductedHealthChecks { get; set; } // Các kiểm tra y tế đã thực hiện (nếu là y tá)

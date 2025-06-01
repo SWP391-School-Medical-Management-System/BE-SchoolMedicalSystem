@@ -5,6 +5,4 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserR
 public class UpdateStudentRequest : BaseUserUpdateRequest
 {
     public string StudentCode { get; set; }
-    public Guid? ClassId { get; set; }
-    public Guid? ParentId { get; set; }
 }

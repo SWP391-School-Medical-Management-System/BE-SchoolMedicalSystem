@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.SchoolClassResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 
 namespace SchoolMedicalManagementSystem.API.ApiControllers;
@@ -110,6 +111,68 @@ public class UserController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("managers/template")]
+    [Authorize(Roles = "ADMIN")]
+    public async Task<IActionResult> DownloadManagerTemplate()
+    {
+        try
+        {
+            var fileBytes = await _userService.DownloadManagerTemplateAsync();
+            var fileName = $"Template_Manager_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi tạo template Manager."));
+        }
+    }
+
+    [HttpPost("managers/import")]
+    [Authorize(Roles = "ADMIN")]
+    public async Task<ActionResult<BaseResponse<ExcelImportResult<ManagerResponse>>>> ImportManagers(IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(BaseResponse<string>.ErrorResult("File không được để trống."));
+
+            if (file.Length > 10 * 1024 * 1024) // 10MB
+                return BadRequest(BaseResponse<string>.ErrorResult("Kích thước file không được vượt quá 10MB."));
+
+            var allowedExtensions = new[] { ".xlsx", ".xls" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(fileExtension))
+                return BadRequest(BaseResponse<string>.ErrorResult("Chỉ hỗ trợ file Excel (.xlsx, .xls)."));
+
+            var result = await _userService.ImportManagersFromExcelAsync(file);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi import Manager từ Excel."));
+        }
+    }
+
+    [HttpGet("managers/export")]
+    [Authorize(Roles = "ADMIN")]
+    public async Task<IActionResult> ExportManagers(
+        [FromQuery] string searchTerm = "",
+        [FromQuery] string orderBy = null)
+    {
+        try
+        {
+            var fileBytes = await _userService.ExportManagersToExcelAsync(searchTerm, orderBy);
+            var fileName = $"Danh_Sach_Manager_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi export Manager ra Excel."));
+        }
+    }
+
     [HttpPost("school-nurses")]
     [Authorize(Roles = "ADMIN")]
     public async Task<ActionResult<BaseResponse<SchoolNurseResponse>>> CreateSchoolNurse(
@@ -152,6 +215,69 @@ public class UserController : ControllerBase
         }
 
         return Ok(result);
+    }
+
+    [HttpGet("school-nurses/template")]
+    [Authorize(Roles = "ADMIN")]
+    public async Task<IActionResult> DownloadSchoolNurseTemplate()
+    {
+        try
+        {
+            var fileBytes = await _userService.DownloadSchoolNurseTemplateAsync();
+            var fileName = $"Template_SchoolNurse_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi tạo template School Nurse."));
+        }
+    }
+
+    [HttpPost("school-nurses/import")]
+    [Authorize(Roles = "ADMIN")]
+    public async Task<ActionResult<BaseResponse<ExcelImportResult<SchoolNurseResponse>>>> ImportSchoolNurses(
+        IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(BaseResponse<string>.ErrorResult("File không được để trống."));
+
+            if (file.Length > 10 * 1024 * 1024) // 10MB
+                return BadRequest(BaseResponse<string>.ErrorResult("Kích thước file không được vượt quá 10MB."));
+
+            var allowedExtensions = new[] { ".xlsx", ".xls" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(fileExtension))
+                return BadRequest(BaseResponse<string>.ErrorResult("Chỉ hỗ trợ file Excel (.xlsx, .xls)."));
+
+            var result = await _userService.ImportSchoolNursesFromExcelAsync(file);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi import School Nurse từ Excel."));
+        }
+    }
+
+    [HttpGet("school-nurses/export")]
+    [Authorize(Roles = "ADMIN")]
+    public async Task<IActionResult> ExportSchoolNurses(
+        [FromQuery] string searchTerm = "",
+        [FromQuery] string orderBy = null)
+    {
+        try
+        {
+            var fileBytes = await _userService.ExportSchoolNursesToExcelAsync(searchTerm, orderBy);
+            var fileName = $"Danh_Sach_SchoolNurse_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi export School Nurse ra Excel."));
+        }
     }
 
     [HttpGet("students")]
@@ -252,6 +378,73 @@ public class UserController : ControllerBase
         }
     }
 
+    [HttpGet("students/template")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<IActionResult> DownloadStudentTemplate()
+    {
+        try
+        {
+            var fileBytes = await _userService.DownloadStudentTemplateAsync();
+            var fileName = $"Template_Student_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi tạo template Student."));
+        }
+    }
+
+    [HttpPost("students/import")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<ExcelImportResult<StudentResponse>>>> ImportStudents(IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(BaseResponse<string>.ErrorResult("File không được để trống."));
+
+            if (file.Length > 10 * 1024 * 1024) // 10MB
+                return BadRequest(BaseResponse<string>.ErrorResult("Kích thước file không được vượt quá 10MB."));
+
+            var allowedExtensions = new[] { ".xlsx", ".xls" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(fileExtension))
+                return BadRequest(BaseResponse<string>.ErrorResult("Chỉ hỗ trợ file Excel (.xlsx, .xls)."));
+
+            var result = await _userService.ImportStudentsFromExcelAsync(file);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi import Student từ Excel."));
+        }
+    }
+
+    [HttpGet("students/export")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<IActionResult> ExportStudents(
+        [FromQuery] string searchTerm = "",
+        [FromQuery] string orderBy = null,
+        [FromQuery] Guid? classId = null,
+        [FromQuery] bool? hasMedicalRecord = null,
+        [FromQuery] bool? hasParent = null)
+    {
+        try
+        {
+            var fileBytes =
+                await _userService.ExportStudentsToExcelAsync(searchTerm, orderBy, classId, hasMedicalRecord,
+                    hasParent);
+            var fileName = $"Danh_Sach_Student_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi export Student ra Excel."));
+        }
+    }
+
     [HttpGet("parents")]
     [Authorize(Roles = "MANAGER")]
     public async Task<ActionResult<BaseListResponse<ParentResponse>>> GetParents(
@@ -346,6 +539,71 @@ public class UserController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpGet("parents/template")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<IActionResult> DownloadParentTemplate()
+    {
+        try
+        {
+            var fileBytes = await _userService.DownloadParentTemplateAsync();
+            var fileName = $"Template_Parent_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi tạo template Parent."));
+        }
+    }
+
+    [HttpPost("parents/import")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<ExcelImportResult<ParentResponse>>>> ImportParents(IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(BaseResponse<string>.ErrorResult("File không được để trống."));
+
+            if (file.Length > 10 * 1024 * 1024) // 10MB
+                return BadRequest(BaseResponse<string>.ErrorResult("Kích thước file không được vượt quá 10MB."));
+
+            var allowedExtensions = new[] { ".xlsx", ".xls" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(fileExtension))
+                return BadRequest(BaseResponse<string>.ErrorResult("Chỉ hỗ trợ file Excel (.xlsx, .xls)."));
+
+            var result = await _userService.ImportParentsFromExcelAsync(file);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi import Parent từ Excel."));
+        }
+    }
+
+    [HttpGet("parents/export")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<IActionResult> ExportParents(
+        [FromQuery] string searchTerm = "",
+        [FromQuery] string orderBy = null,
+        [FromQuery] bool? hasChildren = null,
+        [FromQuery] string relationship = null)
+    {
+        try
+        {
+            var fileBytes =
+                await _userService.ExportParentsToExcelAsync(searchTerm, orderBy, hasChildren, relationship);
+            var fileName = $"Danh_Sach_Parent_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi export Parent ra Excel."));
         }
     }
 

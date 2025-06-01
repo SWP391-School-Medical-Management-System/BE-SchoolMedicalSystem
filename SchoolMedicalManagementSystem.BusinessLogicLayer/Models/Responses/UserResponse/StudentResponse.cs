@@ -13,11 +13,9 @@ public class StudentResponse
     public string ProfileImageUrl { get; set; }
     public string StudentCode { get; set; }
 
-    // Class information
-    public Guid? ClassId { get; set; }
-    public string ClassName { get; set; }
-    public int? Grade { get; set; }
-    public int? AcademicYear { get; set; }
+    // Classes information
+    public List<StudentClassInfo> Classes { get; set; } = new List<StudentClassInfo>();
+    public int ClassCount { get; set; }
 
     // Parent information
     public Guid? ParentId { get; set; }

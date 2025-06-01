@@ -1,6 +1,7 @@
 ﻿using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OfficeOpenXml;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthService;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
@@ -24,6 +25,12 @@ public static class DependencyInjection
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICacheService, CacheService>();
+        services.AddScoped<ISchoolClassService, SchoolClassService>();
+        services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<IExcelService, ExcelService>();
+
+        // Excel
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
         // Validators
         services.AddValidatorsFromAssemblyContaining<CreateManagerRequestValidator>();
