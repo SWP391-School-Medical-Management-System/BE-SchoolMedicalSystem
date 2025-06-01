@@ -20,7 +20,13 @@ public class UpdateSchoolClassValidator : AbstractValidator<UpdateSchoolClassReq
             .WithMessage("Khối lớp phải từ 1 đến 12.");
 
         RuleFor(x => x.AcademicYear)
-            .InclusiveBetween(2020, 2030)
-            .WithMessage("Năm học phải từ 2020 đến 2030.");
+            .Must(BeValidAcademicYearForUpdate)
+            .WithMessage($"Năm học phải trong khoảng {DateTime.Now.Year - 2} đến {DateTime.Now.Year + 2}.");
+    }
+
+    private bool BeValidAcademicYearForUpdate(int academicYear)
+    {
+        var currentYear = DateTime.Now.Year;
+        return academicYear >= currentYear - 2 && academicYear <= currentYear + 2;
     }
 }

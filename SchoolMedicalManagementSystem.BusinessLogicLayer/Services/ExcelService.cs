@@ -65,6 +65,7 @@ public class ExcelService : IExcelService
 
             var classes = new List<SchoolClassExcelModel>();
             var rowCount = worksheet.Dimension?.Rows ?? 0;
+            var currentYear = DateTime.Now.Year;
 
             for (int row = 3; row <= rowCount; row++)
             {
@@ -81,43 +82,49 @@ public class ExcelService : IExcelService
                     Name = name
                 };
 
+                var errors = new List<string>();
+
                 if (int.TryParse(gradeText, out int grade))
                 {
                     classModel.Grade = grade;
+                    if (grade < 1 || grade > 12)
+                    {
+                        errors.Add("Khối lớp phải từ 1 đến 12");
+                    }
                 }
                 else
                 {
-                    classModel.IsValid = false;
-                    classModel.ErrorMessage = "Khối lớp phải là số nguyên từ 1 đến 12.";
+                    errors.Add("Khối lớp phải là số nguyên từ 1 đến 12");
                 }
 
                 if (int.TryParse(academicYearText, out int academicYear))
                 {
                     classModel.AcademicYear = academicYear;
+                    if (academicYear < currentYear - 1 || academicYear > currentYear + 2)
+                    {
+                        errors.Add($"Năm học phải trong khoảng {currentYear - 1} đến {currentYear + 2}");
+                    }
                 }
                 else
                 {
-                    classModel.IsValid = false;
-                    classModel.ErrorMessage += " Năm học phải là số nguyên.";
+                    errors.Add("Năm học phải là số nguyên");
                 }
 
                 if (string.IsNullOrEmpty(name))
                 {
-                    classModel.IsValid = false;
-                    classModel.ErrorMessage += " Tên lớp học không được để trống.";
+                    errors.Add("Tên lớp học không được để trống");
+                }
+                else if (name.Length > 20)
+                {
+                    errors.Add("Tên lớp học không được quá 20 ký tự");
+                }
+                else if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^[a-zA-Z0-9\s]+$"))
+                {
+                    errors.Add("Tên lớp học chỉ được chứa chữ cái, số và khoảng trắng");
                 }
 
-                if (grade < 1 || grade > 12)
-                {
-                    classModel.IsValid = false;
-                    classModel.ErrorMessage += " Khối lớp phải từ 1 đến 12.";
-                }
-
-                if (academicYear < 2020 || academicYear > 2030)
-                {
-                    classModel.IsValid = false;
-                    classModel.ErrorMessage += " Năm học phải từ 2020 đến 2030.";
-                }
+                classModel.IsValid = !errors.Any();
+                classModel.ErrorMessage = string.Join("; ", errors);
 
                 classes.Add(classModel);
             }
@@ -1417,9 +1424,10 @@ public class ExcelService : IExcelService
             range.Style.Border.BorderAround(ExcelBorderStyle.Thin);
         }
 
+        var currentYear = DateTime.Now.Year;
         worksheet.Cells[2, 1].Value = "1A";
         worksheet.Cells[2, 2].Value = 1;
-        worksheet.Cells[2, 3].Value = 2024;
+        worksheet.Cells[2, 3].Value = currentYear;
 
         using (var range = worksheet.Cells[2, 1, 2, 3])
         {
@@ -1446,6 +1454,7 @@ public class ExcelService : IExcelService
 
     private async Task CreateInstructionSheet(ExcelWorksheet worksheet)
     {
+        var currentYear = DateTime.Now.Year;
         var instructions = new[]
         {
             "HƯỚNG DẪN IMPORT LỚP HỌC",
@@ -1458,24 +1467,27 @@ public class ExcelService : IExcelService
             "2. CẤU TRÚC FILE:",
             "   - Cột A: Tên Lớp (bắt buộc, tối đa 20 ký tự, chỉ chứa chữ cái, số và khoảng trắng)",
             "   - Cột B: Khối (bắt buộc, số từ 1 đến 12)",
-            "   - Cột C: Năm Học (bắt buộc, số từ 2020 đến 2030)",
+            $"   - Cột C: Năm Học (bắt buộc, từ {currentYear - 1} đến {currentYear + 2})",
             "",
             "3. LƯU Ý:",
             "   - Dòng 1: Tiêu đề cột (không được thay đổi)",
             "   - Dòng 2: Dữ liệu mẫu (có thể xóa)",
             "   - Từ dòng 3 trở đi: Nhập dữ liệu thực tế",
             "   - Tên lớp không được trùng trong cùng năm học",
+            $"   - Năm học hiện tại: {currentYear}",
+            $"   - Có thể tạo lớp cho năm {currentYear - 1} (import dữ liệu cũ)",
+            $"   - Có thể tạo lớp cho năm {currentYear + 1}, {currentYear + 2} (chuẩn bị trước)",
             "",
             "4. VÍ DỤ DỮ LIỆU HỢP LỆ:",
             "   Tên Lớp    | Khối | Năm Học",
-            "   1A         | 1    | 2024",
-            "   2B         | 2    | 2024",
-            "   3C         | 3    | 2024",
+            $"   1A         | 1    | {currentYear}",
+            $"   2B         | 2    | {currentYear + 1}",
+            $"   3C         | 3    | {currentYear}",
             "",
             "5. CÁC LỖI THƯỜNG GẶP:",
             "   - Tên lớp để trống hoặc quá dài",
             "   - Khối không phải số hoặc ngoài khoảng 1-12",
-            "   - Năm học không phải số hoặc ngoài khoảng 2020-2030",
+            $"   - Năm học ngoài khoảng cho phép ({currentYear - 1} - {currentYear + 2})",
             "   - Tên lớp trùng lặp trong cùng năm học",
             "",
             "6. CÁCH SỬ DỤNG:",

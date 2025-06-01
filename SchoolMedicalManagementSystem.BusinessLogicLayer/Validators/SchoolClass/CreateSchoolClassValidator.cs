@@ -19,8 +19,16 @@ public class CreateSchoolClassValidator : AbstractValidator<CreateSchoolClassReq
             .InclusiveBetween(1, 12)
             .WithMessage("Khối lớp phải từ 1 đến 12.");
 
+        // cho phép tạo lớp cho năm trước (để import dữ liệu cũ)
+        // và 2 năm tới (để chuẩn bị)
         RuleFor(x => x.AcademicYear)
-            .InclusiveBetween(2020, 2030)
-            .WithMessage("Năm học phải từ 2020 đến 2030.");
+            .Must(BeValidAcademicYearRange)
+            .WithMessage($"Năm học phải trong khoảng {DateTime.Now.Year - 1} đến {DateTime.Now.Year + 2}.");
+    }
+
+    private bool BeValidAcademicYearRange(int academicYear)
+    {
+        var currentYear = DateTime.Now.Year;
+        return academicYear >= currentYear - 1 && academicYear <= currentYear + 2;
     }
 }
