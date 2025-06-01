@@ -22,7 +22,7 @@ public class SchoolClassService : ISchoolClassService
 
     private readonly IValidator<CreateSchoolClassRequest> _createClassValidator;
     private readonly IValidator<UpdateSchoolClassRequest> _updateClassValidator;
-    private readonly IValidator<AddStudentToClassRequest> _addStudentValidator;
+    private readonly IValidator<AddStudentsToClassRequest> _addStudentValidator;
     private readonly IValidator<ImportSchoolClassExcelRequest> _importExcelValidator;
 
     private const string CLASS_CACHE_PREFIX = "class";
@@ -38,7 +38,7 @@ public class SchoolClassService : ISchoolClassService
         IExcelService excelService,
         IValidator<CreateSchoolClassRequest> createClassValidator,
         IValidator<UpdateSchoolClassRequest> updateClassValidator,
-        IValidator<AddStudentToClassRequest> addStudentValidator,
+        IValidator<AddStudentsToClassRequest> addStudentValidator,
         IValidator<ImportSchoolClassExcelRequest> importExcelValidator)
     {
         _unitOfWork = unitOfWork;
@@ -83,7 +83,8 @@ public class SchoolClassService : ISchoolClassService
             }
 
             var query = _unitOfWork.GetRepositoryByEntity<SchoolClass>().GetQueryable()
-                .Include(c => c.Students.Where(s => !s.IsDeleted))
+                .Include(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.Student)
                 .Where(c => !c.IsDeleted)
                 .AsQueryable();
 
@@ -132,7 +133,8 @@ public class SchoolClassService : ISchoolClassService
 
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
             var schoolClass = await classRepo.GetQueryable()
-                .Include(c => c.Students.Where(s => !s.IsDeleted))
+                .Include(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.Student)
                 .ThenInclude(s => s.MedicalRecord)
                 .Where(c => c.Id == classId && !c.IsDeleted)
                 .FirstOrDefaultAsync();
@@ -186,7 +188,6 @@ public class SchoolClassService : ISchoolClassService
                 };
             }
 
-            // Kiểm tra trùng lặp tên lớp trong năm học (xử lý ở Service thay vì Validator)
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
             var duplicateExists = await classRepo.GetQueryable()
                 .AnyAsync(c => c.Name == model.Name &&
@@ -252,7 +253,8 @@ public class SchoolClassService : ISchoolClassService
 
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
             var schoolClass = await classRepo.GetQueryable()
-                .Include(c => c.Students.Where(s => !s.IsDeleted))
+                .Include(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.Student)
                 .FirstOrDefaultAsync(c => c.Id == classId && !c.IsDeleted);
 
             if (schoolClass == null)
@@ -264,7 +266,6 @@ public class SchoolClassService : ISchoolClassService
                 };
             }
 
-            // Kiểm tra tên lớp trùng lặp cho update (xử lý ở Service)
             var duplicateExists = await classRepo.GetQueryable()
                 .AnyAsync(c => c.Id != classId &&
                                c.Name == model.Name &&
@@ -317,7 +318,8 @@ public class SchoolClassService : ISchoolClassService
         {
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
             var schoolClass = await classRepo.GetQueryable()
-                .Include(c => c.Students.Where(s => !s.IsDeleted))
+                .Include(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.Student)
                 .FirstOrDefaultAsync(c => c.Id == classId && !c.IsDeleted);
 
             if (schoolClass == null)
@@ -329,8 +331,7 @@ public class SchoolClassService : ISchoolClassService
                 };
             }
 
-            // Kiểm tra xem lớp học có học sinh hay không
-            if (schoolClass.Students != null && schoolClass.Students.Any())
+            if (schoolClass.StudentClasses != null && schoolClass.StudentClasses.Any(sc => !sc.IsDeleted))
             {
                 return new BaseResponse<bool>
                 {
@@ -371,7 +372,8 @@ public class SchoolClassService : ISchoolClassService
 
     #region Student Management in Class
 
-    public async Task<BaseResponse<bool>> AddStudentToClassAsync(Guid classId, AddStudentToClassRequest model)
+    public async Task<BaseResponse<StudentsBatchResponse>> AddStudentsToClassAsync(Guid classId,
+        AddStudentsToClassRequest model)
     {
         try
         {
@@ -379,7 +381,7 @@ public class SchoolClassService : ISchoolClassService
             if (!validationResult.IsValid)
             {
                 string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                return new BaseResponse<bool>
+                return new BaseResponse<StudentsBatchResponse>
                 {
                     Success = false,
                     Message = errors
@@ -392,60 +394,120 @@ public class SchoolClassService : ISchoolClassService
 
             if (schoolClass == null)
             {
-                return new BaseResponse<bool>
+                return new BaseResponse<StudentsBatchResponse>
                 {
                     Success = false,
                     Message = "Không tìm thấy lớp học."
                 };
             }
 
+            var response = new StudentsBatchResponse
+            {
+                TotalStudents = model.StudentIds.Count
+            };
+
             var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
-            var student = await userRepo.GetQueryable()
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Id == model.StudentId && !u.IsDeleted);
-
-            if (student == null || !student.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
-            {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy học sinh hoặc học sinh đã bị xóa."
-                };
-            }
-
-            if (student.ClassId != null)
-            {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Học sinh đã thuộc lớp học khác."
-                };
-            }
-
+            var studentClassRepo = _unitOfWork.GetRepositoryByEntity<StudentClass>();
             var managerRoleName = await GetManagerRoleName();
 
-            student.ClassId = classId;
-            student.LastUpdatedBy = managerRoleName;
-            student.LastUpdatedDate = DateTime.Now;
+            var students = await userRepo.GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .Where(u => model.StudentIds.Contains(u.Id) && !u.IsDeleted)
+                .ToListAsync();
 
-            await _unitOfWork.SaveChangesAsync();
-            await InvalidateClassCacheAsync();
+            var existingEnrollments = await studentClassRepo.GetQueryable()
+                .Where(sc => sc.ClassId == classId &&
+                             model.StudentIds.Contains(sc.StudentId) &&
+                             !sc.IsDeleted)
+                .Select(sc => sc.StudentId)
+                .ToListAsync();
 
-            return new BaseResponse<bool>
+            foreach (var studentId in model.StudentIds)
             {
-                Success = true,
-                Data = true,
-                Message = "Thêm học sinh vào lớp thành công."
+                var result = new StudentBatchResult
+                {
+                    StudentId = studentId
+                };
+
+                try
+                {
+                    var student = students.FirstOrDefault(s => s.Id == studentId);
+
+                    if (student == null)
+                    {
+                        result.IsSuccess = false;
+                        result.ErrorMessage = "Không tìm thấy học sinh hoặc học sinh đã bị xóa.";
+                    }
+                    else if (!student.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
+                    {
+                        result.StudentName = student.FullName;
+                        result.StudentCode = student.StudentCode;
+                        result.IsSuccess = false;
+                        result.ErrorMessage = "Người dùng không phải là học sinh.";
+                    }
+                    else if (existingEnrollments.Contains(studentId))
+                    {
+                        result.StudentName = student.FullName;
+                        result.StudentCode = student.StudentCode;
+                        result.IsSuccess = false;
+                        result.ErrorMessage = "Học sinh đã có trong lớp học này.";
+                    }
+                    else
+                    {
+                        var studentClass = new StudentClass
+                        {
+                            Id = Guid.NewGuid(),
+                            StudentId = studentId,
+                            ClassId = classId,
+                            EnrollmentDate = DateTime.Now,
+                            CreatedBy = managerRoleName,
+                            CreatedDate = DateTime.Now
+                        };
+
+                        await studentClassRepo.AddAsync(studentClass);
+
+                        result.StudentName = student.FullName;
+                        result.StudentCode = student.StudentCode;
+                        result.IsSuccess = true;
+                        result.ErrorMessage = "Thành công";
+
+                        response.SuccessCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error adding student {StudentId} to class {ClassId}", studentId, classId);
+                    result.IsSuccess = false;
+                    result.ErrorMessage = $"Lỗi: {ex.Message}";
+                }
+
+                response.Results.Add(result);
+            }
+
+            response.FailureCount = response.TotalStudents - response.SuccessCount;
+
+            if (response.SuccessCount > 0)
+            {
+                await _unitOfWork.SaveChangesAsync();
+                await InvalidateClassCacheAsync();
+            }
+
+            return new BaseResponse<StudentsBatchResponse>
+            {
+                Success = response.SuccessCount > 0,
+                Data = response,
+                Message = response.SuccessCount > 0
+                    ? $"Thêm thành công {response.SuccessCount}/{response.TotalStudents} học sinh vào lớp."
+                    : "Không có học sinh nào được thêm vào lớp."
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error adding student to class: {ClassId} -> {StudentId}", classId, model.StudentId);
-            return new BaseResponse<bool>
+            _logger.LogError(ex, "Error adding students to class: {ClassId}", classId);
+            return new BaseResponse<StudentsBatchResponse>
             {
                 Success = false,
-                Data = false,
                 Message = $"Lỗi thêm học sinh vào lớp: {ex.Message}"
             };
         }
@@ -455,35 +517,38 @@ public class SchoolClassService : ISchoolClassService
     {
         try
         {
-            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
-            var student = await userRepo.GetQueryable()
-                .Include(u => u.UserRoles)
+            var studentClassRepo = _unitOfWork.GetRepositoryByEntity<StudentClass>();
+            var studentClass = await studentClassRepo.GetQueryable()
+                .Include(sc => sc.Student)
+                .ThenInclude(s => s.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted);
+                .FirstOrDefaultAsync(sc => sc.ClassId == classId &&
+                                           sc.StudentId == studentId &&
+                                           !sc.IsDeleted);
 
-            if (student == null || !student.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
+            if (studentClass == null)
             {
                 return new BaseResponse<bool>
                 {
                     Success = false,
-                    Message = "Không tìm thấy học sinh."
+                    Message = "Không tìm thấy học sinh trong lớp học này."
                 };
             }
 
-            if (student.ClassId != classId)
+            if (!studentClass.Student.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
             {
                 return new BaseResponse<bool>
                 {
                     Success = false,
-                    Message = "Học sinh không thuộc lớp học này."
+                    Message = "Người dùng không phải là học sinh."
                 };
             }
 
             var managerRoleName = await GetManagerRoleName();
 
-            student.ClassId = null;
-            student.LastUpdatedBy = managerRoleName;
-            student.LastUpdatedDate = DateTime.Now;
+            studentClass.IsDeleted = true;
+            studentClass.LastUpdatedBy = managerRoleName;
+            studentClass.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
             await InvalidateClassCacheAsync();
@@ -535,7 +600,8 @@ public class SchoolClassService : ISchoolClassService
 
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
             var query = classRepo.GetQueryable()
-                .Include(c => c.Students.Where(s => !s.IsDeleted))
+                .Include(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.Student)
                 .Where(c => !c.IsDeleted);
 
             if (grade.HasValue)
@@ -739,23 +805,21 @@ public class SchoolClassService : ISchoolClassService
 
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
             var classes = await classRepo.GetQueryable()
-                .Include(c => c.Students.Where(s => !s.IsDeleted))
+                .Include(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.Student)
                 .Where(c => !c.IsDeleted)
                 .ToListAsync();
 
             var statistics = new SchoolClassStatisticsResponse
             {
                 TotalClasses = classes.Count,
-                TotalStudents = classes.Sum(c => c.Students?.Count ?? 0),
+                TotalStudents = classes.Sum(c => c.StudentClasses?.Count(sc => !sc.IsDeleted) ?? 0),
                 StudentsByGrade = classes
                     .GroupBy(c => c.Grade)
-                    .ToDictionary(g => g.Key, g => g.Sum(c => c.Students?.Count ?? 0)),
-                ClassesByGrade = classes
-                    .GroupBy(c => c.Grade)
-                    .ToDictionary(g => g.Key, g => g.Count()),
+                    .ToDictionary(g => g.Key, g => g.Sum(c => c.StudentClasses?.Count(sc => !sc.IsDeleted) ?? 0)),
                 StudentsByAcademicYear = classes
                     .GroupBy(c => c.AcademicYear)
-                    .ToDictionary(g => g.Key, g => g.Sum(c => c.Students?.Count ?? 0))
+                    .ToDictionary(g => g.Key, g => g.Sum(c => c.StudentClasses?.Count(sc => !sc.IsDeleted) ?? 0))
             };
 
             statistics.AverageStudentsPerClass = statistics.TotalClasses > 0
@@ -807,21 +871,18 @@ public class SchoolClassService : ISchoolClassService
 
     private SchoolClassResponse MapToClassResponse(SchoolClass schoolClass)
     {
-        var response = new SchoolClassResponse
-        {
-            Id = schoolClass.Id,
-            Name = schoolClass.Name,
-            Grade = schoolClass.Grade,
-            AcademicYear = schoolClass.AcademicYear,
-            CreatedDate = schoolClass.CreatedDate,
-            LastUpdatedDate = schoolClass.LastUpdatedDate
-        };
+        var response = _mapper.Map<SchoolClassResponse>(schoolClass);
 
-        if (schoolClass.Students != null)
+        if (schoolClass.StudentClasses != null)
         {
-            response.StudentCount = schoolClass.Students.Count;
-            response.MaleStudentCount = schoolClass.Students.Count(s => s.Gender == "Male");
-            response.FemaleStudentCount = schoolClass.Students.Count(s => s.Gender == "Female");
+            var activeStudentClasses = schoolClass.StudentClasses
+                .Where(sc => !sc.IsDeleted && !sc.Student.IsDeleted)
+                .ToList();
+
+            var activeStudents = activeStudentClasses.Select(sc => sc.Student).ToList();
+            response.StudentCount = activeStudents.Count;
+            response.MaleStudentCount = activeStudents.Count(s => s.Gender == "Male");
+            response.FemaleStudentCount = activeStudents.Count(s => s.Gender == "Female");
 
             if (response.StudentCount > 0)
             {
@@ -831,15 +892,28 @@ public class SchoolClassService : ISchoolClassService
                     Math.Round((double)response.FemaleStudentCount / response.StudentCount * 100, 2);
             }
 
-            response.Students = schoolClass.Students.Select(student => new StudentSummaryResponse
+            response.Students = _mapper.Map<List<StudentSummaryResponse>>(activeStudentClasses);
+
+            foreach (var studentResponse in response.Students)
             {
-                Id = student.Id,
-                FullName = student.FullName,
-                StudentCode = student.StudentCode,
-                ClassName = schoolClass.Name,
-                Grade = schoolClass.Grade,
-                HasMedicalRecord = student.MedicalRecord != null
-            }).ToList();
+                var studentClass = activeStudentClasses.First(sc => sc.Student.Id == studentResponse.Id);
+                var student = studentClass.Student;
+
+                if (student.StudentClasses != null)
+                {
+                    var allActiveClasses = student.StudentClasses.Where(sc => !sc.IsDeleted).ToList();
+                    studentResponse.ClassCount = allActiveClasses.Count;
+                    studentResponse.ClassNames = allActiveClasses
+                        .Select(sc => sc.SchoolClass?.Name)
+                        .Where(name => !string.IsNullOrEmpty(name))
+                        .ToList();
+                }
+                else
+                {
+                    studentResponse.ClassCount = 1;
+                    studentResponse.ClassNames = new List<string> { schoolClass.Name };
+                }
+            }
         }
 
         return response;
@@ -847,21 +921,18 @@ public class SchoolClassService : ISchoolClassService
 
     private SchoolClassSummaryResponse MapToClassSummaryResponse(SchoolClass schoolClass)
     {
-        var response = new SchoolClassSummaryResponse
-        {
-            Id = schoolClass.Id,
-            Name = schoolClass.Name,
-            Grade = schoolClass.Grade,
-            AcademicYear = schoolClass.AcademicYear,
-            CreatedDate = schoolClass.CreatedDate,
-            LastUpdatedDate = schoolClass.LastUpdatedDate
-        };
+        var response = _mapper.Map<SchoolClassSummaryResponse>(schoolClass);
 
-        if (schoolClass.Students != null)
+        if (schoolClass.StudentClasses != null)
         {
-            response.StudentCount = schoolClass.Students.Count;
-            response.MaleStudentCount = schoolClass.Students.Count(s => s.Gender == "Male");
-            response.FemaleStudentCount = schoolClass.Students.Count(s => s.Gender == "Female");
+            var activeStudents = schoolClass.StudentClasses
+                .Where(sc => !sc.IsDeleted && !sc.Student.IsDeleted)
+                .Select(sc => sc.Student)
+                .ToList();
+
+            response.StudentCount = activeStudents.Count;
+            response.MaleStudentCount = activeStudents.Count(s => s.Gender == "Male");
+            response.FemaleStudentCount = activeStudents.Count(s => s.Gender == "Female");
         }
 
         return response;
@@ -903,8 +974,8 @@ public class SchoolClassService : ISchoolClassService
             "academicyear" => query.OrderBy(c => c.AcademicYear).ThenBy(c => c.Grade).ThenBy(c => c.Name),
             "academicyear_desc" => query.OrderByDescending(c => c.AcademicYear).ThenBy(c => c.Grade)
                 .ThenBy(c => c.Name),
-            "studentcount" => query.OrderBy(c => c.Students.Count(s => !s.IsDeleted)),
-            "studentcount_desc" => query.OrderByDescending(c => c.Students.Count(s => !s.IsDeleted)),
+            "studentcount" => query.OrderBy(c => c.StudentClasses.Count(sc => !sc.IsDeleted)),
+            "studentcount_desc" => query.OrderByDescending(c => c.StudentClasses.Count(sc => !sc.IsDeleted)),
             "createdate_desc" => query.OrderByDescending(c => c.CreatedDate),
             "createdate" => query.OrderBy(c => c.CreatedDate),
             _ => query.OrderBy(c => c.Grade).ThenBy(c => c.Name)

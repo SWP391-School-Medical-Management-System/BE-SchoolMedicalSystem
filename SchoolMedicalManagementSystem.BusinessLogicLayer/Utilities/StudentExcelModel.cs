@@ -10,7 +10,8 @@ public class StudentExcelModel
     public string Gender { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public string StudentCode { get; set; }
-    public string ClassName { get; set; }
+    public string ClassNames { get; set; }
+    public List<string> ClassList { get; set; } = new List<string>();
     public bool IsValid { get; set; } = true;
     public string ErrorMessage { get; set; } = string.Empty;
 }

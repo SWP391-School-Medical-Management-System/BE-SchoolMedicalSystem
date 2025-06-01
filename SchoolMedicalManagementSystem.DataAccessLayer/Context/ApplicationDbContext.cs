@@ -62,6 +62,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<BlogComment> BlogComments { get; set; }
     public DbSet<Report> Reports { get; set; }
     public DbSet<Appointment> Appointments { get; set; }
+    public DbSet<StudentClass> StudentClasses { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -90,15 +91,29 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(u => u.ParentId);
 
         modelBuilder.Entity<ApplicationUser>()
-            .HasOne(u => u.Class)
-            .WithMany(c => c.Students)
-            .HasForeignKey(u => u.ClassId);
-
-        modelBuilder.Entity<ApplicationUser>()
             .HasOne(u => u.MedicalRecord)
             .WithOne(m => m.Student)
             .HasForeignKey<MedicalRecord>(m => m.UserId);
 
+        // StudentClass relationships
+        modelBuilder.Entity<StudentClass>(entity =>
+        {
+            entity.HasKey(sc => new { sc.StudentId, sc.ClassId });
+
+            entity.HasIndex(sc => sc.StudentId);
+            entity.HasIndex(sc => sc.ClassId);
+
+            entity.HasOne(sc => sc.Student)
+                .WithMany(s => s.StudentClasses)
+                .HasForeignKey(sc => sc.StudentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(sc => sc.SchoolClass)
+                .WithMany(c => c.StudentClasses)
+                .HasForeignKey(sc => sc.ClassId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        
         // UserRole relationships
         modelBuilder.Entity<UserRole>()
             .HasKey(ur => new { ur.UserId, ur.RoleId });

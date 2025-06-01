@@ -132,14 +132,14 @@ public class SchoolClassController : ControllerBase
         }
     }
 
-    [HttpPost("{id}/students")]
+    [HttpPost("{id}/students/batch")]
     [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<bool>>> AddStudentToClass(
-        Guid id, [FromBody] AddStudentToClassRequest model)
+    public async Task<ActionResult<BaseResponse<StudentsBatchResponse>>> AddStudentsToClass(
+        Guid id, [FromBody] AddStudentsToClassRequest model)
     {
         try
         {
-            var response = await _schoolClassService.AddStudentToClassAsync(id, model);
+            var response = await _schoolClassService.AddStudentsToClassAsync(id, model);
             if (!response.Success)
                 return BadRequest(response);
 
@@ -147,7 +147,7 @@ public class SchoolClassController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+            return StatusCode(500, BaseResponse<StudentsBatchResponse>.ErrorResult("Lỗi hệ thống."));
         }
     }
 

@@ -746,7 +746,8 @@ public class UserService : IUserService
             var query = _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .Include(u => u.Class)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .Where(u => !u.IsDeleted && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
@@ -800,7 +801,8 @@ public class UserService : IUserService
                 .AsSplitQuery()
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .Include(u => u.Class)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .Where(u => u.Id == studentId && !u.IsDeleted &&
@@ -928,7 +930,8 @@ public class UserService : IUserService
             await InvalidateStudentCacheAsync();
 
             var studentWithRelations = await userRepo.GetQueryable()
-                .Include(u => u.Class)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == user.Id);
@@ -1015,7 +1018,8 @@ public class UserService : IUserService
             await InvalidateStudentCacheAsync();
 
             var studentWithRelations = await userRepo.GetQueryable()
-                .Include(u => u.Class)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == studentId);
@@ -1135,7 +1139,8 @@ public class UserService : IUserService
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
-                .ThenInclude(c => c.Class)
+                .ThenInclude(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
                 .ThenInclude(c => c.MedicalRecord)
                 .Where(u => !u.IsDeleted && u.UserRoles.Any(ur => ur.Role.Name == "PARENT"))
@@ -1189,7 +1194,8 @@ public class UserService : IUserService
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
-                .ThenInclude(c => c.Class)
+                .ThenInclude(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
                 .ThenInclude(c => c.MedicalRecord)
                 .Where(u => u.Id == parentId && !u.IsDeleted &&
@@ -1317,7 +1323,8 @@ public class UserService : IUserService
 
             var parentWithRelations = await userRepo.GetQueryable()
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
-                .ThenInclude(c => c.Class)
+                .ThenInclude(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
                 .ThenInclude(c => c.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == user.Id);
@@ -1404,7 +1411,8 @@ public class UserService : IUserService
 
             var parentWithRelations = await userRepo.GetQueryable()
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
-                .ThenInclude(c => c.Class)
+                .ThenInclude(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
                 .Include(u => u.Children.Where(c => !c.IsDeleted))
                 .ThenInclude(c => c.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == parentId);
@@ -1625,7 +1633,7 @@ public class UserService : IUserService
             throw;
         }
     }
-    
+
     public async Task<byte[]> DownloadSchoolNurseTemplateAsync()
     {
         try
@@ -1639,7 +1647,7 @@ public class UserService : IUserService
             throw;
         }
     }
-    
+
     public async Task<byte[]> DownloadStudentTemplateAsync()
     {
         try
@@ -1653,7 +1661,7 @@ public class UserService : IUserService
             throw;
         }
     }
-    
+
     public async Task<byte[]> DownloadParentTemplateAsync()
     {
         try
@@ -1667,7 +1675,7 @@ public class UserService : IUserService
             throw;
         }
     }
-    
+
     public async Task<BaseResponse<ExcelImportResult<ManagerResponse>>> ImportManagersFromExcelAsync(IFormFile file)
     {
         try
@@ -2154,46 +2162,17 @@ public class UserService : IUserService
 
     private StudentResponse MapToStudentResponse(ApplicationUser student)
     {
-        var response = new StudentResponse
-        {
-            Id = student.Id,
-            Username = student.Username,
-            Email = student.Email,
-            FullName = student.FullName,
-            PhoneNumber = student.PhoneNumber,
-            Address = student.Address,
-            Gender = student.Gender,
-            DateOfBirth = student.DateOfBirth,
-            ProfileImageUrl = student.ProfileImageUrl,
-            StudentCode = student.StudentCode,
-            CreatedDate = student.CreatedDate,
-            LastUpdatedDate = student.LastUpdatedDate
-        };
+        var response = _mapper.Map<StudentResponse>(student);
 
-        if (student.Class != null)
+        if (student.StudentClasses != null && student.StudentClasses.Any(sc => !sc.IsDeleted))
         {
-            response.ClassId = student.Class.Id;
-            response.ClassName = student.Class.Name;
-            response.Grade = student.Class.Grade;
-            response.AcademicYear = student.Class.AcademicYear;
-        }
+            var activeStudentClasses = student.StudentClasses
+                .Where(sc => !sc.IsDeleted)
+                .OrderByDescending(sc => sc.EnrollmentDate)
+                .ToList();
 
-        if (student.Parent != null)
-        {
-            response.ParentId = student.Parent.Id;
-            response.ParentName = student.Parent.FullName;
-            response.ParentPhone = student.Parent.PhoneNumber;
-            response.ParentRelationship = student.Parent.Relationship;
-        }
-
-        if (student.MedicalRecord != null)
-        {
-            response.HasMedicalRecord = true;
-            response.BloodType = student.MedicalRecord.BloodType;
-            response.Height = student.MedicalRecord.Height;
-            response.Weight = student.MedicalRecord.Weight;
-            response.EmergencyContact = student.MedicalRecord.EmergencyContact;
-            response.EmergencyContactPhone = student.MedicalRecord.EmergencyContactPhone;
+            response.Classes = _mapper.Map<List<StudentClassInfo>>(activeStudentClasses);
+            response.ClassCount = response.Classes.Count;
         }
 
         return response;
@@ -2201,35 +2180,44 @@ public class UserService : IUserService
 
     private ParentResponse MapToParentResponse(ApplicationUser parent)
     {
-        var response = new ParentResponse
-        {
-            Id = parent.Id,
-            Username = parent.Username,
-            Email = parent.Email,
-            FullName = parent.FullName,
-            PhoneNumber = parent.PhoneNumber,
-            Address = parent.Address,
-            Gender = parent.Gender,
-            DateOfBirth = parent.DateOfBirth,
-            ProfileImageUrl = parent.ProfileImageUrl,
-            Relationship = parent.Relationship,
-            CreatedDate = parent.CreatedDate,
-            LastUpdatedDate = parent.LastUpdatedDate
-        };
+        var response = _mapper.Map<ParentResponse>(parent);
 
         if (parent.Children != null && parent.Children.Any())
         {
-            response.Children = parent.Children
-                .Where(c => !c.IsDeleted)
-                .Select(child => new StudentSummaryResponse
+            var activeChildren = parent.Children.Where(c => !c.IsDeleted).ToList();
+
+            response.Children = new List<StudentSummaryResponse>();
+
+            foreach (var child in activeChildren)
+            {
+                var studentSummary = new StudentSummaryResponse
                 {
                     Id = child.Id,
                     FullName = child.FullName,
                     StudentCode = child.StudentCode,
-                    ClassName = child.Class?.Name,
-                    Grade = child.Class?.Grade,
                     HasMedicalRecord = child.MedicalRecord != null
-                }).ToList();
+                };
+
+                if (child.StudentClasses != null)
+                {
+                    var activeClasses = child.StudentClasses.Where(sc => !sc.IsDeleted).ToList();
+                    studentSummary.ClassCount = activeClasses.Count;
+
+                    if (activeClasses.Any())
+                    {
+                        var currentClass = activeClasses.OrderByDescending(sc => sc.EnrollmentDate).First();
+                        studentSummary.CurrentClassName = currentClass.SchoolClass?.Name;
+                        studentSummary.CurrentGrade = currentClass.SchoolClass?.Grade;
+
+                        studentSummary.ClassNames = activeClasses
+                            .Select(sc => sc.SchoolClass?.Name)
+                            .Where(name => !string.IsNullOrEmpty(name))
+                            .ToList();
+                    }
+                }
+
+                response.Children.Add(studentSummary);
+            }
 
             response.ChildrenCount = response.Children.Count;
         }
@@ -2266,7 +2254,7 @@ public class UserService : IUserService
     {
         if (classId.HasValue)
         {
-            query = query.Where(u => u.ClassId == classId.Value);
+            query = query.Where(u => u.StudentClasses.Any(sc => sc.ClassId == classId.Value && !sc.IsDeleted));
         }
 
         if (hasMedicalRecord.HasValue)
@@ -2302,7 +2290,7 @@ public class UserService : IUserService
                 u.FullName.ToLower().Contains(searchTerm) ||
                 u.PhoneNumber.Contains(searchTerm) ||
                 u.StudentCode.ToLower().Contains(searchTerm) ||
-                (u.Class != null && u.Class.Name.ToLower().Contains(searchTerm)) ||
+                u.StudentClasses.Any(sc => !sc.IsDeleted && sc.SchoolClass.Name.ToLower().Contains(searchTerm)) ||
                 (u.Parent != null && u.Parent.FullName.ToLower().Contains(searchTerm)));
         }
 
@@ -2317,8 +2305,10 @@ public class UserService : IUserService
             "studentcode_desc" => query.OrderByDescending(u => u.StudentCode),
             "fullname" => query.OrderBy(u => u.FullName),
             "fullname_desc" => query.OrderByDescending(u => u.FullName),
-            "class" => query.OrderBy(u => u.Class.Name),
-            "class_desc" => query.OrderByDescending(u => u.Class.Name),
+            "class" => query.OrderBy(u =>
+                u.StudentClasses.Where(sc => !sc.IsDeleted).FirstOrDefault().SchoolClass.Name),
+            "class_desc" => query.OrderByDescending(u =>
+                u.StudentClasses.Where(sc => !sc.IsDeleted).FirstOrDefault().SchoolClass.Name),
             "parent" => query.OrderBy(u => u.Parent.FullName),
             "parent_desc" => query.OrderByDescending(u => u.Parent.FullName),
             "createdate_desc" => query.OrderByDescending(u => u.CreatedDate),
@@ -2619,7 +2609,7 @@ public class UserService : IUserService
         }
     }
 
-    private async Task InvalidateStudentCacheAsync(Guid? studentId = null)
+    public async Task InvalidateStudentCacheAsync(Guid? studentId = null)
     {
         try
         {

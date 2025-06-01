@@ -524,7 +524,8 @@ public class ExcelService : IExcelService
             var headers = new[]
             {
                 "STT", "Tên Đăng Nhập", "Email", "Họ Tên", "Số Điện Thoại",
-                "Địa Chỉ", "Giới Tính", "Ngày Sinh", "Mã Học Sinh", "Lớp", "Phụ Huynh", "Ngày Tạo"
+                "Địa Chỉ", "Giới Tính", "Ngày Sinh", "Mã Học Sinh",
+                "Tổng Số Lớp", "Tất Cả Lớp", "Phụ Huynh", "Ngày Tạo"
             };
 
             CreateHeaderRow(worksheet, headers);
@@ -543,9 +544,15 @@ public class ExcelService : IExcelService
                 worksheet.Cells[row, 7].Value = student.Gender;
                 worksheet.Cells[row, 8].Value = student.DateOfBirth?.ToString("dd/MM/yyyy");
                 worksheet.Cells[row, 9].Value = student.StudentCode;
-                worksheet.Cells[row, 10].Value = student.ClassName;
-                worksheet.Cells[row, 11].Value = student.ParentName;
-                worksheet.Cells[row, 12].Value = student.CreatedDate?.ToString("dd/MM/yyyy HH:mm");
+
+                worksheet.Cells[row, 10].Value = student.ClassCount;
+
+                var allClasses = student.Classes?.Select(c => $"{c.ClassName} ({c.AcademicYear})")
+                    .ToList() ?? new List<string>();
+                worksheet.Cells[row, 11].Value = string.Join("; ", allClasses);
+
+                worksheet.Cells[row, 12].Value = student.ParentName;
+                worksheet.Cells[row, 13].Value = student.CreatedDate?.ToString("dd/MM/yyyy HH:mm");
             }
 
             worksheet.Cells.AutoFitColumns();
@@ -900,7 +907,7 @@ public class ExcelService : IExcelService
         var dateOfBirthText = "";
         var dateCell = worksheet.Cells[row, 7];
         var studentCode = worksheet.Cells[row, 8].Text?.Trim();
-        var className = worksheet.Cells[row, 9].Text?.Trim();
+        var classNames = worksheet.Cells[row, 9].Text?.Trim();
 
         if (dateCell.Value != null)
         {
@@ -938,8 +945,16 @@ public class ExcelService : IExcelService
             Address = address,
             Gender = gender,
             StudentCode = studentCode,
-            ClassName = className
+            ClassNames = classNames
         };
+
+        if (!string.IsNullOrEmpty(classNames))
+        {
+            student.ClassList = classNames.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(c => c.Trim())
+                .Where(c => !string.IsNullOrEmpty(c))
+                .ToList();
+        }
 
         ValidateStudentData(student, dateOfBirthText);
         return student;
