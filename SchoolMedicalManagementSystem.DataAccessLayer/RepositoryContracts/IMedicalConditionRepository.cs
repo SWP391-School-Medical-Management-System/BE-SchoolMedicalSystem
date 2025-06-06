@@ -1,0 +1,8 @@
+﻿using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
+using SchoolMedicalManagementSystem.DataAccessLayer.RepositoryContracts;
+
+namespace SchoolMedicalManagementSystem.DataAccessLayer.Repositories.UserRepository;
+
+public interface IMedicalConditionRepository : IBaseRepository<MedicalCondition>
+{
+}

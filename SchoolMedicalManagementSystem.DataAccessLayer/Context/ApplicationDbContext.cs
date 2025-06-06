@@ -113,7 +113,7 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(sc => sc.ClassId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
-        
+
         // UserRole relationships
         modelBuilder.Entity<UserRole>()
             .HasKey(ur => new { ur.UserId, ur.RoleId });
@@ -318,24 +318,28 @@ public class ApplicationDbContext : DbContext
     private void ConfigureEnumConversions(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Notification>().Property(n => n.NotificationType)
-            .HasConversion<string>();
+            .HasConversion(new EnumToStringConverter<NotificationType>());
 
         modelBuilder.Entity<HealthEvent>().Property(h => h.EventType)
-            .HasConversion<string>();
+            .HasConversion(new EnumToStringConverter<HealthEventType>());
 
         modelBuilder.Entity<MedicalCondition>().Property(mc => mc.Severity)
-            .HasConversion<string>();
+            .HasConversion(new EnumToStringConverter<SeverityType>());
 
         modelBuilder.Entity<MedicalItem>().Property(mi => mi.Form)
-            .HasConversion<string>();
+            .HasConversion(new EnumToStringConverter<MedicationForm>());
 
         modelBuilder.Entity<Report>().Property(r => r.ReportType)
-            .HasConversion<string>();
+            .HasConversion(new EnumToStringConverter<ReportType>());
 
-        modelBuilder.Entity<Report>().Property(r => r.ReportFormat);
+        modelBuilder.Entity<Report>().Property(r => r.ReportFormat)
+            .HasConversion(new EnumToStringConverter<ReportFormat>());
 
         modelBuilder.Entity<Appointment>().Property(a => a.Status)
-            .HasConversion<string>();
+            .HasConversion(new EnumToStringConverter<AppointmentStatus>());
+
+        modelBuilder.Entity<MedicalCondition>().Property(a => a.Type)
+            .HasConversion(new EnumToStringConverter<MedicalConditionType>());
     }
 
     private void SeedRoles(ModelBuilder modelBuilder)

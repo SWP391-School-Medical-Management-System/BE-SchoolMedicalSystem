@@ -11,4 +11,5 @@ public interface IAuthService
     Task<BaseResponse<bool>> ForgotPasswordAsync(ForgotPasswordRequest request);
     Task<BaseResponse<VerifyOtpResponse>> VerifyForgotPasswordOtpAsync(VerifyOtpRequest request);
     Task<BaseResponse<bool>> ResetPasswordWithOtpAsync(SetForgotPasswordRequest request);
+    Task InvalidateUserCacheAsync(string username = null, string email = null, Guid? userId = null);
 }

@@ -16,6 +16,9 @@ public class StudentResponse
     // Classes information
     public List<StudentClassInfo> Classes { get; set; } = new List<StudentClassInfo>();
     public int ClassCount { get; set; }
+    public string CurrentClassName { get; set; }
+    public int? CurrentGrade { get; set; }
+    public int? CurrentAcademicYear { get; set; }
 
     // Parent information
     public Guid? ParentId { get; set; }

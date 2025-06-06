@@ -14,5 +14,5 @@ public class StudentBatchResult
     public string StudentName { get; set; }
     public string StudentCode { get; set; }
     public bool IsSuccess { get; set; }
-    public string ErrorMessage { get; set; }
+    public string Message { get; set; }
 }

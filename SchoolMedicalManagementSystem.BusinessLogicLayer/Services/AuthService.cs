@@ -2,7 +2,6 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using AutoMapper;
 using FluentValidation;
 using Microsoft.AspNetCore.Http;
@@ -16,6 +15,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.AuthResp
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthService;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Utilities;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
 
@@ -26,6 +26,7 @@ public class AuthService : IAuthService
     private readonly IMapper _mapper;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmailService _emailService;
+    private readonly ICacheService _cacheService;
     private readonly IDistributedCache _cache;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthService> _logger;
@@ -35,10 +36,14 @@ public class AuthService : IAuthService
     private readonly IValidator<SetForgotPasswordRequest> _setForgotPasswordValidator;
     private readonly IHttpContextAccessor _httpContextAccessor;
 
+    private const string USER_CACHE_PREFIX = "user_info";
+    private const string USER_CACHE_SET = "user_cache_keys";
+
     public AuthService(
         IMapper mapper,
         IUnitOfWork unitOfWork,
         IEmailService emailService,
+        ICacheService cacheService,
         IDistributedCache cache,
         IConfiguration configuration,
         ILogger<AuthService> logger,
@@ -52,6 +57,7 @@ public class AuthService : IAuthService
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _emailService = emailService;
+        _cacheService = cacheService;
         _cache = cache;
         _configuration = configuration;
         _logger = logger;
@@ -66,16 +72,6 @@ public class AuthService : IAuthService
     {
         try
         {
-            string cacheKey = $"login_{model.Username}";
-            var cachedLogin = await _cache.GetStringAsync(cacheKey);
-
-            if (!string.IsNullOrEmpty(cachedLogin))
-            {
-                _logger.LogInformation("Using cached login information for user: {Username}", model.Username);
-                var cachedResponse = JsonSerializer.Deserialize<BaseResponse<LoginResponse>>(cachedLogin);
-                return cachedResponse;
-            }
-
             var validationResult = await _loginValidator.ValidateAsync(model);
             if (!validationResult.IsValid)
             {
@@ -87,34 +83,104 @@ public class AuthService : IAuthService
                 };
             }
 
-            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
-            var userQuery = userRepo.GetQueryable()
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .Where(u => !u.IsDeleted && u.IsActive);
+            string userCacheKey = _cacheService.GenerateCacheKey(USER_CACHE_PREFIX, model.Username.ToLower());
+            ApplicationUser user = null;
+            List<string> roles = null;
 
-            var user = await userQuery
-                .FirstOrDefaultAsync(u => u.Username == model.Username || u.Email == model.Username);
-
-            if (user == null)
+            var cachedUserInfo = await _cacheService.GetAsync<CachedUserInfo>(userCacheKey);
+            if (cachedUserInfo != null)
             {
-                return new BaseResponse<LoginResponse>
+                _logger.LogDebug("User info found in cache for: {Username}", model.Username);
+                
+                if (!VerifyPassword(model.Password, cachedUserInfo.PasswordHash))
                 {
-                    Success = false,
-                    Message = "Tài khoản không tồn tại."
-                };
-            }
+                    return new BaseResponse<LoginResponse>
+                    {
+                        Success = false,
+                        Message = "Mật khẩu không chính xác."
+                    };
+                }
 
-            if (!VerifyPassword(model.Password, user.PasswordHash))
+                if (cachedUserInfo.IsDeleted || !cachedUserInfo.IsActive)
+                {
+                    await _cacheService.RemoveAsync(userCacheKey);
+                    user = await GetUserFromDatabase(model.Username);
+                    
+                    if (user == null || user.IsDeleted || !user.IsActive)
+                    {
+                        return new BaseResponse<LoginResponse>
+                        {
+                            Success = false,
+                            Message = "Tài khoản không tồn tại hoặc đã bị vô hiệu hóa."
+                        };
+                    }
+                    roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+                }
+                else
+                {
+                    user = new ApplicationUser 
+                    { 
+                        Id = cachedUserInfo.Id,
+                        Username = cachedUserInfo.Username,
+                        Email = cachedUserInfo.Email,
+                        FullName = cachedUserInfo.FullName,
+                        PasswordHash = cachedUserInfo.PasswordHash,
+                        IsActive = cachedUserInfo.IsActive,
+                        IsDeleted = cachedUserInfo.IsDeleted
+                    };
+                    roles = cachedUserInfo.Roles;
+                }
+            }
+            else
             {
-                return new BaseResponse<LoginResponse>
-                {
-                    Success = false,
-                    Message = "Mật khẩu không chính xác."
-                };
-            }
+                _logger.LogDebug("User info not in cache, querying database for: {Username}", model.Username);
+                
+                user = await GetUserFromDatabase(model.Username);
 
-            var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+                if (user == null)
+                {
+                    return new BaseResponse<LoginResponse>
+                    {
+                        Success = false,
+                        Message = "Tài khoản không tồn tại."
+                    };
+                }
+
+                if (user.IsDeleted || !user.IsActive)
+                {
+                    return new BaseResponse<LoginResponse>
+                    {
+                        Success = false,
+                        Message = "Tài khoản đã bị vô hiệu hóa."
+                    };
+                }
+
+                if (!VerifyPassword(model.Password, user.PasswordHash))
+                {
+                    return new BaseResponse<LoginResponse>
+                    {
+                        Success = false,
+                        Message = "Mật khẩu không chính xác."
+                    };
+                }
+
+                roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+
+                var cacheData = new CachedUserInfo
+                {
+                    Id = user.Id,
+                    Username = user.Username,
+                    Email = user.Email,
+                    FullName = user.FullName,
+                    PasswordHash = user.PasswordHash,
+                    IsActive = user.IsActive,
+                    IsDeleted = user.IsDeleted,
+                    Roles = roles
+                };
+
+                await _cacheService.SetAsync(userCacheKey, cacheData, TimeSpan.FromMinutes(5));
+                await _cacheService.AddToTrackingSetAsync(userCacheKey, USER_CACHE_SET);
+            }
 
             var token = GenerateJwtToken(user, roles);
             var refreshToken = GenerateRefreshToken();
@@ -132,28 +198,16 @@ public class AuthService : IAuthService
                 RefreshToken = refreshToken
             };
 
-            var response = new BaseResponse<LoginResponse>
+            return new BaseResponse<LoginResponse>
             {
                 Success = true,
                 Data = loginResponse,
                 Message = "Đăng nhập thành công."
             };
-
-            await _cache.SetStringAsync(
-                cacheKey,
-                JsonSerializer.Serialize(response),
-                new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
-                });
-
-            await AddCacheKey(cacheKey);
-
-            return response;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during login");
+            _logger.LogError(ex, "Error during login for user: {Username}", model.Username);
             return new BaseResponse<LoginResponse>
             {
                 Success = false,
@@ -166,16 +220,6 @@ public class AuthService : IAuthService
     {
         try
         {
-            string cacheKey = $"refresh_{model.RefreshToken}";
-            var cachedRefresh = await _cache.GetStringAsync(cacheKey);
-
-            if (!string.IsNullOrEmpty(cachedRefresh))
-            {
-                _logger.LogInformation("Using cached refresh token information");
-                var cachedResponse = JsonSerializer.Deserialize<BaseResponse<LoginResponse>>(cachedRefresh);
-                return cachedResponse;
-            }
-
             var principal = GetPrincipalFromExpiredToken(model.AccessToken);
             if (principal == null)
             {
@@ -208,22 +252,42 @@ public class AuthService : IAuthService
                 };
             }
 
-            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
-            var user = await userRepo.GetQueryable()
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Id.ToString() == userId && !u.IsDeleted && u.IsActive);
+            var userCacheKey = _cacheService.GenerateCacheKey(USER_CACHE_PREFIX, "id", userId);
+            var cachedUserInfo = await _cacheService.GetAsync<CachedUserInfo>(userCacheKey);
+            
+            ApplicationUser user = null;
+            List<string> roles = null;
 
-            if (user == null)
+            if (cachedUserInfo != null && !cachedUserInfo.IsDeleted && cachedUserInfo.IsActive)
             {
-                return new BaseResponse<LoginResponse>
-                {
-                    Success = false,
-                    Message = "Người dùng không tồn tại hoặc đã bị vô hiệu hóa."
+                user = new ApplicationUser 
+                { 
+                    Id = cachedUserInfo.Id,
+                    Username = cachedUserInfo.Username,
+                    Email = cachedUserInfo.Email,
+                    FullName = cachedUserInfo.FullName
                 };
+                roles = cachedUserInfo.Roles;
             }
+            else
+            {
+                var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+                user = await userRepo.GetQueryable()
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Id.ToString() == userId && !u.IsDeleted && u.IsActive);
 
-            var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+                if (user == null)
+                {
+                    return new BaseResponse<LoginResponse>
+                    {
+                        Success = false,
+                        Message = "Người dùng không tồn tại hoặc đã bị vô hiệu hóa."
+                    };
+                }
+
+                roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+            }
 
             var newToken = GenerateJwtToken(user, roles);
             var newRefreshToken = GenerateRefreshToken();
@@ -241,24 +305,12 @@ public class AuthService : IAuthService
                 RefreshToken = newRefreshToken
             };
 
-            var response = new BaseResponse<LoginResponse>
+            return new BaseResponse<LoginResponse>
             {
                 Success = true,
                 Data = loginResponse,
                 Message = "Token đã được làm mới thành công."
             };
-
-            await _cache.SetStringAsync(
-                cacheKey,
-                JsonSerializer.Serialize(response),
-                new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
-                });
-
-            await AddCacheKey(cacheKey);
-
-            return response;
         }
         catch (Exception ex)
         {
@@ -411,7 +463,7 @@ public class AuthService : IAuthService
                     Message = "Không tìm thấy người dùng với email này."
                 };
             }
-            
+
             var clientIpAddress = GetClientIpAddress();
 
             await RemoveOtpFromRedis(request.Email);
@@ -423,6 +475,8 @@ public class AuthService : IAuthService
             user.LastUpdatedBy = "System - Password Reset";
 
             await _unitOfWork.SaveChangesAsync();
+
+            await InvalidateUserCacheAsync(user.Username, user.Email, user.Id);
 
             await _emailService.SendPasswordResetConfirmationAsync(request.Email, user.FullName, clientIpAddress);
 
@@ -444,7 +498,56 @@ public class AuthService : IAuthService
         }
     }
 
-    #region Helper Method
+    #region Public Methods for Cache Invalidation
+
+    public async Task InvalidateUserCacheAsync(string username = null, string email = null, Guid? userId = null)
+    {
+        try
+        {
+            var keysToRemove = new List<string>();
+
+            if (!string.IsNullOrEmpty(username))
+            {
+                keysToRemove.Add(_cacheService.GenerateCacheKey(USER_CACHE_PREFIX, username.ToLower()));
+            }
+
+            if (!string.IsNullOrEmpty(email))
+            {
+                keysToRemove.Add(_cacheService.GenerateCacheKey(USER_CACHE_PREFIX, email.ToLower()));
+            }
+
+            if (userId.HasValue)
+            {
+                keysToRemove.Add(_cacheService.GenerateCacheKey(USER_CACHE_PREFIX, "id", userId.Value.ToString()));
+            }
+
+            foreach (var key in keysToRemove)
+            {
+                await _cacheService.RemoveAsync(key);
+            }
+
+            _logger.LogDebug("Invalidated user cache for username: {Username}, email: {Email}, userId: {UserId}", 
+                username, email, userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error invalidating user cache");
+        }
+    }
+
+    #endregion
+
+    #region Private Helper Methods
+
+    private async Task<ApplicationUser> GetUserFromDatabase(string usernameOrEmail)
+    {
+        var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+        return await userRepo.GetQueryable()
+            .Include(u => u.UserRoles)
+            .ThenInclude(ur => ur.Role)
+            .Where(u => !u.IsDeleted && u.IsActive)
+            .FirstOrDefaultAsync(u => u.Username == usernameOrEmail || u.Email == usernameOrEmail);
+    }
 
     private async Task<ApplicationUser> GetUserByEmailAsync(string email)
     {
@@ -572,43 +675,11 @@ public class AuthService : IAuthService
         return builder.ToString();
     }
 
-    private async Task AddCacheKey(string cacheKey)
-    {
-        try
-        {
-            string userCacheKeysKey = "user_cache_keys";
-
-            var cachedKeys = await _cache.GetStringAsync(userCacheKeysKey);
-            var keys = string.IsNullOrEmpty(cachedKeys)
-                ? new List<string>()
-                : JsonSerializer.Deserialize<List<string>>(cachedKeys);
-
-            if (keys != null && !keys.Contains(cacheKey))
-            {
-                keys.Add(cacheKey);
-
-                await _cache.SetStringAsync(
-                    userCacheKeysKey,
-                    JsonSerializer.Serialize(keys),
-                    new DistributedCacheEntryOptions
-                    {
-                        AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24)
-                    });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error adding cache key");
-        }
-    }
-
     private string GenerateJwtToken(ApplicationUser user, List<string> roles)
     {
         var claims = new List<Claim>
         {
             new Claim("uid", user.Id.ToString())
-            // new Claim(ClaimTypes.Name, user.Username),
-            // new Claim(ClaimTypes.Email, user.Email)
         };
 
         foreach (var role in roles)
