@@ -7,6 +7,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthSer
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services.AuthService;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services.EmailService;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.MedicalCondition;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.User;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer;
@@ -28,6 +29,9 @@ public static class DependencyInjection
         services.AddScoped<ISchoolClassService, SchoolClassService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IExcelService, ExcelService>();
+        services.AddScoped<IMedicalRecordService, MedicalRecordService>();
+        services.AddScoped<IMedicalConditionService, MedicalConditionService>();
+        services.AddScoped<INotificationService, NotificationService>();
 
         // Excel
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;

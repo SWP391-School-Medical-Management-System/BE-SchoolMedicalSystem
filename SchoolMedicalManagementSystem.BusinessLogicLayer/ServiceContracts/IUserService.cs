@@ -69,8 +69,12 @@ public interface IUserService
 
     #region Parent-Student Relationship Management
 
-    Task<BaseResponse<bool>> LinkParentToStudentAsync(Guid parentId, Guid studentId);
-    Task<BaseResponse<bool>> UnlinkParentFromStudentAsync(Guid studentId);
+    Task<BaseResponse<bool>> LinkParentToStudentAsync(Guid parentId, Guid studentId,
+        bool allowReplace = false);
+
+    Task<BaseResponse<bool>> UnlinkParentFromStudentAsync(Guid studentId, bool forceUnlink = false);
+
+    Task<BaseResponse<ParentStudentLinkStatusResponse>> GetLinkStatusAsync(Guid parentId, Guid studentId);
 
     #endregion
 
@@ -93,6 +97,12 @@ public interface IUserService
     Task<byte[]> DownloadSchoolNurseTemplateAsync();
     Task<byte[]> DownloadStudentTemplateAsync();
     Task<byte[]> DownloadParentTemplateAsync();
+
+    #endregion
+
+    #region Cache
+
+    Task InvalidateStudentCacheAsync(Guid? studentId = null);
 
     #endregion
 }

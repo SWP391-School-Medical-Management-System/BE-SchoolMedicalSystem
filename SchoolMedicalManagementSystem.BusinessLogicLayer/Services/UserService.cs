@@ -10,7 +10,9 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.SchoolClassResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthService;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
+using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
@@ -22,6 +24,7 @@ public class UserService : IUserService
     private readonly IEmailService _emailService;
     private readonly ICacheService _cacheService;
     private readonly IExcelService _excelService;
+    private readonly IAuthService _authService;
     private readonly ILogger<UserService> _logger;
 
     private readonly IValidator<CreateManagerRequest> _createManagerValidator;
@@ -51,6 +54,7 @@ public class UserService : IUserService
         ICacheService cacheService,
         IExcelService excelService,
         ILogger<UserService> logger,
+        IAuthService authService,
         IValidator<CreateManagerRequest> createManagerValidator,
         IValidator<UpdateManagerRequest> updateManagerValidator,
         IValidator<CreateSchoolNurseRequest> createSchoolNurseValidator,
@@ -67,6 +71,7 @@ public class UserService : IUserService
         _excelService = excelService;
         _cacheService = cacheService;
         _logger = logger;
+        _authService = authService;
         _createManagerValidator = createManagerValidator;
         _updateManagerValidator = updateManagerValidator;
         _createSchoolNurseValidator = createSchoolNurseValidator;
@@ -383,6 +388,8 @@ public class UserService : IUserService
             user.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            await InvalidateUserLoginCacheAsync(user);
             await InvalidateStaffCacheAsync();
 
             var managerResponse = _mapper.Map<ManagerResponse>(user);
@@ -1015,6 +1022,8 @@ public class UserService : IUserService
             user.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            await InvalidateUserLoginCacheAsync(user);
             await InvalidateStudentCacheAsync();
 
             var studentWithRelations = await userRepo.GetQueryable()
@@ -1407,6 +1416,8 @@ public class UserService : IUserService
             user.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            await InvalidateUserLoginCacheAsync(user);
             await InvalidateParentCacheAsync();
 
             var parentWithRelations = await userRepo.GetQueryable()
@@ -1500,40 +1511,77 @@ public class UserService : IUserService
 
     #region Parent-Student Relationship Management
 
-    public async Task<BaseResponse<bool>> LinkParentToStudentAsync(Guid parentId, Guid studentId)
+    /// <summary>
+    /// Link một parent với một student
+    /// </summary>
+    /// <param name="parentId">ID phụ huynh</param>
+    /// <param name="studentId">ID học sinh</param>
+    /// <param name="allowReplace">Cho phép thay thế parent hiện tại của student</param>
+    /// <returns></returns>
+    public async Task<BaseResponse<bool>> LinkParentToStudentAsync(Guid parentId, Guid studentId,
+        bool allowReplace = false)
     {
         try
         {
             var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
 
+            // Validate Parent
             var parent = await userRepo.GetQueryable()
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
+                .Include(u => u.Children.Where(c => !c.IsDeleted)) // Để check số lượng children hiện tại
                 .FirstOrDefaultAsync(u => u.Id == parentId && !u.IsDeleted &&
                                           u.UserRoles.Any(ur => ur.Role.Name == "PARENT"));
 
+            if (parent == null)
+            {
+                return BaseResponse<bool>.ErrorResult("Không tìm thấy phụ huynh.");
+            }
+
+            // Validate Student
             var student = await userRepo.GetQueryable()
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
+                .Include(u => u.Parent) // Để check parent hiện tại
                 .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted &&
                                           u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"));
 
-            if (parent == null)
-            {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy phụ huynh."
-                };
-            }
-
             if (student == null)
             {
-                return new BaseResponse<bool>
+                return BaseResponse<bool>.ErrorResult("Không tìm thấy học sinh.");
+            }
+
+            // Kiểm tra Student đã có Parent chưa
+            if (student.ParentId.HasValue && student.ParentId != parentId)
+            {
+                if (!allowReplace)
                 {
-                    Success = false,
-                    Message = "Không tìm thấy học sinh."
-                };
+                    return BaseResponse<bool>.ErrorResult(
+                        $"Học sinh {student.FullName} đã được liên kết với phụ huynh '{student.Parent?.FullName}'. " +
+                        "Vui lòng hủy liên kết hiện tại trước khi liên kết mới.");
+                }
+                else
+                {
+                    _logger.LogInformation("Replacing parent {OldParentId} with {NewParentId} for student {StudentId}",
+                        student.ParentId, parentId, studentId);
+                }
+            }
+
+            // Kiểm tra Student đã link với Parent này rồi chưa
+            if (student.ParentId == parentId)
+            {
+                return BaseResponse<bool>.ErrorResult("Học sinh đã được liên kết với phụ huynh này rồi.");
+            }
+
+            // Giới hạn số Student per Parent (optional - có thể config)
+            var maxStudentsPerParent = 10;
+            var currentStudentCount = parent.Children?.Count ?? 0;
+
+            if (currentStudentCount >= maxStudentsPerParent)
+            {
+                return BaseResponse<bool>.ErrorResult(
+                    $"Phụ huynh {parent.FullName} đã liên kết với {currentStudentCount} học sinh. " +
+                    $"Không thể liên kết thêm (tối đa {maxStudentsPerParent} học sinh).");
             }
 
             var managerRoleName = await GetManagerRoleName();
@@ -1544,29 +1592,32 @@ public class UserService : IUserService
 
             await _unitOfWork.SaveChangesAsync();
 
+            await InvalidateUserLoginCacheAsync(parent);
+            await InvalidateUserLoginCacheAsync(student);
             await InvalidateStudentCacheAsync();
             await InvalidateParentCacheAsync();
 
-            return new BaseResponse<bool>
-            {
-                Success = true,
-                Data = true,
-                Message = "Liên kết phụ huynh với học sinh thành công."
-            };
+            _logger.LogInformation(
+                "Successfully linked parent {ParentId} ({ParentName}) to student {StudentId} ({StudentName})",
+                parentId, parent.FullName, studentId, student.FullName);
+
+            return BaseResponse<bool>.SuccessResult(true,
+                $"Liên kết phụ huynh '{parent.FullName}' với học sinh '{student.FullName}' thành công.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error linking parent to student: {ParentId} -> {StudentId}", parentId, studentId);
-            return new BaseResponse<bool>
-            {
-                Success = false,
-                Data = false,
-                Message = $"Lỗi liên kết phụ huynh với học sinh: {ex.Message}"
-            };
+            _logger.LogError(ex, "Error linking parent {ParentId} to student {StudentId}", parentId, studentId);
+            return BaseResponse<bool>.ErrorResult($"Lỗi liên kết phụ huynh với học sinh: {ex.Message}");
         }
     }
 
-    public async Task<BaseResponse<bool>> UnlinkParentFromStudentAsync(Guid studentId)
+    /// <summary>
+    /// Hủy liên kết parent khỏi student
+    /// </summary>
+    /// <param name="studentId">ID học sinh</param>
+    /// <param name="forceUnlink">Bỏ qua validation và unlink ngay lập tức (dành cho admin)</param>
+    /// <returns></returns>
+    public async Task<BaseResponse<bool>> UnlinkParentFromStudentAsync(Guid studentId, bool forceUnlink = false)
     {
         try
         {
@@ -1575,44 +1626,137 @@ public class UserService : IUserService
             var student = await userRepo.GetQueryable()
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
+                .Include(u => u.Parent)
+                .Include(u => u.MedicalRecord)
                 .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted &&
                                           u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"));
 
             if (student == null)
             {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy học sinh."
-                };
+                return BaseResponse<bool>.ErrorResult("Không tìm thấy học sinh.");
             }
 
+            if (!student.ParentId.HasValue)
+            {
+                return BaseResponse<bool>.ErrorResult("Học sinh chưa được liên kết với phụ huynh nào.");
+            }
+
+            // VALIDATION: Chỉ check khi không force
+            if (!forceUnlink)
+            {
+                var validationResult = await ValidateUnlinkDependencies(studentId, student.ParentId.Value);
+                if (!validationResult.canUnlink)
+                {
+                    return BaseResponse<bool>.ErrorResult(
+                        $"{validationResult.reason} " +
+                        "Liên hệ quản trị viên nếu cần huỷ liên kết khẩn cấp.");
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Force unlinking parent {ParentId} from student {StudentId} - bypassing validations",
+                    student.ParentId, studentId);
+            }
+
+            var parent = student.Parent;
             var managerRoleName = await GetManagerRoleName();
+
+            // Perform unlink
             student.ParentId = null;
             student.LastUpdatedBy = managerRoleName;
             student.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
 
+            // Cache invalidation
+            await InvalidateUserLoginCacheAsync(student);
+            if (parent != null)
+            {
+                await InvalidateUserLoginCacheAsync(parent);
+            }
+
             await InvalidateStudentCacheAsync();
             await InvalidateParentCacheAsync();
 
-            return new BaseResponse<bool>
-            {
-                Success = true,
-                Data = true,
-                Message = "Hủy liên kết phụ huynh với học sinh thành công."
-            };
+            var message = forceUnlink
+                ? "Hủy liên kết phụ huynh với học sinh thành công (buộc phải hủy liên kết)."
+                : "Hủy liên kết phụ huynh với học sinh thành công.";
+
+            _logger.LogInformation(
+                "Successfully unlinked parent {ParentId} ({ParentName}) from student {StudentId} ({StudentName})",
+                parent?.Id, parent?.FullName, studentId, student.FullName);
+
+            return BaseResponse<bool>.SuccessResult(true, message);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error unlinking parent from student: {StudentId}", studentId);
-            return new BaseResponse<bool>
+            return BaseResponse<bool>.ErrorResult($"Lỗi hủy liên kết phụ huynh với học sinh: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Kiểm tra trạng thái liên kết và khả năng link/unlink
+    /// </summary>
+    /// <param name="parentId">ID phụ huynh</param>
+    /// <param name="studentId">ID học sinh</param>
+    /// <returns></returns>
+    public async Task<BaseResponse<ParentStudentLinkStatusResponse>> GetLinkStatusAsync(Guid parentId, Guid studentId)
+    {
+        try
+        {
+            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+
+            var parent = await userRepo.GetQueryable()
+                .Include(u => u.Children.Where(c => !c.IsDeleted))
+                .FirstOrDefaultAsync(u => u.Id == parentId && !u.IsDeleted);
+
+            var student = await userRepo.GetQueryable()
+                .Include(u => u.Parent)
+                .Include(u => u.MedicalRecord)
+                .ThenInclude(mr => mr.MedicalConditions.Where(mc => !mc.IsDeleted))
+                .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted);
+
+            if (parent == null || student == null)
             {
-                Success = false,
-                Data = false,
-                Message = $"Lỗi hủy liên kết phụ huynh với học sinh: {ex.Message}"
+                return BaseResponse<ParentStudentLinkStatusResponse>.ErrorResult("Không tìm thấy parent hoặc student.");
+            }
+
+            var status = new ParentStudentLinkStatusResponse
+            {
+                ParentId = parentId,
+                ParentName = parent.FullName,
+                StudentId = studentId,
+                StudentName = student.FullName,
+                IsLinked = student.ParentId == parentId,
+                CurrentParentId = student.ParentId,
+                CurrentParentName = student.Parent?.FullName,
+                TotalStudentsLinkedToParent = parent.Children?.Count ?? 0,
+                CanLink = student.ParentId == null || student.ParentId == parentId,
+                CanUnlink = student.ParentId == parentId
             };
+
+            if (student.ParentId == parentId)
+            {
+                var validation = await ValidateUnlinkDependencies(studentId, parentId);
+                status.CanUnlink = validation.canUnlink;
+                status.UnlinkBlockReason = validation.reason;
+
+                // Check severe medical conditions
+                if (student.MedicalRecord?.MedicalConditions != null)
+                {
+                    status.HasSevereMedicalConditions = student.MedicalRecord.MedicalConditions
+                        .Any(mc => !mc.IsDeleted && mc.Severity == SeverityType.Severe);
+                }
+            }
+
+            return BaseResponse<ParentStudentLinkStatusResponse>.SuccessResult(status,
+                "Lấy trạng thái liên kết thành công.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting link status");
+            return BaseResponse<ParentStudentLinkStatusResponse>.ErrorResult("Lỗi lấy trạng thái liên kết.");
         }
     }
 
@@ -2168,11 +2312,21 @@ public class UserService : IUserService
         {
             var activeStudentClasses = student.StudentClasses
                 .Where(sc => !sc.IsDeleted)
-                .OrderByDescending(sc => sc.EnrollmentDate)
                 .ToList();
 
             response.Classes = _mapper.Map<List<StudentClassInfo>>(activeStudentClasses);
             response.ClassCount = response.Classes.Count;
+
+            if (activeStudentClasses.Any())
+            {
+                var currentClass = activeStudentClasses
+                    .OrderByDescending(sc => sc.SchoolClass?.Grade ?? 0) // Highest grade first
+                    .ThenByDescending(sc => sc.EnrollmentDate) // If same grade, take most recent
+                    .First();
+
+                response.CurrentClassName = currentClass.SchoolClass?.Name;
+                response.CurrentGrade = currentClass.SchoolClass?.Grade;
+            }
         }
 
         return response;
@@ -2205,13 +2359,18 @@ public class UserService : IUserService
 
                     if (activeClasses.Any())
                     {
-                        var currentClass = activeClasses.OrderByDescending(sc => sc.EnrollmentDate).First();
+                        var currentClass = activeClasses
+                            .OrderByDescending(sc => sc.SchoolClass?.Grade ?? 0)
+                            .ThenByDescending(sc => sc.EnrollmentDate)
+                            .First();
+
                         studentSummary.CurrentClassName = currentClass.SchoolClass?.Name;
                         studentSummary.CurrentGrade = currentClass.SchoolClass?.Grade;
 
                         studentSummary.ClassNames = activeClasses
                             .Select(sc => sc.SchoolClass?.Name)
                             .Where(name => !string.IsNullOrEmpty(name))
+                            .OrderBy(name => name)
                             .ToList();
                     }
                 }
@@ -2589,6 +2748,70 @@ public class UserService : IUserService
         }
     }
 
+    private async Task<(bool canUnlink, string reason)> ValidateUnlinkDependencies(Guid studentId, Guid parentId)
+    {
+        try
+        {
+            var notificationRepo = _unitOfWork.GetRepositoryByEntity<Notification>();
+            var appointmentRepo = _unitOfWork.GetRepositoryByEntity<Appointment>();
+
+            // Kiểm tra Notifications chưa confirm
+            var pendingNotifications = await notificationRepo.GetQueryable()
+                .Where(n => n.RecipientId == parentId &&
+                            !n.IsDeleted &&
+                            n.RequiresConfirmation &&
+                            !n.IsConfirmed)
+                .CountAsync();
+
+            if (pendingNotifications > 0)
+            {
+                return (false,
+                    $"Không thể hủy liên kết. Phụ huynh còn {pendingNotifications} thông báo chưa xác nhận.");
+            }
+
+            // Kiểm tra Appointments đang active
+            var activeAppointments = await appointmentRepo.GetQueryable()
+                .Where(a => a.StudentId == studentId &&
+                            a.ParentId == parentId &&
+                            !a.IsDeleted &&
+                            a.Status == AppointmentStatus.Scheduled &&
+                            a.AppointmentDate > DateTime.Now)
+                .CountAsync();
+
+            if (activeAppointments > 0)
+            {
+                return (false,
+                    $"Không thể hủy liên kết. Còn {activeAppointments} lịch hẹn đang hoạt động.");
+            }
+
+            // Kiểm tra Medical Record
+            var medicalRecordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
+            var medicalRecord = await medicalRecordRepo.GetQueryable()
+                .Include(mr => mr.MedicalConditions)
+                .FirstOrDefaultAsync(mr => mr.UserId == studentId && !mr.IsDeleted);
+
+            if (medicalRecord != null)
+            {
+                var severeConditions = medicalRecord.MedicalConditions
+                    .Where(mc => !mc.IsDeleted && mc.Severity == SeverityType.Severe)
+                    .Count();
+
+                if (severeConditions > 0)
+                {
+                    return (false,
+                        $"Không thể hủy liên kết. Học sinh có {severeConditions} tình trạng y tế nghiêm trọng cần theo dõi của phụ huynh.");
+                }
+            }
+
+            return (true, "");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating unlink dependencies");
+            return (false, "Lỗi kiểm tra dependencies.");
+        }
+    }
+
     #endregion
 
     #region Cache Methods
@@ -2648,6 +2871,21 @@ public class UserService : IUserService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error invalidating parent cache");
+        }
+    }
+
+    private async Task InvalidateUserLoginCacheAsync(ApplicationUser user)
+    {
+        try
+        {
+            if (user != null && _authService != null)
+            {
+                await _authService.InvalidateUserCacheAsync(user.Username, user.Email, user.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error invalidating user login cache for user: {UserId}", user?.Id);
         }
     }
 

@@ -607,13 +607,23 @@ public class UserController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Liên kết phụ huynh với học sinh
+    /// </summary>
+    /// <param name="parentId">ID phụ huynh</param>
+    /// <param name="studentId">ID học sinh</param>
+    /// <param name="allowReplace">Cho phép thay thế parent hiện tại của student (default: false)</param>
+    /// <returns></returns>
     [HttpPost("parents/{parentId}/students/{studentId}")]
     [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<bool>>> LinkParentToStudent(Guid parentId, Guid studentId)
+    public async Task<ActionResult<BaseResponse<bool>>> LinkParentToStudent(
+        Guid parentId,
+        Guid studentId,
+        [FromQuery] bool allowReplace = false)
     {
         try
         {
-            var response = await _userService.LinkParentToStudentAsync(parentId, studentId);
+            var response = await _userService.LinkParentToStudentAsync(parentId, studentId, allowReplace);
             if (!response.Success)
                 return BadRequest(response);
 
@@ -625,13 +635,21 @@ public class UserController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Hủy liên kết phụ huynh khỏi học sinh
+    /// </summary>
+    /// <param name="studentId">ID học sinh</param>
+    /// <param name="forceUnlink">Bỏ qua validation và unlink ngay lập tức (dành cho admin, default: false)</param>
+    /// <returns></returns>
     [HttpDelete("students/{studentId}/parent")]
     [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<bool>>> UnlinkParentFromStudent(Guid studentId)
+    public async Task<ActionResult<BaseResponse<bool>>> UnlinkParentFromStudent(
+        Guid studentId,
+        [FromQuery] bool forceUnlink = false)
     {
         try
         {
-            var response = await _userService.UnlinkParentFromStudentAsync(studentId);
+            var response = await _userService.UnlinkParentFromStudentAsync(studentId, forceUnlink);
             if (!response.Success)
                 return BadRequest(response);
 
@@ -640,6 +658,31 @@ public class UserController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    /// <summary>
+    /// Kiểm tra trạng thái liên kết giữa phụ huynh và học sinh
+    /// </summary>
+    /// <param name="parentId">ID phụ huynh</param>
+    /// <param name="studentId">ID học sinh</param>
+    /// <returns></returns>
+    [HttpGet("parents/{parentId}/students/{studentId}/link-status")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<ParentStudentLinkStatusResponse>>> GetLinkStatus(Guid parentId,
+        Guid studentId)
+    {
+        try
+        {
+            var response = await _userService.GetLinkStatusAsync(parentId, studentId);
+            if (!response.Success)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<ParentStudentLinkStatusResponse>.ErrorResult("Lỗi hệ thống."));
         }
     }
 }

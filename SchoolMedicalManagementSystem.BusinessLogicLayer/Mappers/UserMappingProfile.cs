@@ -51,7 +51,10 @@ public class UserMappingProfile : Profile
             .ForMember(dest => dest.EmergencyContact,
                 opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContact : null))
             .ForMember(dest => dest.EmergencyContactPhone,
-                opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContactPhone : null));
+                opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContactPhone : null))
+            .ForMember(dest => dest.CurrentClassName, opt => opt.Ignore())
+            .ForMember(dest => dest.CurrentGrade, opt => opt.Ignore())
+            .ForMember(dest => dest.CurrentAcademicYear, opt => opt.Ignore());
 
         CreateMap<ApplicationUser, ParentResponse>()
             .ForMember(dest => dest.ChildrenCount,

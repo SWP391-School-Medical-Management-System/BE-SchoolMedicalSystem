@@ -27,8 +27,11 @@ public class SchoolClassService : ISchoolClassService
 
     private const string CLASS_CACHE_PREFIX = "class";
     private const string CLASS_LIST_PREFIX = "classes_list";
-    private const string CLASS_STATISTICS_PREFIX = "class_statistics";
     private const string CLASS_CACHE_SET = "class_cache_keys";
+    private const string PARENT_CACHE_PREFIX = "parent";
+    private const string PARENT_LIST_PREFIX = "parents_list";
+    private const string STUDENT_CACHE_PREFIX = "student";
+    private const string STUDENT_LIST_PREFIX = "students_list";
 
     public SchoolClassService(
         IMapper mapper,
@@ -213,7 +216,7 @@ public class SchoolClassService : ISchoolClassService
             await classRepo.AddAsync(schoolClass);
             await _unitOfWork.SaveChangesAsync();
 
-            await InvalidateClassCacheAsync();
+            await InvalidateAllCachesAsync();
 
             var classResponse = MapToClassResponse(schoolClass);
 
@@ -290,7 +293,7 @@ public class SchoolClassService : ISchoolClassService
             schoolClass.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
-            await InvalidateClassCacheAsync();
+            await InvalidateAllCachesAsync();
 
             var classResponse = MapToClassResponse(schoolClass);
 
@@ -347,7 +350,7 @@ public class SchoolClassService : ISchoolClassService
             schoolClass.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
-            await InvalidateClassCacheAsync();
+            await InvalidateAllCachesAsync();
 
             return new BaseResponse<bool>
             {
@@ -417,11 +420,18 @@ public class SchoolClassService : ISchoolClassService
                 .ToListAsync();
 
             var existingEnrollments = await studentClassRepo.GetQueryable()
+                .Include(sc => sc.SchoolClass)
                 .Where(sc => sc.ClassId == classId &&
                              model.StudentIds.Contains(sc.StudentId) &&
                              !sc.IsDeleted)
-                .Select(sc => sc.StudentId)
                 .ToListAsync();
+
+            var allExistingRecords = await studentClassRepo.GetQueryable()
+                .Where(sc => sc.ClassId == classId &&
+                             model.StudentIds.Contains(sc.StudentId))
+                .ToListAsync();
+
+            var studentsWithParents = new HashSet<Guid>();
 
             foreach (var studentId in model.StudentIds)
             {
@@ -437,49 +447,80 @@ public class SchoolClassService : ISchoolClassService
                     if (student == null)
                     {
                         result.IsSuccess = false;
-                        result.ErrorMessage = "Không tìm thấy học sinh hoặc học sinh đã bị xóa.";
+                        result.Message = "Không tìm thấy học sinh.";
                     }
                     else if (!student.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
                     {
                         result.StudentName = student.FullName;
                         result.StudentCode = student.StudentCode;
                         result.IsSuccess = false;
-                        result.ErrorMessage = "Người dùng không phải là học sinh.";
-                    }
-                    else if (existingEnrollments.Contains(studentId))
-                    {
-                        result.StudentName = student.FullName;
-                        result.StudentCode = student.StudentCode;
-                        result.IsSuccess = false;
-                        result.ErrorMessage = "Học sinh đã có trong lớp học này.";
+                        result.Message = "Người dùng không phải là học sinh.";
                     }
                     else
                     {
-                        var studentClass = new StudentClass
-                        {
-                            Id = Guid.NewGuid(),
-                            StudentId = studentId,
-                            ClassId = classId,
-                            EnrollmentDate = DateTime.Now,
-                            CreatedBy = managerRoleName,
-                            CreatedDate = DateTime.Now
-                        };
-
-                        await studentClassRepo.AddAsync(studentClass);
-
                         result.StudentName = student.FullName;
                         result.StudentCode = student.StudentCode;
-                        result.IsSuccess = true;
-                        result.ErrorMessage = "Thành công";
 
-                        response.SuccessCount++;
+                        var existingEnrollment = existingEnrollments.FirstOrDefault(e => e.StudentId == studentId);
+
+                        if (existingEnrollment != null)
+                        {
+                            result.IsSuccess = false;
+                            result.Message = $"Đã có trong lớp {schoolClass.Name}.";
+                        }
+                        else
+                        {
+                            var existingDeletedRecord = allExistingRecords
+                                .FirstOrDefault(
+                                    sc => sc.StudentId == studentId && sc.ClassId == classId && sc.IsDeleted);
+
+                            if (existingDeletedRecord != null)
+                            {
+                                existingDeletedRecord.IsDeleted = false;
+                                existingDeletedRecord.EnrollmentDate = DateTime.Now;
+                                existingDeletedRecord.LastUpdatedBy = managerRoleName;
+                                existingDeletedRecord.LastUpdatedDate = DateTime.Now;
+
+                                result.IsSuccess = true;
+                                result.Message = "Đã thêm vào lớp (kích hoạt lại).";
+                            }
+                            else
+                            {
+                                var studentClass = new StudentClass
+                                {
+                                    Id = Guid.NewGuid(),
+                                    StudentId = studentId,
+                                    ClassId = classId,
+                                    EnrollmentDate = DateTime.Now,
+                                    CreatedBy = managerRoleName,
+                                    CreatedDate = DateTime.Now
+                                };
+
+                                await studentClassRepo.AddAsync(studentClass);
+
+                                result.IsSuccess = true;
+                                result.Message = "Đã thêm vào lớp thành công.";
+                            }
+
+                            response.SuccessCount++;
+
+                            var studentWithParent = await userRepo.GetQueryable()
+                                .Where(u => u.Id == studentId && !u.IsDeleted)
+                                .Select(u => new { u.Id, u.ParentId })
+                                .FirstOrDefaultAsync();
+
+                            if (studentWithParent?.ParentId.HasValue == true)
+                            {
+                                studentsWithParents.Add(studentWithParent.ParentId.Value);
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error adding student {StudentId} to class {ClassId}", studentId, classId);
                     result.IsSuccess = false;
-                    result.ErrorMessage = $"Lỗi: {ex.Message}";
+                    result.Message = $"Lỗi: {ex.Message}";
                 }
 
                 response.Results.Add(result);
@@ -490,7 +531,7 @@ public class SchoolClassService : ISchoolClassService
             if (response.SuccessCount > 0)
             {
                 await _unitOfWork.SaveChangesAsync();
-                await InvalidateClassCacheAsync();
+                await InvalidateAllCachesAsync();
             }
 
             return new BaseResponse<StudentsBatchResponse>
@@ -498,7 +539,7 @@ public class SchoolClassService : ISchoolClassService
                 Success = response.SuccessCount > 0,
                 Data = response,
                 Message = response.SuccessCount > 0
-                    ? $"Thêm thành công {response.SuccessCount}/{response.TotalStudents} học sinh vào lớp."
+                    ? $"Thêm thành công {response.SuccessCount}/{response.TotalStudents} học sinh vào lớp {schoolClass.Name}."
                     : "Không có học sinh nào được thêm vào lớp."
             };
         }
@@ -551,7 +592,7 @@ public class SchoolClassService : ISchoolClassService
             studentClass.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
-            await InvalidateClassCacheAsync();
+            await InvalidateAllCachesAsync();
 
             return new BaseResponse<bool>
             {
@@ -753,7 +794,7 @@ public class SchoolClassService : ISchoolClassService
             if (successCount > 0)
             {
                 await _unitOfWork.SaveChangesAsync();
-                await InvalidateClassCacheAsync();
+                await InvalidateAllCachesAsync();
             }
 
             importResponse.SuccessRows = successCount;
@@ -782,69 +823,6 @@ public class SchoolClassService : ISchoolClassService
             {
                 Success = false,
                 Message = $"Lỗi import Excel: {ex.Message}"
-            };
-        }
-    }
-
-    #endregion
-
-    #region Statistics
-
-    public async Task<BaseResponse<SchoolClassStatisticsResponse>> GetSchoolClassStatisticsAsync()
-    {
-        try
-        {
-            var cacheKey = _cacheService.GenerateCacheKey(CLASS_STATISTICS_PREFIX, "all");
-            var cachedResult = await _cacheService.GetAsync<BaseResponse<SchoolClassStatisticsResponse>>(cacheKey);
-
-            if (cachedResult != null)
-            {
-                _logger.LogDebug("School class statistics found in cache");
-                return cachedResult;
-            }
-
-            var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
-            var classes = await classRepo.GetQueryable()
-                .Include(c => c.StudentClasses.Where(sc => !sc.IsDeleted))
-                .ThenInclude(sc => sc.Student)
-                .Where(c => !c.IsDeleted)
-                .ToListAsync();
-
-            var statistics = new SchoolClassStatisticsResponse
-            {
-                TotalClasses = classes.Count,
-                TotalStudents = classes.Sum(c => c.StudentClasses?.Count(sc => !sc.IsDeleted) ?? 0),
-                StudentsByGrade = classes
-                    .GroupBy(c => c.Grade)
-                    .ToDictionary(g => g.Key, g => g.Sum(c => c.StudentClasses?.Count(sc => !sc.IsDeleted) ?? 0)),
-                StudentsByAcademicYear = classes
-                    .GroupBy(c => c.AcademicYear)
-                    .ToDictionary(g => g.Key, g => g.Sum(c => c.StudentClasses?.Count(sc => !sc.IsDeleted) ?? 0))
-            };
-
-            statistics.AverageStudentsPerClass = statistics.TotalClasses > 0
-                ? Math.Round((double)statistics.TotalStudents / statistics.TotalClasses, 2)
-                : 0;
-
-            var response = new BaseResponse<SchoolClassStatisticsResponse>
-            {
-                Success = true,
-                Data = statistics,
-                Message = "Lấy thống kê lớp học thành công."
-            };
-
-            await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(10));
-            await _cacheService.AddToTrackingSetAsync(cacheKey, CLASS_CACHE_SET);
-
-            return response;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting school class statistics");
-            return new BaseResponse<SchoolClassStatisticsResponse>
-            {
-                Success = false,
-                Message = $"Lỗi lấy thống kê lớp học: {ex.Message}"
             };
         }
     }
@@ -982,19 +960,28 @@ public class SchoolClassService : ISchoolClassService
         };
     }
 
-    private async Task InvalidateClassCacheAsync()
+    private async Task InvalidateAllCachesAsync()
     {
         try
         {
-            await _cacheService.RemoveByPrefixAsync(CLASS_CACHE_PREFIX);
-            await _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX);
-            await _cacheService.RemoveByPrefixAsync(CLASS_STATISTICS_PREFIX);
+            _logger.LogDebug("Starting complete cache invalidation");
 
-            _logger.LogDebug("Invalidated class cache");
+            await Task.WhenAll(
+                _cacheService.RemoveByPrefixAsync(CLASS_CACHE_PREFIX),
+                _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX),
+                _cacheService.RemoveByPrefixAsync(STUDENT_CACHE_PREFIX),
+                _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX),
+                _cacheService.RemoveByPrefixAsync(PARENT_CACHE_PREFIX),
+                _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX)
+            );
+
+            await Task.Delay(100);
+
+            _logger.LogDebug("Completed complete cache invalidation");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error invalidating class cache");
+            _logger.LogError(ex, "Error in complete cache invalidation");
         }
     }
 

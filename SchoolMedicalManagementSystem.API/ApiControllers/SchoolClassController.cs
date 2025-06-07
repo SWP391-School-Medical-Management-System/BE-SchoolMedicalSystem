@@ -169,24 +169,6 @@ public class SchoolClassController : ControllerBase
         }
     }
 
-    [HttpGet("statistics")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<SchoolClassStatisticsResponse>>> GetSchoolClassStatistics()
-    {
-        try
-        {
-            var response = await _schoolClassService.GetSchoolClassStatisticsAsync();
-            if (!response.Success)
-                return BadRequest(response);
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<SchoolClassStatisticsResponse>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
-
     [HttpGet("template")]
     [Authorize(Roles = "MANAGER")]
     public async Task<IActionResult> DownloadTemplate()

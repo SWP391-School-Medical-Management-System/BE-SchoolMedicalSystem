@@ -20,7 +20,6 @@ public interface ISchoolClassService
     Task<BaseResponse<bool>> DeleteSchoolClassAsync(Guid classId);
     Task<BaseResponse<StudentsBatchResponse>> AddStudentsToClassAsync(Guid classId, AddStudentsToClassRequest model);
     Task<BaseResponse<bool>> RemoveStudentFromClassAsync(Guid classId, Guid studentId);
-    Task<BaseResponse<SchoolClassStatisticsResponse>> GetSchoolClassStatisticsAsync();
     Task<byte[]> ExportSchoolClassesToExcelAsync(int? grade = null, int? academicYear = null);
     Task<BaseResponse<SchoolClassImportResponse>> ImportSchoolClassesFromExcelAsync(
         ImportSchoolClassExcelRequest request);

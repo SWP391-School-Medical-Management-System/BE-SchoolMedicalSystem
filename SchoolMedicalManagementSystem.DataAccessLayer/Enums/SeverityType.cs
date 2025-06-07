@@ -1,6 +1,6 @@
 ﻿namespace SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 
-public enum Severity
+public enum SeverityType
 {
     Mild,      // Nhẹ
     Moderate,  // Trung bình

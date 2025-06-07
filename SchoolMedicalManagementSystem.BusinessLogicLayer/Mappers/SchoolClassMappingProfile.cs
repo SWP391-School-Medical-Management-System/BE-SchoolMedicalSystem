@@ -19,6 +19,11 @@ public class SchoolClassMappingProfile : Profile
             .ForMember(dest => dest.IsDeleted, opt => opt.Ignore())
             .ForMember(dest => dest.StudentClasses, opt => opt.Ignore());
 
+        CreateMap<SchoolClass, SchoolClassSummaryResponse>()
+            .ForMember(dest => dest.StudentCount, opt => opt.Ignore())
+            .ForMember(dest => dest.MaleStudentCount, opt => opt.Ignore())
+            .ForMember(dest => dest.FemaleStudentCount, opt => opt.Ignore());
+
         CreateMap<UpdateSchoolClassRequest, SchoolClass>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
@@ -37,7 +42,7 @@ public class SchoolClassMappingProfile : Profile
             .ForMember(dest => dest.ClassCount, opt => opt.Ignore()) // Set trong service
             .ForMember(dest => dest.ClassNames, opt => opt.Ignore()) // Set trong service
             .ForMember(dest => dest.HasMedicalRecord, opt => opt.MapFrom(src => src.Student.MedicalRecord != null));
-        
+
         CreateMap<AddStudentsToClassRequest, List<Guid>>()
             .ConvertUsing(src => src.StudentIds);
 
