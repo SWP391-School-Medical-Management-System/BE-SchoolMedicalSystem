@@ -33,6 +33,8 @@ public static class DependencyInjection
         services.AddScoped<IMedicalConditionService, MedicalConditionService>();
         services.AddScoped<INotificationService, NotificationService>();
 
+        // Cloudinary
+        services.AddScoped<CloudinaryService>();
         // Excel
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
