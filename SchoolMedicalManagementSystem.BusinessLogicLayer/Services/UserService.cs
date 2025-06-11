@@ -3,12 +3,14 @@ using System.Text;
 using AutoMapper;
 using FluentValidation;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.SchoolClassResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.UserResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthService;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
@@ -36,6 +38,8 @@ public class UserService : IUserService
     private readonly IValidator<CreateParentRequest> _createParentValidator;
     private readonly IValidator<UpdateParentRequest> _updateParentValidator;
 
+    private readonly CloudinaryService _cloudinaryService;
+
     private const string STAFF_CACHE_PREFIX = "staff_user";
     private const string STAFF_LIST_PREFIX = "staff_users_list";
     private const string STUDENT_CACHE_PREFIX = "student";
@@ -62,7 +66,8 @@ public class UserService : IUserService
         IValidator<CreateStudentRequest> createStudentValidator,
         IValidator<UpdateStudentRequest> updateStudentValidator,
         IValidator<CreateParentRequest> createParentValidator,
-        IValidator<UpdateParentRequest> updateParentValidator
+        IValidator<UpdateParentRequest> updateParentValidator,
+        CloudinaryService cloudinaryService
     )
     {
         _unitOfWork = unitOfWork;
@@ -80,7 +85,167 @@ public class UserService : IUserService
         _updateStudentValidator = updateStudentValidator;
         _createParentValidator = createParentValidator;
         _updateParentValidator = updateParentValidator;
+        _cloudinaryService = cloudinaryService;
     }
+
+    #region User Management (User)
+
+    public async Task<BaseResponse<UserResponses>> UpdateUserProfileAsync(Guid userId, UpdateUserProfileRequest model)
+    {
+        try
+        {
+            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var user = await userRepo.GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+
+            if (user == null)
+            {
+                return new BaseResponse<UserResponses>
+                {
+                    Success = false,
+                    Message = "Người dùng không tồn tại."
+                };
+            }
+
+            string profileImageUrl = null;
+            if (model.ProfileImage != null)
+            {
+                profileImageUrl = await ProcessProfileImage(model.ProfileImage);
+            }
+
+            if (model.DateOfBirth.HasValue && model.DateOfBirth.Value > DateTime.Now)
+            {
+                return new BaseResponse<UserResponses>
+                {
+                    Success = false,
+                    Message = "Ngày sinh không hợp lệ."
+                };
+            }
+
+            user.FullName = model.FullName ?? user.FullName;
+            user.PhoneNumber = model.PhoneNumber ?? user.PhoneNumber;
+            user.Address = model.Address ?? user.Address;
+            user.Gender = model.Gender ?? user.Gender;
+            user.DateOfBirth = model.DateOfBirth ?? user.DateOfBirth;
+            if (profileImageUrl != null)
+            {
+                user.ProfileImageUrl = profileImageUrl;
+            }
+            user.LastUpdatedBy = user.Username;
+            user.LastUpdatedDate = DateTime.Now;
+
+            await _unitOfWork.SaveChangesAsync();
+
+            var userResponse = _mapper.Map<UserResponses>(user);
+            userResponse.Role = user.UserRoles.FirstOrDefault()?.Role.Name;
+
+            return new BaseResponse<UserResponses>
+            {
+                Success = true,
+                Data = userResponse,
+                Message = "Cập nhật thông tin cá nhân thành công."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating user profile");
+            return new BaseResponse<UserResponses>
+            {
+                Success = false,
+                Message = $"Lỗi cập nhật thông tin: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<BaseResponse<bool>> ChangePasswordAsync(Guid userId, ChangePasswordRequest model)
+    {
+        try
+        {
+            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var user = await userRepo.GetQueryable()
+                .FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+
+            if (user == null)
+            {
+                return new BaseResponse<bool>
+                {
+                    Success = false,
+                    Message = "Người dùng không tồn tại."
+                };
+            }
+
+            string oldPasswordHash = HashPassword(model.OldPassword);
+            if (user.PasswordHash != oldPasswordHash)
+            {
+                return new BaseResponse<bool>
+                {
+                    Success = false,
+                    Message = "Mật khẩu cũ không đúng."
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(model.NewPassword) || model.NewPassword.Length < 6)
+            {
+                return new BaseResponse<bool>
+                {
+                    Success = false,
+                    Message = "Mật khẩu mới phải có ít nhất 6 ký tự."
+                };
+            }
+
+            // Cập nhật mật khẩu mới
+            string newPasswordHash = HashPassword(model.NewPassword);
+            user.PasswordHash = newPasswordHash;
+            user.LastUpdatedBy = user.Username;
+            user.LastUpdatedDate = DateTime.Now;
+
+            await _unitOfWork.SaveChangesAsync();
+
+            await InvalidateUserLoginCacheAsync(user);
+
+            return new BaseResponse<bool>
+            {
+                Success = true,
+                Data = true,
+                Message = "Đổi mật khẩu thành công."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error changing password");
+            return new BaseResponse<bool>
+            {
+                Success = false,
+                Data = false,
+                Message = $"Lỗi đổi mật khẩu: {ex.Message}"
+            };
+        }
+    }
+
+    private async Task<string> ProcessProfileImage(IFormFile file)
+    {
+        if (file.Length > 2 * 1024 * 1024) 
+        {
+            throw new ArgumentException("Kích thước ảnh vượt quá 2MB.");
+        }
+
+        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
+        var fileExtension = Path.GetExtension(file.FileName).ToLower();
+        if (!allowedExtensions.Contains(fileExtension))
+        {
+            throw new ArgumentException("Chỉ chấp nhận file ảnh có định dạng JPG, JPEG hoặc PNG.");
+        }
+
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var imageData = ms.ToArray();
+        string fileName = $"{Guid.NewGuid()}{fileExtension}"; 
+
+        return await _cloudinaryService.UploadImageAsync(imageData, fileName);
+    }
+    #endregion
 
     #region Staff Management (Admin)
 
@@ -715,6 +880,7 @@ public class UserService : IUserService
             };
         }
     }
+
 
     #endregion
 
