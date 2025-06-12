@@ -610,4 +610,30 @@ public class UserController : ControllerBase
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
         }
     }
+    
+    [HttpPut("{id}/profile")]
+    public async Task<IActionResult> UpdateUserProfile(Guid id, [FromForm] UpdateUserProfileRequest model)
+    {
+        var result = await _userService.UpdateUserProfileAsync(id, model);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+    
+    [HttpPut("{id}/change-password")]
+    public async Task<IActionResult> ChangePassword(Guid id, [FromBody] ChangePasswordRequest model)
+    {
+        var result = await _userService.ChangePasswordAsync(id, model);
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
 }

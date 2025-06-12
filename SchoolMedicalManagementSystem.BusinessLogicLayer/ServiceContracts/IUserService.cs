@@ -4,11 +4,19 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.SchoolClassResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Utilities;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.UserResponse;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 
 public interface IUserService
 {
+    #region User Management (User)
+    Task<BaseResponse<UserResponses>> UpdateUserProfileAsync(Guid userId, UpdateUserProfileRequest model);
+
+    Task<BaseResponse<bool>> ChangePasswordAsync(Guid userId, ChangePasswordRequest model);
+
+    #endregion
+
     #region Staff Management (Admin)
 
     Task<BaseListResponse<StaffUserResponse>> GetStaffUsersAsync(

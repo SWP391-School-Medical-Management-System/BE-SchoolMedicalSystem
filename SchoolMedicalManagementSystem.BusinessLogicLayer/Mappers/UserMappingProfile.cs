@@ -1,6 +1,7 @@
 using AutoMapper;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.UserResponse;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers;
@@ -102,5 +103,19 @@ public class UserMappingProfile : Profile
             .ForMember(dest => dest.StaffCode, opt => opt.MapFrom(src => src.StaffCode))
             .ForMember(dest => dest.LicenseNumber, opt => opt.MapFrom(src => src.LicenseNumber))
             .ForMember(dest => dest.Specialization, opt => opt.MapFrom(src => src.Specialization));
+
+        CreateMap<ApplicationUser, UserResponses>()
+            .ForMember(dest => dest.Role, opt => opt.Ignore())
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+            .ForMember(dest => dest.Username, opt => opt.MapFrom(src => src.Username))
+            .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
+            .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
+            .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
+            .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
+            .ForMember(dest => dest.Gender, opt => opt.MapFrom(src => src.Gender))
+            .ForMember(dest => dest.DateOfBirth, opt => opt.MapFrom(src => src.DateOfBirth))
+            .ForMember(dest => dest.ProfileImageUrl, opt => opt.MapFrom(src => src.ProfileImageUrl))
+            .ForMember(dest => dest.CreatedDate, opt => opt.MapFrom(src => src.CreatedDate))
+            .ForMember(dest => dest.LastUpdatedDate, opt => opt.MapFrom(src => src.LastUpdatedDate));
     }
 }
