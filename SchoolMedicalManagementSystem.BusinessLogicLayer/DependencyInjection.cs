@@ -22,7 +22,6 @@ public static class DependencyInjection
         services.AddMemoryCache();
 
         // Register services
-        services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICacheService, CacheService>();
@@ -32,6 +31,9 @@ public static class DependencyInjection
         services.AddScoped<IMedicalRecordService, MedicalRecordService>();
         services.AddScoped<IMedicalConditionService, MedicalConditionService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IMedicalItemService, MedicalItemService>();
+        services.AddScoped<IHealthEventService, HealthEventService>();
+        services.AddScoped<IStudentMedicationService, StudentMedicationService>();
 
         // Excel
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
@@ -45,8 +47,10 @@ public static class DependencyInjection
         // HttpContextAccessor
         services.AddHttpContextAccessor();
 
+        // Background Service
+        services.AddHostedService<HealthEventBackgroundService>();
+
         // Add Http Context Accessor
-        services.AddHttpContextAccessor();
         services.AddDistributedMemoryCache();
 
         return services;

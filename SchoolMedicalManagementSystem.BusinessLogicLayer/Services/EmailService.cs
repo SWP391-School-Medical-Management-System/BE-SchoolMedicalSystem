@@ -57,7 +57,49 @@ public class EmailService : IEmailService
 
         await SendEmailInternalAsync(to, "Thông Tin Tài Khoản School Medical Management System", emailBody);
     }
-    
+
+    public async Task SendChildAddedNotificationAsync(string parentEmail, string childName, string parentName,
+        string studentCode = "", string className = "", string relationship = "", int totalChildren = 1,
+        string parentPhone = "")
+    {
+        try
+        {
+            var template = await GetEmailTemplateAsync("ChildAddedNotificationEmailTemplate.html");
+
+            var systemUrl = _configuration["System:Url"] ?? "https://schoolmedical.example.com";
+            var supportEmail = _configuration["System:SupportEmail"] ?? "support@schoolmedical.example.com";
+            var schoolPhone = _configuration["School:Phone"] ?? "028-1234-5678";
+            var loginUrl = $"{systemUrl}/login";
+
+            var emailBody = template
+                .Replace("{PARENT_NAME}", parentName)
+                .Replace("{CHILD_NAME}", childName)
+                .Replace("{STUDENT_CODE}", studentCode)
+                .Replace("{CLASS_NAME}", className)
+                .Replace("{LINK_DATE}", DateTime.Now.ToString("dd/MM/yyyy HH:mm"))
+                .Replace("{RELATIONSHIP}", relationship)
+                .Replace("{PARENT_EMAIL}", parentEmail)
+                .Replace("{PARENT_PHONE}", string.IsNullOrEmpty(parentPhone) ? "Chưa cập nhật" : parentPhone)
+                .Replace("{TOTAL_CHILDREN}", totalChildren.ToString())
+                .Replace("{LOGIN_URL}", loginUrl)
+                .Replace("{URL}", systemUrl)
+                .Replace("{SUPPORT_EMAIL}", supportEmail)
+                .Replace("{SCHOOL_PHONE}", schoolPhone)
+                .Replace("{CURRENT_TIME}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"))
+                .Replace("{YEAR}", DateTime.Now.Year.ToString());
+
+            await SendEmailInternalAsync(parentEmail,
+                "Thông báo: Học sinh mới được liên kết - School Medical Management System", emailBody);
+
+            Console.WriteLine($"Sent child added notification to parent: {parentEmail} for child: {childName}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending child added notification to parent: {parentEmail}. Error: {ex.Message}");
+            throw;
+        }
+    }
+
     public async Task SendForgotPasswordOtpAsync(string to, string otp, int expiryMinutes)
     {
         var template = await GetEmailTemplateAsync("ForgotPasswordOtpEmailTemplate.html");

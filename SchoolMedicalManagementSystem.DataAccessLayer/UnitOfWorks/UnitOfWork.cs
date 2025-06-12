@@ -1,5 +1,6 @@
 ﻿using SchoolMedicalManagementSystem.DataAccessLayer.Context;
 using SchoolMedicalManagementSystem.DataAccessLayer.Repositories.UserRepository;
+using SchoolMedicalManagementSystem.DataAccessLayer.RepositoryContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.RepositoryContracts.IUserRepository;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
 
@@ -18,4 +19,6 @@ public class UnitOfWork : BaseUnitOfWork<ApplicationDbContext>, IUnitOfWork
     public ISchoolClassRepository SchoolClassRepository => GetRepository<ISchoolClassRepository>();
     public IMedicalRecordRepository MedicalRecordRepository => GetRepository<IMedicalRecordRepository>();
     public IMedicalConditionRepository MedicalConditionRepository => GetRepository<IMedicalConditionRepository>();
+    public IHealthEventRepository HealthEventRepository => GetRepository<IHealthEventRepository>();
+    public IStudentMedicationRepository StudentMedicationRepository => GetRepository<IStudentMedicationRepository>();
 }

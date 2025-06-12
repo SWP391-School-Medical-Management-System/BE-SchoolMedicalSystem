@@ -22,8 +22,10 @@ public class StudentResponse
 
     // Parent information
     public Guid? ParentId { get; set; }
+    public bool HasParent { get; set; } 
     public string ParentName { get; set; }
     public string ParentPhone { get; set; }
+    public string ParentEmail { get; set; }
     public string ParentRelationship { get; set; }
 
     // Medical information

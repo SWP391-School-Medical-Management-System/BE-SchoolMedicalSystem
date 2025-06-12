@@ -9,3 +9,10 @@ public enum HealthEventType
     ChronicIllnessEpisode, // Đợt tái phát bệnh mãn tính
     Other                  // Khác
 }
+
+// Injury -> MedicalHistory (nếu là tiền sử chấn thương)
+// Illness -> MedicalHistory (nếu là tiền sử bệnh)
+// AllergicReaction -> Allergy
+// Fall -> MedicalHistory (nếu là tiền sử té ngã)
+// ChronicIllnessEpisode -> ChronicDisease
+// Other -> MedicalHistory hoặc không liên quan

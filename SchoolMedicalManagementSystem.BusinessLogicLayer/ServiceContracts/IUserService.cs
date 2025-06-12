@@ -3,6 +3,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserReque
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.SchoolClassResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Utilities;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 
@@ -69,12 +70,7 @@ public interface IUserService
 
     #region Parent-Student Relationship Management
 
-    Task<BaseResponse<bool>> LinkParentToStudentAsync(Guid parentId, Guid studentId,
-        bool allowReplace = false);
-
     Task<BaseResponse<bool>> UnlinkParentFromStudentAsync(Guid studentId, bool forceUnlink = false);
-
-    Task<BaseResponse<ParentStudentLinkStatusResponse>> GetLinkStatusAsync(Guid parentId, Guid studentId);
 
     #endregion
 
@@ -82,21 +78,13 @@ public interface IUserService
 
     Task<BaseResponse<ExcelImportResult<ManagerResponse>>> ImportManagersFromExcelAsync(IFormFile file);
     Task<BaseResponse<ExcelImportResult<SchoolNurseResponse>>> ImportSchoolNursesFromExcelAsync(IFormFile file);
-    Task<BaseResponse<ExcelImportResult<StudentResponse>>> ImportStudentsFromExcelAsync(IFormFile file);
-    Task<BaseResponse<ExcelImportResult<ParentResponse>>> ImportParentsFromExcelAsync(IFormFile file);
+    Task<BaseResponse<StudentParentCombinedImportResult>> ImportStudentParentCombinedFromExcelAsync(IFormFile file);
     Task<byte[]> ExportManagersToExcelAsync(string searchTerm = "", string orderBy = null);
     Task<byte[]> ExportSchoolNursesToExcelAsync(string searchTerm = "", string orderBy = null);
-
-    Task<byte[]> ExportStudentsToExcelAsync(string searchTerm = "", string orderBy = null, Guid? classId = null,
-        bool? hasMedicalRecord = null, bool? hasParent = null);
-
-    Task<byte[]> ExportParentsToExcelAsync(string searchTerm = "", string orderBy = null, bool? hasChildren = null,
-        string relationship = null);
-
+    Task<byte[]> ExportParentStudentRelationshipAsync();
     Task<byte[]> DownloadManagerTemplateAsync();
     Task<byte[]> DownloadSchoolNurseTemplateAsync();
-    Task<byte[]> DownloadStudentTemplateAsync();
-    Task<byte[]> DownloadParentTemplateAsync();
+    Task<byte[]> DownloadStudentParentCombinedTemplateAsync();
 
     #endregion
 
