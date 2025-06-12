@@ -14,10 +14,14 @@ public class HealthEvent : BaseEntity
     public string Description { get; set; }      // Mô tả chi tiết sự kiện
     public DateTime OccurredAt { get; set; }     // Thời gian xảy ra
     public string Location { get; set; }         // Địa điểm xảy ra (lớp học, sân chơi, phòng y tế)
-    public string ActionTaken { get; set; }      // Hành động đã thực hiện để xử lý
-    public string Outcome { get; set; }          // Kết quả xử lý
+    public string? ActionTaken { get; set; }      // Hành động đã thực hiện để xử lý
+    public string? Outcome { get; set; }          // Kết quả xử lý
     public bool IsEmergency { get; set; }        // Có phải trường hợp khẩn cấp không
     public Guid? RelatedMedicalConditionId { get; set; } // ID tình trạng y tế liên quan (dị ứng, bệnh mãn tính)
+    public HealthEventStatus Status { get; set; } = HealthEventStatus.Pending;           // Trạng thái
+    public AssignmentMethod AssignmentMethod { get; set; } = AssignmentMethod.Unassigned; // Cách phân công
+    public DateTime? AssignedAt { get; set; }     // Thời gian được phân công
+    public DateTime? CompletedAt { get; set; }    // Thời gian hoàn thành
         
     // Navigation properties
     public virtual ApplicationUser Student { get; set; }       // Học sinh gặp sự cố

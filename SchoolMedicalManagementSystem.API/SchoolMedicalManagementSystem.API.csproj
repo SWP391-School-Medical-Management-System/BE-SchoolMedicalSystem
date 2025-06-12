@@ -8,6 +8,8 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="CloudinaryDotNet" Version="1.27.5" />
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.5" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.5">
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
           <PrivateAssets>all</PrivateAssets>
@@ -31,10 +33,6 @@
     <ItemGroup>
       <ProjectReference Include="..\SchoolMedicalManagementSystem.BusinessLogicLayer\SchoolMedicalManagementSystem.BusinessLogicLayer.csproj" />
       <ProjectReference Include="..\SchoolMedicalManagementSystem.DataAccessLayer\SchoolMedicalManagementSystem.DataAccessLayer.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="ApiControllers\" />
     </ItemGroup>
 
 </Project>

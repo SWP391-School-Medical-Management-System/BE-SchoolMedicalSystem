@@ -12,7 +12,7 @@ public class Report : BaseEntity
     public ReportType ReportType { get; set; } // Loại báo cáo: HealthCheckSummary, MedicationUsage, HealthEventStatistics
     public DateTime StartPeriod { get; set; } // Thời gian bắt đầu báo cáo
     public DateTime EndPeriod { get; set; }   // Thời gian kết thúc báo cáo
-    public Guid GeneratedById { get; set; }   // ID người tạo báo cáo
+    public Guid? GeneratedById { get; set; }   // ID người tạo báo cáo
     public ReportFormat ReportFormat { get; set; } // Định dạng báo cáo: PDF, Excel, Word
     public string StoragePath { get; set; }   // Đường dẫn lưu trữ báo cáo
     

@@ -8,17 +8,14 @@
 
     <ItemGroup>
       <PackageReference Include="AutoMapper" Version="14.0.0" />
+      <PackageReference Include="CloudinaryDotNet" Version="1.27.5" />
+      <PackageReference Include="EPPlus" Version="7.7.2" />
       <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Mappers\" />
-      <Folder Include="Models\Requests\" />
-      <Folder Include="Models\Responses\" />
-      <Folder Include="ServiceContracts\" />
-      <Folder Include="Services\" />
-      <Folder Include="Validators\" />
+      <ProjectReference Include="..\SchoolMedicalManagementSystem.DataAccessLayer\SchoolMedicalManagementSystem.DataAccessLayer.csproj" />
     </ItemGroup>
 
 </Project>

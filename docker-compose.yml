@@ -1,6 +1,75 @@
-﻿services:
+﻿version: '3.8'
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: always
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: "123456"
+      MSSQL_PID: Express
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./sqlserver:/var/opt/mssql
+    networks:
+      - schoolmedical-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 123456 -Q 'SELECT 1'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:latest
+    restart: always
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis:/data
+    command: redis-server --requirepass Purejoy@123#
+    networks:
+      - schoolmedical-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "Purejoy@123#", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   schoolmedicalmanagementsystem.api:
-    image: schoolmedicalmanagementsystem.api
     build:
       context: .
       dockerfile: SchoolMedicalManagementSystem.API/Dockerfile
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ALLOWED_ORIGINS=*
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "5200:5200"
+      - "7280:7280"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - schoolmedical-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5200/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+networks:
+  schoolmedical-network:
+    name: schoolmedical-network
+    external: false
+
+volumes:
+  sqlserver:
+  redis:
