@@ -207,7 +207,7 @@ public class NotificationService : INotificationService
                     alerts.Add(new NotificationResponse
                     {
                         Id = Guid.NewGuid(),
-                        Title = $"⚠️ CẢNH BÁO: Tình trạng y tế nghiêm trọng",
+                        Title = $"CẢNH BÁO: Tình trạng y tế nghiêm trọng",
                         Content =
                             $"Học sinh {student.FullName} ({student.StudentCode}) có tình trạng y tế nghiêm trọng: {condition.Name}. " +
                             $"Điều trị: {condition.Treatment ?? "Chưa có"}. " +

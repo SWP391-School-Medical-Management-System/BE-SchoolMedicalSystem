@@ -30,8 +30,7 @@ builder.Services.AddDataAccessLayer(builder.Configuration);
 builder.Services.AddBusinessLogicLayer(builder.Configuration);
 
 builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
@@ -89,8 +88,6 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new OpenApiInfo { Title = "School Medical System API", Version = "v1" });
     options.OperationFilter<GenericResponseTypeOperationFilter>();
 });
-
-builder.Services.AddFluentValidationAutoValidation();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {

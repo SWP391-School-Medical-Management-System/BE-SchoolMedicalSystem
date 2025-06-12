@@ -72,7 +72,8 @@ public class MedicalRecordController : ControllerBase
 
     [HttpGet("student/{studentId}")]
     [Authorize(Roles = "SCHOOLNURSE,PARENT")]
-    public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> GetMedicalRecordByStudentId(Guid studentId)
+    public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> GetMedicalRecordByStudentId(
+        Guid studentId)
     {
         try
         {

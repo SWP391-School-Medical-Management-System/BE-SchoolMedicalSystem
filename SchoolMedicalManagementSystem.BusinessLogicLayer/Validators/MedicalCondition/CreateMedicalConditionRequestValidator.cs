@@ -52,7 +52,7 @@ public class CreateMedicalConditionRequestValidator : AbstractValidator<CreateMe
         RuleFor(x => x.Reaction)
             .MaximumLength(500)
             .WithMessage("Mô tả phản ứng không được vượt quá 500 ký tự.")
-            .When(x => !string.IsNullOrEmpty(x.Reaction));
+            .When(x => x.Reaction != null);
 
         RuleFor(x => x.Treatment)
             .MaximumLength(500)

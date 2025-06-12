@@ -42,31 +42,59 @@ public class ApplicationDbContext : DbContext
         }
     }
 
+    #region DbSets
+
+    // Core User Management
     public DbSet<ApplicationUser> Users { get; set; }
     public DbSet<Role> Roles { get; set; }
     public DbSet<UserRole> UserRoles { get; set; }
+
+    // School Structure
     public DbSet<SchoolClass> SchoolClasses { get; set; }
+    public DbSet<StudentClass> StudentClasses { get; set; }
+
+    // Medical Records
     public DbSet<MedicalRecord> MedicalRecords { get; set; }
     public DbSet<MedicalCondition> MedicalConditions { get; set; }
+
+    // Health Checks
     public DbSet<HealthCheck> HealthChecks { get; set; }
     public DbSet<HealthCheckItem> HealthCheckItems { get; set; }
     public DbSet<HealthCheckResult> HealthCheckResults { get; set; }
     public DbSet<HealthCheckResultItem> HealthCheckResultItems { get; set; }
+
+    // Health Events
     public DbSet<HealthEvent> HealthEvents { get; set; }
+
+    // Medical Items & Usage
     public DbSet<MedicalItem> MedicalItems { get; set; }
     public DbSet<MedicalItemUsage> MedicalItemUsages { get; set; }
+
+    // Student Medications
+    public DbSet<StudentMedication> StudentMedications { get; set; }
+    public DbSet<StudentMedicationAdministration> StudentMedicationAdministrations { get; set; }
+
+    // Vaccinations
     public DbSet<VaccinationType> VaccinationTypes { get; set; }
     public DbSet<VaccinationRecord> VaccinationRecords { get; set; }
+
+    // Communications
     public DbSet<Notification> Notifications { get; set; }
+    public DbSet<Appointment> Appointments { get; set; }
+
+    // Content Management
     public DbSet<BlogPost> BlogPosts { get; set; }
     public DbSet<BlogComment> BlogComments { get; set; }
+
+    // Reports
     public DbSet<Report> Reports { get; set; }
-    public DbSet<Appointment> Appointments { get; set; }
-    public DbSet<StudentClass> StudentClasses { get; set; }
+
+    #endregion
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<UserRole>().HasKey(ur => new { ur.UserId, ur.RoleId });
+        // Primary Keys
+        ConfigurePrimaryKeys(modelBuilder);
 
         // Enum Conversions
         ConfigureEnumConversions(modelBuilder);
@@ -74,17 +102,30 @@ public class ApplicationDbContext : DbContext
         // Relationships
         ConfigureRelationships(modelBuilder);
 
-        // Default Values
-        modelBuilder.Entity<ApplicationUser>().Property(u => u.IsActive).HasDefaultValue(false);
+        // Default Values & Constraints
+        ConfigureDefaultValues(modelBuilder);
+
+        // Indexes for Performance
+        ConfigureIndexes(modelBuilder);
 
         // Seed Data
         SeedRoles(modelBuilder);
         SeedAdminAccount(modelBuilder);
     }
 
+    #region Configuration Methods
+
+    private void ConfigurePrimaryKeys(ModelBuilder modelBuilder)
+    {
+        // Composite Primary Keys
+        modelBuilder.Entity<UserRole>().HasKey(ur => new { ur.UserId, ur.RoleId });
+        modelBuilder.Entity<StudentClass>().HasKey(sc => new { sc.StudentId, sc.ClassId });
+    }
+
     private void ConfigureRelationships(ModelBuilder modelBuilder)
     {
-        // ApplicationUser relationships
+        #region ApplicationUser Relationships
+
         modelBuilder.Entity<ApplicationUser>()
             .HasOne(u => u.Parent)
             .WithMany(p => p.Children)
@@ -95,68 +136,210 @@ public class ApplicationDbContext : DbContext
             .WithOne(m => m.Student)
             .HasForeignKey<MedicalRecord>(m => m.UserId);
 
-        // StudentClass relationships
+        #endregion
+
+        #region StudentClass Relationships
+
         modelBuilder.Entity<StudentClass>(entity =>
         {
-            entity.HasKey(sc => new { sc.StudentId, sc.ClassId });
-
             entity.HasIndex(sc => sc.StudentId);
             entity.HasIndex(sc => sc.ClassId);
 
             entity.HasOne(sc => sc.Student)
                 .WithMany(s => s.StudentClasses)
                 .HasForeignKey(sc => sc.StudentId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.NoAction);
 
             entity.HasOne(sc => sc.SchoolClass)
                 .WithMany(c => c.StudentClasses)
                 .HasForeignKey(sc => sc.ClassId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
-        // UserRole relationships
-        modelBuilder.Entity<UserRole>()
-            .HasKey(ur => new { ur.UserId, ur.RoleId });
+        #endregion
+
+        #region UserRole Relationships
 
         modelBuilder.Entity<UserRole>()
             .HasOne(ur => ur.User)
             .WithMany(u => u.UserRoles)
-            .HasForeignKey(ur => ur.UserId);
+            .HasForeignKey(ur => ur.UserId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<UserRole>()
             .HasOne(ur => ur.Role)
             .WithMany(r => r.UserRoles)
-            .HasForeignKey(ur => ur.RoleId);
+            .HasForeignKey(ur => ur.RoleId)
+            .OnDelete(DeleteBehavior.NoAction);
 
-        // MedicalRecord relationships
+        #endregion
+
+        #region MedicalRecord Relationships
+
         modelBuilder.Entity<MedicalRecord>()
             .HasMany(m => m.MedicalConditions)
             .WithOne(c => c.MedicalRecord)
-            .HasForeignKey(c => c.MedicalRecordId);
+            .HasForeignKey(c => c.MedicalRecordId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<MedicalRecord>()
             .HasMany(m => m.VaccinationRecords)
             .WithOne(v => v.MedicalRecord)
             .HasForeignKey(v => v.MedicalRecordId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
-        // HealthCheck relationships
+        #endregion
+
+        #region HealthCheck Relationships
+
         modelBuilder.Entity<HealthCheck>()
             .HasOne(c => c.ConductedBy)
             .WithMany(u => u.ConductedHealthChecks)
-            .HasForeignKey(c => c.ConductedById);
+            .HasForeignKey(c => c.ConductedById)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.CheckItems)
             .WithOne(i => i.HealthCheck)
-            .HasForeignKey(i => i.HealthCheckId);
+            .HasForeignKey(i => i.HealthCheckId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.Results)
             .WithOne(r => r.HealthCheck)
-            .HasForeignKey(r => r.HealthCheckId);
+            .HasForeignKey(r => r.HealthCheckId)
+            .OnDelete(DeleteBehavior.Cascade);
 
-        // ConsultationAppointment relationships
+        #endregion
+
+        #region HealthCheckResult Relationships
+
+        modelBuilder.Entity<HealthCheckResult>()
+            .HasOne(r => r.Student)
+            .WithMany()
+            .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<HealthCheckResult>()
+            .HasMany(r => r.ResultItems)
+            .WithOne(i => i.HealthCheckResult)
+            .HasForeignKey(i => i.HealthCheckResultId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthCheckResultItem>()
+            .HasOne(i => i.HealthCheckItem)
+            .WithMany(h => h.ResultItems)
+            .HasForeignKey(i => i.HealthCheckItemId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        #endregion
+
+        #region HealthEvent Relationships - CRITICAL FIX
+
+        modelBuilder.Entity<HealthEvent>()
+            .HasOne(e => e.Student)
+            .WithMany()
+            .HasForeignKey(e => e.UserId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<HealthEvent>()
+            .HasOne(e => e.HandledBy)
+            .WithMany(u => u.HandledHealthEvents)
+            .HasForeignKey(e => e.HandledById)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<HealthEvent>()
+            .HasOne(e => e.RelatedMedicalCondition)
+            .WithMany()
+            .HasForeignKey(e => e.RelatedMedicalConditionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<HealthEvent>()
+            .HasMany(e => e.MedicalItemsUsed)
+            .WithOne(u => u.HealthEvent)
+            .HasForeignKey(u => u.HealthEventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        #endregion
+
+        #region MedicalItem Relationships
+
+        modelBuilder.Entity<MedicalItem>()
+            .HasMany(m => m.Usages)
+            .WithOne(u => u.MedicalItem)
+            .HasForeignKey(u => u.MedicalItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MedicalItemUsage>()
+            .HasOne(u => u.UsedBy)
+            .WithMany()
+            .HasForeignKey(u => u.UsedById)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        #endregion
+
+        #region StudentMedication Relationships
+
+        modelBuilder.Entity<StudentMedication>()
+            .HasOne(sm => sm.Student)
+            .WithMany()
+            .HasForeignKey(sm => sm.StudentId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<StudentMedication>()
+            .HasOne(sm => sm.Parent)
+            .WithMany(u => u.SentMedications)
+            .HasForeignKey(sm => sm.ParentId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<StudentMedication>()
+            .HasOne(sm => sm.ApprovedBy)
+            .WithMany(u => u.ApprovedMedications)
+            .HasForeignKey(sm => sm.ApprovedById)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<StudentMedication>()
+            .HasMany(sm => sm.Administrations)
+            .WithOne(sma => sma.StudentMedication)
+            .HasForeignKey(sma => sma.StudentMedicationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<StudentMedication>()
+            .HasMany(sm => sm.Notifications)
+            .WithOne()
+            .HasForeignKey("StudentMedicationId")
+            .OnDelete(DeleteBehavior.Cascade);
+
+        #endregion
+
+        #region StudentMedicationAdministration Relationships
+
+        modelBuilder.Entity<StudentMedicationAdministration>()
+            .HasOne(sma => sma.AdministeredBy)
+            .WithMany(u => u.MedicationAdministrations)
+            .HasForeignKey(sma => sma.AdministeredById)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        #endregion
+
+        #region VaccinationType Relationships
+
+        modelBuilder.Entity<VaccinationType>()
+            .HasMany(t => t.Records)
+            .WithOne(r => r.VaccinationType)
+            .HasForeignKey(r => r.VaccinationTypeId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<VaccinationRecord>()
+            .HasOne(r => r.Student)
+            .WithMany()
+            .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        #endregion
+
+        #region Appointment Relationships
+
         modelBuilder.Entity<Appointment>()
             .HasOne(a => a.Student)
             .WithMany()
@@ -173,7 +356,7 @@ public class ApplicationDbContext : DbContext
             .HasOne(a => a.Counselor)
             .WithMany()
             .HasForeignKey(a => a.CounselorId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<Appointment>()
             .HasOne(a => a.HealthCheckResult)
@@ -187,78 +370,9 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(a => a.HealthEventId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // HealthCheckResult relationships
-        modelBuilder.Entity<HealthCheckResult>()
-            .HasOne(r => r.Student)
-            .WithMany()
-            .HasForeignKey(r => r.UserId)
-            .OnDelete(DeleteBehavior.Restrict);
+        #endregion
 
-        modelBuilder.Entity<HealthCheckResult>()
-            .HasMany(r => r.ResultItems)
-            .WithOne(i => i.HealthCheckResult)
-            .HasForeignKey(i => i.HealthCheckResultId);
-
-        // HealthCheckResultItem relationships
-        modelBuilder.Entity<HealthCheckResultItem>()
-            .HasOne(i => i.HealthCheckItem)
-            .WithMany(h => h.ResultItems)
-            .HasForeignKey(i => i.HealthCheckItemId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // HealthEvent relationships
-        modelBuilder.Entity<HealthEvent>()
-            .HasOne(e => e.Student)
-            .WithMany()
-            .HasForeignKey(e => e.UserId)
-            .OnDelete(DeleteBehavior.NoAction);
-
-        modelBuilder.Entity<HealthEvent>()
-            .HasOne(e => e.HandledBy)
-            .WithMany(u => u.HandledHealthEvents)
-            .HasForeignKey(e => e.HandledById);
-
-        modelBuilder.Entity<HealthEvent>()
-            .HasOne(e => e.RelatedMedicalCondition)
-            .WithMany()
-            .HasForeignKey(e => e.RelatedMedicalConditionId);
-
-        modelBuilder.Entity<HealthEvent>()
-            .HasMany(e => e.MedicalItemsUsed)
-            .WithOne(u => u.HealthEvent)
-            .HasForeignKey(u => u.HealthEventId);
-
-        // MedicalItem relationships
-        modelBuilder.Entity<MedicalItem>()
-            .HasMany(m => m.Usages)
-            .WithOne(u => u.MedicalItem)
-            .HasForeignKey(u => u.MedicalItemId);
-
-        // MedicalItemUsage relationships
-        modelBuilder.Entity<MedicalItemUsage>()
-            .HasOne(u => u.UsedBy)
-            .WithMany()
-            .HasForeignKey(u => u.UsedById);
-
-        // VaccinationType relationships
-        modelBuilder.Entity<VaccinationType>()
-            .HasMany(t => t.Records)
-            .WithOne(r => r.VaccinationType)
-            .HasForeignKey(r => r.VaccinationTypeId);
-
-        // VaccinationRecord relationships
-        modelBuilder.Entity<VaccinationRecord>()
-            .HasOne(r => r.Student)
-            .WithMany()
-            .HasForeignKey(r => r.UserId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // Notification relationships
-        modelBuilder.Entity<Notification>()
-            .HasOne(n => n.Appointment)
-            .WithMany(a => a.Notifications)
-            .HasForeignKey(n => n.AppointmentId)
-            .OnDelete(DeleteBehavior.SetNull);
+        #region Notification Relationships
 
         modelBuilder.Entity<Notification>()
             .HasOne(n => n.Sender)
@@ -270,7 +384,7 @@ public class ApplicationDbContext : DbContext
             .HasOne(n => n.Recipient)
             .WithMany(u => u.ReceivedNotifications)
             .HasForeignKey(n => n.RecipientId)
-            .OnDelete(DeleteBehavior.NoAction); // Thay CASCADE bằng NO ACTION
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<Notification>()
             .HasOne(n => n.HealthCheck)
@@ -290,57 +404,244 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(n => n.VaccinationRecordId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // BlogPost relationships
+        modelBuilder.Entity<Notification>()
+            .HasOne(n => n.Appointment)
+            .WithMany(a => a.Notifications)
+            .HasForeignKey(n => n.AppointmentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        #endregion
+
+        #region BlogPost Relationships
+
         modelBuilder.Entity<BlogPost>()
             .HasOne(p => p.Author)
             .WithMany(u => u.BlogPosts)
-            .HasForeignKey(p => p.AuthorId);
+            .HasForeignKey(p => p.AuthorId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<BlogPost>()
             .HasMany(p => p.Comments)
             .WithOne(c => c.Post)
-            .HasForeignKey(c => c.PostId);
+            .HasForeignKey(c => c.PostId)
+            .OnDelete(DeleteBehavior.Cascade);
 
-        // BlogComment relationships
         modelBuilder.Entity<BlogComment>()
             .HasOne(c => c.User)
             .WithMany(u => u.BlogComments)
             .HasForeignKey(c => c.UserId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.NoAction);
 
-        // Report relationships
+        #endregion
+
+        #region Report Relationships
+
         modelBuilder.Entity<Report>()
             .HasOne(r => r.GeneratedBy)
             .WithMany(u => u.GeneratedReports)
-            .HasForeignKey(r => r.GeneratedById);
+            .HasForeignKey(r => r.GeneratedById)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        #endregion
     }
 
     private void ConfigureEnumConversions(ModelBuilder modelBuilder)
     {
+        // Notification enums
         modelBuilder.Entity<Notification>().Property(n => n.NotificationType)
             .HasConversion(new EnumToStringConverter<NotificationType>());
 
+        // HealthEvent enums
         modelBuilder.Entity<HealthEvent>().Property(h => h.EventType)
             .HasConversion(new EnumToStringConverter<HealthEventType>());
 
+        // HealthEvent Status & Assignment enums
+        modelBuilder.Entity<HealthEvent>().Property(h => h.Status)
+            .HasConversion(new EnumToStringConverter<HealthEventStatus>());
+
+        modelBuilder.Entity<HealthEvent>().Property(h => h.AssignmentMethod)
+            .HasConversion(new EnumToStringConverter<AssignmentMethod>());
+
+        // MedicalCondition enums
         modelBuilder.Entity<MedicalCondition>().Property(mc => mc.Severity)
             .HasConversion(new EnumToStringConverter<SeverityType>());
 
+        modelBuilder.Entity<MedicalCondition>().Property(mc => mc.Type)
+            .HasConversion(new EnumToStringConverter<MedicalConditionType>());
+
+        // MedicalItem enums
         modelBuilder.Entity<MedicalItem>().Property(mi => mi.Form)
             .HasConversion(new EnumToStringConverter<MedicationForm>());
 
+        // StudentMedication enum
+        modelBuilder.Entity<StudentMedication>().Property(sm => sm.Status)
+            .HasConversion(new EnumToStringConverter<StudentMedicationStatus>());
+
+        // Report enums
         modelBuilder.Entity<Report>().Property(r => r.ReportType)
             .HasConversion(new EnumToStringConverter<ReportType>());
 
         modelBuilder.Entity<Report>().Property(r => r.ReportFormat)
             .HasConversion(new EnumToStringConverter<ReportFormat>());
 
+        // Appointment enum
         modelBuilder.Entity<Appointment>().Property(a => a.Status)
             .HasConversion(new EnumToStringConverter<AppointmentStatus>());
 
-        modelBuilder.Entity<MedicalCondition>().Property(a => a.Type)
-            .HasConversion(new EnumToStringConverter<MedicalConditionType>());
+        // MedicalItemApprovalStatus & PriorityLevel enums
+        modelBuilder.Entity<MedicalItem>().Property(a => a.ApprovalStatus)
+            .HasConversion(new EnumToStringConverter<MedicalItemApprovalStatus>());
+
+        modelBuilder.Entity<MedicalItem>().Property(a => a.Priority)
+            .HasConversion(new EnumToStringConverter<PriorityLevel>());
     }
+
+    private void ConfigureDefaultValues(ModelBuilder modelBuilder)
+    {
+        // ApplicationUser defaults
+        modelBuilder.Entity<ApplicationUser>().Property(u => u.IsActive).HasDefaultValue(false);
+        modelBuilder.Entity<ApplicationUser>().Property(u => u.IsDeleted).HasDefaultValue(false);
+
+        // HealthEvent defaults
+        modelBuilder.Entity<HealthEvent>().Property(he => he.Status).HasDefaultValue(HealthEventStatus.Pending);
+        modelBuilder.Entity<HealthEvent>().Property(he => he.AssignmentMethod)
+            .HasDefaultValue(AssignmentMethod.Unassigned);
+
+        // StudentMedication defaults
+        modelBuilder.Entity<StudentMedication>().Property(sm => sm.Status)
+            .HasDefaultValue(StudentMedicationStatus.PendingApproval);
+
+        // Notification defaults
+        modelBuilder.Entity<Notification>().Property(n => n.IsRead).HasDefaultValue(false);
+        modelBuilder.Entity<Notification>().Property(n => n.IsConfirmed).HasDefaultValue(false);
+        modelBuilder.Entity<Notification>().Property(n => n.IsDismissed).HasDefaultValue(false);
+        modelBuilder.Entity<Notification>().Property(n => n.RequiresConfirmation).HasDefaultValue(false);
+
+        // BlogPost defaults
+        modelBuilder.Entity<BlogPost>().Property(bp => bp.IsPublished).HasDefaultValue(false);
+
+        // BlogComment defaults
+        modelBuilder.Entity<BlogComment>().Property(bc => bc.IsApproved).HasDefaultValue(false);
+
+        // HealthCheck defaults
+        modelBuilder.Entity<HealthCheck>().Property(hc => hc.IsCompleted).HasDefaultValue(false);
+
+        // HealthCheckResult defaults
+        modelBuilder.Entity<HealthCheckResult>().Property(hcr => hcr.HasAbnormality).HasDefaultValue(false);
+
+        // HealthCheckResultItem defaults
+        modelBuilder.Entity<HealthCheckResultItem>().Property(hcri => hcri.IsNormal).HasDefaultValue(true);
+
+        // HealthEvent defaults
+        modelBuilder.Entity<HealthEvent>().Property(he => he.IsEmergency).HasDefaultValue(false);
+
+        // StudentMedicationAdministration defaults
+        modelBuilder.Entity<StudentMedicationAdministration>().Property(sma => sma.StudentRefused)
+            .HasDefaultValue(false);
+
+        // StudentClass defaults
+        modelBuilder.Entity<StudentClass>().Property(sc => sc.EnrollmentDate).HasDefaultValueSql("GETDATE()");
+
+        // BaseEntity defaults for all entities
+        var entityTypes = modelBuilder.Model.GetEntityTypes()
+            .Where(e => typeof(BaseEntity).IsAssignableFrom(e.ClrType));
+
+        foreach (var entityType in entityTypes)
+        {
+            modelBuilder.Entity(entityType.ClrType).Property("IsDeleted").HasDefaultValue(false);
+        }
+    }
+
+    private void ConfigureIndexes(ModelBuilder modelBuilder)
+    {
+        // ApplicationUser indexes
+        modelBuilder.Entity<ApplicationUser>().HasIndex(u => u.Username).IsUnique();
+        modelBuilder.Entity<ApplicationUser>().HasIndex(u => u.Email).IsUnique();
+        modelBuilder.Entity<ApplicationUser>().HasIndex(u => u.StudentCode);
+        modelBuilder.Entity<ApplicationUser>().HasIndex(u => u.StaffCode);
+        modelBuilder.Entity<ApplicationUser>().HasIndex(u => u.IsActive);
+        modelBuilder.Entity<ApplicationUser>().HasIndex(u => u.ParentId);
+
+        // HealthEvent indexes
+        modelBuilder.Entity<HealthEvent>().HasIndex(he => he.UserId);
+        modelBuilder.Entity<HealthEvent>().HasIndex(he => he.HandledById);
+        modelBuilder.Entity<HealthEvent>().HasIndex(he => he.Status);
+        modelBuilder.Entity<HealthEvent>().HasIndex(he => he.OccurredAt);
+        modelBuilder.Entity<HealthEvent>().HasIndex(he => he.IsEmergency);
+        modelBuilder.Entity<HealthEvent>().HasIndex(he => he.EventType);
+
+        // StudentMedication indexes
+        modelBuilder.Entity<StudentMedication>().HasIndex(sm => sm.StudentId);
+        modelBuilder.Entity<StudentMedication>().HasIndex(sm => sm.ParentId);
+        modelBuilder.Entity<StudentMedication>().HasIndex(sm => sm.ApprovedById);
+        modelBuilder.Entity<StudentMedication>().HasIndex(sm => sm.Status);
+        modelBuilder.Entity<StudentMedication>().HasIndex(sm => sm.ExpiryDate);
+        modelBuilder.Entity<StudentMedication>().HasIndex(sm => sm.StartDate);
+        modelBuilder.Entity<StudentMedication>().HasIndex(sm => sm.EndDate);
+
+        // StudentMedicationAdministration indexes
+        modelBuilder.Entity<StudentMedicationAdministration>().HasIndex(sma => sma.StudentMedicationId);
+        modelBuilder.Entity<StudentMedicationAdministration>().HasIndex(sma => sma.AdministeredById);
+        modelBuilder.Entity<StudentMedicationAdministration>().HasIndex(sma => sma.AdministeredAt);
+
+        // Notification indexes
+        modelBuilder.Entity<Notification>().HasIndex(n => n.RecipientId);
+        modelBuilder.Entity<Notification>().HasIndex(n => n.SenderId);
+        modelBuilder.Entity<Notification>().HasIndex(n => n.IsRead);
+        modelBuilder.Entity<Notification>().HasIndex(n => n.NotificationType);
+        modelBuilder.Entity<Notification>().HasIndex(n => n.CreatedDate);
+
+        // MedicalRecord indexes
+        modelBuilder.Entity<MedicalRecord>().HasIndex(mr => mr.UserId).IsUnique();
+
+        // MedicalCondition indexes
+        modelBuilder.Entity<MedicalCondition>().HasIndex(mc => mc.MedicalRecordId);
+        modelBuilder.Entity<MedicalCondition>().HasIndex(mc => mc.Type);
+        modelBuilder.Entity<MedicalCondition>().HasIndex(mc => mc.Severity);
+
+        // MedicalItem indexes
+        modelBuilder.Entity<MedicalItem>().HasIndex(mi => mi.Type);
+        modelBuilder.Entity<MedicalItem>().HasIndex(mi => mi.ExpiryDate);
+        modelBuilder.Entity<MedicalItem>().HasIndex(mi => mi.Quantity);
+
+        // HealthCheck indexes
+        modelBuilder.Entity<HealthCheck>().HasIndex(hc => hc.ScheduledDate);
+        modelBuilder.Entity<HealthCheck>().HasIndex(hc => hc.ConductedById);
+        modelBuilder.Entity<HealthCheck>().HasIndex(hc => hc.IsCompleted);
+
+        // HealthCheckResult indexes
+        modelBuilder.Entity<HealthCheckResult>().HasIndex(hcr => hcr.UserId);
+        modelBuilder.Entity<HealthCheckResult>().HasIndex(hcr => hcr.HealthCheckId);
+        modelBuilder.Entity<HealthCheckResult>().HasIndex(hcr => hcr.HasAbnormality);
+
+        // VaccinationRecord indexes
+        modelBuilder.Entity<VaccinationRecord>().HasIndex(vr => vr.UserId);
+        modelBuilder.Entity<VaccinationRecord>().HasIndex(vr => vr.VaccinationTypeId);
+        modelBuilder.Entity<VaccinationRecord>().HasIndex(vr => vr.AdministeredDate);
+
+        // BlogPost indexes
+        modelBuilder.Entity<BlogPost>().HasIndex(bp => bp.AuthorId);
+        modelBuilder.Entity<BlogPost>().HasIndex(bp => bp.IsPublished);
+        modelBuilder.Entity<BlogPost>().HasIndex(bp => bp.CategoryName);
+        modelBuilder.Entity<BlogPost>().HasIndex(bp => bp.CreatedDate);
+
+        // Report indexes
+        modelBuilder.Entity<Report>().HasIndex(r => r.GeneratedById);
+        modelBuilder.Entity<Report>().HasIndex(r => r.ReportType);
+        modelBuilder.Entity<Report>().HasIndex(r => r.StartPeriod);
+        modelBuilder.Entity<Report>().HasIndex(r => r.EndPeriod);
+
+        // Appointment indexes
+        modelBuilder.Entity<Appointment>().HasIndex(a => a.StudentId);
+        modelBuilder.Entity<Appointment>().HasIndex(a => a.ParentId);
+        modelBuilder.Entity<Appointment>().HasIndex(a => a.CounselorId);
+        modelBuilder.Entity<Appointment>().HasIndex(a => a.AppointmentDate);
+        modelBuilder.Entity<Appointment>().HasIndex(a => a.Status);
+    }
+
+    #endregion
+
+    #region Seed Data
 
     private void SeedRoles(ModelBuilder modelBuilder)
     {
@@ -406,12 +707,7 @@ public class ApplicationDbContext : DbContext
                 IsActive = true,
                 CreatedDate = DateTime.Now,
                 IsDeleted = false,
-                LicenseNumber = string.Empty,
                 StaffCode = "AD123",
-                Specialization = string.Empty,
-                StudentCode = string.Empty,
-                Relationship = string.Empty,
-                ProfileImageUrl = string.Empty
             }
         );
 
@@ -442,4 +738,6 @@ public class ApplicationDbContext : DbContext
             return builder.ToString();
         }
     }
+
+    #endregion
 }

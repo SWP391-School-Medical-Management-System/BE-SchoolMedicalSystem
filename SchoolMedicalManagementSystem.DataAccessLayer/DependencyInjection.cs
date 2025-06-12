@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SchoolMedicalManagementSystem.DataAccessLayer.Repositories;
 using SchoolMedicalManagementSystem.DataAccessLayer.Repositories.UserRepository;
+using SchoolMedicalManagementSystem.DataAccessLayer.RepositoryContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.RepositoryContracts.IUserRepository;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
@@ -20,6 +22,9 @@ public static class DependencyInjection
         services.AddScoped<ISchoolClassRepository, SchoolClassRepository>();
         services.AddScoped<IMedicalRecordRepository, MedicalRecordRepository>();
         services.AddScoped<IMedicalConditionRepository, MedicalConditionRepository>();
+        services.AddScoped<IMedicalItemRepository, MedicalItemRepository>();
+        services.AddScoped<IHealthEventRepository, HealthEventRepository>();
+        services.AddScoped<IStudentMedicationRepository, StudentMedicationRepository>();
 
         return services;
     }

@@ -5,6 +5,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.SchoolClassResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Utilities;
 
 namespace SchoolMedicalManagementSystem.API.ApiControllers;
 
@@ -13,10 +14,12 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers;
 public class UserController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly ILogger<UserController> _logger;
 
-    public UserController(IUserService userService)
+    public UserController(IUserService userService, ILogger<UserController> logger)
     {
         _userService = userService;
+        _logger = logger;
     }
 
     [HttpGet("staff")]
@@ -280,6 +283,116 @@ public class UserController : ControllerBase
         }
     }
 
+    [HttpGet("download-student-parent-template")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<IActionResult> DownloadStudentParentCombinedTemplate()
+    {
+        try
+        {
+            var fileBytes = await _userService.DownloadStudentParentCombinedTemplateAsync();
+            var fileName = $"Template_HocSinh_PhuHuynh_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new BaseResponse<object>
+            {
+                Success = false,
+                Message = "Lỗi tải template Excel kết hợp học sinh-phụ huynh."
+            });
+        }
+    }
+
+    [HttpPost("import-parent-student-relationship")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseResponse<StudentParentCombinedImportResult>>> ImportStudentParentCombined(
+        IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new BaseResponse<StudentParentCombinedImportResult>
+                {
+                    Success = false,
+                    Message = "Vui lòng chọn file Excel để import."
+                });
+            }
+
+            if (!file.FileName.EndsWith(".xlsx") && !file.FileName.EndsWith(".xls"))
+            {
+                return BadRequest(new BaseResponse<StudentParentCombinedImportResult>
+                {
+                    Success = false,
+                    Message = "Chỉ chấp nhận file Excel (.xlsx, .xls)."
+                });
+            }
+
+            if (file.Length > 10 * 1024 * 1024) // 10MB limit
+            {
+                return BadRequest(new BaseResponse<StudentParentCombinedImportResult>
+                {
+                    Success = false,
+                    Message = "Kích thước file không được vượt quá 10MB."
+                });
+            }
+
+            _logger.LogInformation("Starting student-parent combined import. File: {FileName}, Size: {FileSize}KB",
+                file.FileName, file.Length / 1024);
+
+            var result = await _userService.ImportStudentParentCombinedFromExcelAsync(file);
+
+            if (result.Success && result.Data != null)
+            {
+                _logger.LogInformation("Student-parent combined import completed. " +
+                                       "Students: {Students}, Parents: {Parents}, Links: {Links}, Errors: {Errors}",
+                    result.Data.SuccessfulStudents, result.Data.SuccessfulParents,
+                    result.Data.SuccessfulLinks, result.Data.ErrorRows);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in student-parent combined import");
+            return StatusCode(500, new BaseResponse<StudentParentCombinedImportResult>
+            {
+                Success = false,
+                Message = "Lỗi xử lý import học sinh-phụ huynh kết hợp."
+            });
+        }
+    }
+
+    [HttpGet("export-parent-student-relationship")]
+    [Authorize(Roles = "ADMIN,MANAGER")]
+    public async Task<IActionResult> ExportParentStudentRelationship()
+    {
+        try
+        {
+            _logger.LogInformation("Starting parent-student relationship export");
+
+            var fileBytes = await _userService.ExportParentStudentRelationshipAsync();
+            var fileName = $"BaoCao_QuanHe_PhuHuynh_HocSinh_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            _logger.LogInformation("Parent-student relationship export completed successfully. File size: {FileSize}KB",
+                fileBytes.Length / 1024);
+
+            return File(fileBytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting parent-student relationship report");
+            return StatusCode(500, new BaseResponse<object>
+            {
+                Success = false,
+                Message = "Lỗi xuất báo cáo quan hệ phụ huynh-học sinh."
+            });
+        }
+    }
+
     [HttpGet("students")]
     [Authorize(Roles = "MANAGER")]
     public async Task<ActionResult<BaseListResponse<StudentResponse>>> GetStudents(
@@ -375,73 +488,6 @@ public class UserController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
-
-    [HttpGet("students/template")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<IActionResult> DownloadStudentTemplate()
-    {
-        try
-        {
-            var fileBytes = await _userService.DownloadStudentTemplateAsync();
-            var fileName = $"Template_Student_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-
-            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi tạo template Student."));
-        }
-    }
-
-    [HttpPost("students/import")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<ExcelImportResult<StudentResponse>>>> ImportStudents(IFormFile file)
-    {
-        try
-        {
-            if (file == null || file.Length == 0)
-                return BadRequest(BaseResponse<string>.ErrorResult("File không được để trống."));
-
-            if (file.Length > 10 * 1024 * 1024) // 10MB
-                return BadRequest(BaseResponse<string>.ErrorResult("Kích thước file không được vượt quá 10MB."));
-
-            var allowedExtensions = new[] { ".xlsx", ".xls" };
-            var fileExtension = Path.GetExtension(file.FileName).ToLower();
-            if (!allowedExtensions.Contains(fileExtension))
-                return BadRequest(BaseResponse<string>.ErrorResult("Chỉ hỗ trợ file Excel (.xlsx, .xls)."));
-
-            var result = await _userService.ImportStudentsFromExcelAsync(file);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi import Student từ Excel."));
-        }
-    }
-
-    [HttpGet("students/export")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<IActionResult> ExportStudents(
-        [FromQuery] string searchTerm = "",
-        [FromQuery] string orderBy = null,
-        [FromQuery] Guid? classId = null,
-        [FromQuery] bool? hasMedicalRecord = null,
-        [FromQuery] bool? hasParent = null)
-    {
-        try
-        {
-            var fileBytes =
-                await _userService.ExportStudentsToExcelAsync(searchTerm, orderBy, classId, hasMedicalRecord,
-                    hasParent);
-            var fileName = $"Danh_Sach_Student_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-
-            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi export Student ra Excel."));
         }
     }
 
@@ -542,105 +588,9 @@ public class UserController : ControllerBase
         }
     }
 
-    [HttpGet("parents/template")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<IActionResult> DownloadParentTemplate()
-    {
-        try
-        {
-            var fileBytes = await _userService.DownloadParentTemplateAsync();
-            var fileName = $"Template_Parent_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-
-            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi tạo template Parent."));
-        }
-    }
-
-    [HttpPost("parents/import")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<ExcelImportResult<ParentResponse>>>> ImportParents(IFormFile file)
-    {
-        try
-        {
-            if (file == null || file.Length == 0)
-                return BadRequest(BaseResponse<string>.ErrorResult("File không được để trống."));
-
-            if (file.Length > 10 * 1024 * 1024) // 10MB
-                return BadRequest(BaseResponse<string>.ErrorResult("Kích thước file không được vượt quá 10MB."));
-
-            var allowedExtensions = new[] { ".xlsx", ".xls" };
-            var fileExtension = Path.GetExtension(file.FileName).ToLower();
-            if (!allowedExtensions.Contains(fileExtension))
-                return BadRequest(BaseResponse<string>.ErrorResult("Chỉ hỗ trợ file Excel (.xlsx, .xls)."));
-
-            var result = await _userService.ImportParentsFromExcelAsync(file);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi import Parent từ Excel."));
-        }
-    }
-
-    [HttpGet("parents/export")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<IActionResult> ExportParents(
-        [FromQuery] string searchTerm = "",
-        [FromQuery] string orderBy = null,
-        [FromQuery] bool? hasChildren = null,
-        [FromQuery] string relationship = null)
-    {
-        try
-        {
-            var fileBytes =
-                await _userService.ExportParentsToExcelAsync(searchTerm, orderBy, hasChildren, relationship);
-            var fileName = $"Danh_Sach_Parent_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-
-            return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<string>.ErrorResult("Lỗi export Parent ra Excel."));
-        }
-    }
-
-    /// <summary>
-    /// Liên kết phụ huynh với học sinh
-    /// </summary>
-    /// <param name="parentId">ID phụ huynh</param>
-    /// <param name="studentId">ID học sinh</param>
-    /// <param name="allowReplace">Cho phép thay thế parent hiện tại của student (default: false)</param>
-    /// <returns></returns>
-    [HttpPost("parents/{parentId}/students/{studentId}")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<bool>>> LinkParentToStudent(
-        Guid parentId,
-        Guid studentId,
-        [FromQuery] bool allowReplace = false)
-    {
-        try
-        {
-            var response = await _userService.LinkParentToStudentAsync(parentId, studentId, allowReplace);
-            if (!response.Success)
-                return BadRequest(response);
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
-
     /// <summary>
     /// Hủy liên kết phụ huynh khỏi học sinh
     /// </summary>
-    /// <param name="studentId">ID học sinh</param>
-    /// <param name="forceUnlink">Bỏ qua validation và unlink ngay lập tức (dành cho admin, default: false)</param>
-    /// <returns></returns>
     [HttpDelete("students/{studentId}/parent")]
     [Authorize(Roles = "MANAGER")]
     public async Task<ActionResult<BaseResponse<bool>>> UnlinkParentFromStudent(
@@ -660,33 +610,8 @@ public class UserController : ControllerBase
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
         }
     }
-
-    /// <summary>
-    /// Kiểm tra trạng thái liên kết giữa phụ huynh và học sinh
-    /// </summary>
-    /// <param name="parentId">ID phụ huynh</param>
-    /// <param name="studentId">ID học sinh</param>
-    /// <returns></returns>
-    [HttpGet("parents/{parentId}/students/{studentId}/link-status")]
-    [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<ParentStudentLinkStatusResponse>>> GetLinkStatus(Guid parentId,
-        Guid studentId)
-    {
-        try
-        {
-            var response = await _userService.GetLinkStatusAsync(parentId, studentId);
-            if (!response.Success)
-                return BadRequest(response);
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, BaseResponse<ParentStudentLinkStatusResponse>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
+    
     [HttpPut("{id}/profile")]
- 
     public async Task<IActionResult> UpdateUserProfile(Guid id, [FromForm] UpdateUserProfileRequest model)
     {
         var result = await _userService.UpdateUserProfileAsync(id, model);
@@ -698,8 +623,8 @@ public class UserController : ControllerBase
 
         return Ok(result);
     }
-    [HttpPut("{id}/change-password")]
     
+    [HttpPut("{id}/change-password")]
     public async Task<IActionResult> ChangePassword(Guid id, [FromBody] ChangePasswordRequest model)
     {
         var result = await _userService.ChangePasswordAsync(id, model);

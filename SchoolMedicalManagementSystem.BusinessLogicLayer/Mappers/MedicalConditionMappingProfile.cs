@@ -41,7 +41,7 @@ public class MedicalConditionMappingProfile : Profile
             .ForAllMembers(opt => opt.Condition((src, dest, member) => member != null));
 
         CreateMap<MedicalCondition, MedicalConditionResponse>()
-            .ForMember(dest => dest.StudentName, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.StudentCode, opt => opt.Ignore()); // Set in service
+            .ForMember(dest => dest.StudentName, opt => opt.Ignore())
+            .ForMember(dest => dest.StudentCode, opt => opt.Ignore());
     }
 }

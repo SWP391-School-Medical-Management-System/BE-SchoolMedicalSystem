@@ -37,10 +37,14 @@ public class UserMappingProfile : Profile
             .ForMember(dest => dest.HasMedicalRecord, opt => opt.MapFrom(src => src.MedicalRecord != null))
             .ForMember(dest => dest.Classes, opt => opt.Ignore())
             .ForMember(dest => dest.ClassCount, opt => opt.Ignore())
+            .ForMember(dest => dest.HasParent, opt => opt.MapFrom(src => src.ParentId.HasValue))
+            .ForMember(dest => dest.ParentId, opt => opt.MapFrom(src => src.ParentId))
             .ForMember(dest => dest.ParentName,
                 opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : null))
             .ForMember(dest => dest.ParentPhone,
                 opt => opt.MapFrom(src => src.Parent != null ? src.Parent.PhoneNumber : null))
+            .ForMember(dest => dest.ParentEmail,
+                opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Email : null))
             .ForMember(dest => dest.ParentRelationship,
                 opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Relationship : null))
             .ForMember(dest => dest.BloodType,
@@ -99,26 +103,6 @@ public class UserMappingProfile : Profile
             .ForMember(dest => dest.StaffCode, opt => opt.MapFrom(src => src.StaffCode))
             .ForMember(dest => dest.LicenseNumber, opt => opt.MapFrom(src => src.LicenseNumber))
             .ForMember(dest => dest.Specialization, opt => opt.MapFrom(src => src.Specialization));
-
-        CreateMap<StudentExcelModel, CreateStudentRequest>()
-            .ForMember(dest => dest.Username, opt => opt.MapFrom(src => src.Username))
-            .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
-            .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
-            .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
-            .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
-            .ForMember(dest => dest.Gender, opt => opt.MapFrom(src => src.Gender))
-            .ForMember(dest => dest.DateOfBirth, opt => opt.MapFrom(src => src.DateOfBirth))
-            .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.StudentCode));
-
-        CreateMap<ParentExcelModel, CreateParentRequest>()
-            .ForMember(dest => dest.Username, opt => opt.MapFrom(src => src.Username))
-            .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
-            .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
-            .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
-            .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
-            .ForMember(dest => dest.Gender, opt => opt.MapFrom(src => src.Gender))
-            .ForMember(dest => dest.DateOfBirth, opt => opt.MapFrom(src => src.DateOfBirth))
-            .ForMember(dest => dest.Relationship, opt => opt.MapFrom(src => src.Relationship));
 
         CreateMap<ApplicationUser, UserResponses>()
             .ForMember(dest => dest.Role, opt => opt.Ignore())

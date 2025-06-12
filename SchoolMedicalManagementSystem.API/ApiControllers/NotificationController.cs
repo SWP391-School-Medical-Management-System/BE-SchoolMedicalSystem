@@ -159,7 +159,7 @@ public class NotificationController : ControllerBase
     private Guid GetCurrentUserId()
     {
         var userIdClaim = User.FindFirst("uid")?.Value;
-    
+
         if (Guid.TryParse(userIdClaim, out Guid userId))
         {
             return userId;

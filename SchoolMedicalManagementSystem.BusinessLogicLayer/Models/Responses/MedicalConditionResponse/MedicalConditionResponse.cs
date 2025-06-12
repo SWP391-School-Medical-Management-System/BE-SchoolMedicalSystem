@@ -6,10 +6,8 @@ public class MedicalConditionResponse
 {
     public Guid Id { get; set; }
     public Guid MedicalRecordId { get; set; }
-
     public string? StudentName { get; set; }
     public string? StudentCode { get; set; }
-
     public MedicalConditionType Type { get; set; }
 
     public string TypeDisplay => Type switch
@@ -38,7 +36,6 @@ public class MedicalConditionResponse
     public string? Hospital { get; set; }
     public string? Doctor { get; set; }
     public string? Notes { get; set; }
-
     public DateTime? CreatedDate { get; set; }
     public DateTime? LastUpdatedDate { get; set; }
 }

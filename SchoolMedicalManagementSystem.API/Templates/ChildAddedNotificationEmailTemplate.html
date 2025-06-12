@@ -1,0 +1,300 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Thông báo: Học sinh mới được liên kết - School Medical Management System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #2196F3;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            border-radius: 5px 5px 0 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .header p {
+            margin: 5px 0 0;
+            font-size: 16px;
+        }
+        .content {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-left: 1px solid #ddd;
+            border-right: 1px solid #ddd;
+        }
+        .notification-message {
+            background-color: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 5px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .notification-icon {
+            font-size: 48px;
+            color: #4caf50;
+            margin-bottom: 15px;
+        }
+        .notification-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+        .notification-text {
+            font-size: 16px;
+            color: #388e3c;
+        }
+        .child-info {
+            background-color: #fff;
+            border: 2px solid #2196F3;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .login-button {
+            background-color: #2196F3;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+            margin: 15px 0;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        .login-button:hover {
+            background-color: #1976d2;
+        }
+        .footer {
+            background-color: #f5f5f5;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-radius: 0 0 5px 5px;
+            border: 1px solid #ddd;
+            border-top: none;
+        }
+        .social-links {
+            margin: 15px 0;
+        }
+        .social-links a {
+            display: inline-block;
+            margin: 0 5px;
+            color: #2196F3;
+            text-decoration: none;
+        }
+        .features-notice {
+            background-color: #e3f2fd;
+            border: 1px solid #90caf9;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #1565c0;
+        }
+        .features-notice-icon {
+            color: #2196F3;
+            font-size: 18px;
+            margin-right: 10px;
+        }
+        .account-details {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .account-details h3 {
+            color: #1976D2;
+            margin-top: 0;
+        }
+        .available-features {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .available-features h3 {
+            color: #2196F3;
+            margin-top: 0;
+        }
+        .available-features ul {
+            padding-left: 20px;
+        }
+        .available-features li {
+            margin: 8px 0;
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            margin: 15px 0;
+            font-style: italic;
+        }
+        .contact-support {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .child-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 5px solid #4caf50;
+        }
+        .child-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+        .child-details {
+            font-size: 14px;
+            color: #555;
+        }
+        .important-note {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #856404;
+        }
+        .important-note-icon {
+            color: #f39c12;
+            font-size: 18px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>School Medical Management System</h1>
+        <p>THÔNG BÁO LIÊN KẾT HỌC SINH MỚI</p>
+    </div>
+    <div class="content">
+        <p>Kính gửi quý phụ huynh <strong>{PARENT_NAME}</strong>,</p>
+
+        <div class="notification-message">
+            <div class="notification-icon">👨‍👩‍👧‍👦</div>
+            <div class="notification-title">Học sinh mới đã được liên kết!</div>
+            <div class="notification-text">Tài khoản phụ huynh của quý vị đã được liên kết với học sinh mới trong hệ thống.</div>
+        </div>
+
+        <div class="child-card">
+            <div class="child-name">🎓 {CHILD_NAME}</div>
+            <div class="child-details">
+                <p><strong>Mã học sinh:</strong> {STUDENT_CODE}</p>
+                <p><strong>Lớp học:</strong> {CLASS_NAME}</p>
+                <p><strong>Ngày liên kết:</strong> {LINK_DATE}</p>
+                <p><strong>Mối quan hệ:</strong> {RELATIONSHIP}</p>
+            </div>
+        </div>
+
+        <div class="account-details">
+            <h3>📋 Thông tin tài khoản phụ huynh:</h3>
+            <p><strong>Họ tên:</strong> {PARENT_NAME}</p>
+            <p><strong>Email:</strong> {PARENT_EMAIL}</p>
+            <p><strong>Số điện thoại:</strong> {PARENT_PHONE}</p>
+            <p><strong>Tổng số con được liên kết:</strong> {TOTAL_CHILDREN} học sinh</p>
+        </div>
+
+        <div class="child-info">
+            <p><strong>🔑 Đăng nhập để xem thông tin y tế của con!</strong></p>
+            <a href="{LOGIN_URL}" class="login-button">Đăng Nhập Hệ Thống</a>
+            <p style="font-size: 14px; color: #666; margin-top: 15px;">
+                Hoặc truy cập: <a href="{LOGIN_URL}" style="color: #2196F3;">{LOGIN_URL}</a>
+            </p>
+        </div>
+
+        <div class="available-features">
+            <h3>🎯 Các tính năng có sẵn cho phụ huynh:</h3>
+            <ul>
+                <li><strong>Theo dõi sức khỏe:</strong> Xem hồ sơ y tế và lịch sử khám bệnh của con</li>
+                <li><strong>Thông báo y tế:</strong> Nhận thông báo về tình trạng sức khỏe và các sự kiện y tế</li>
+                <li><strong>Lịch kiểm tra:</strong> Theo dõi lịch kiểm tra sức khỏe định kỳ</li>
+                <li><strong>Lịch hẹn tư vấn:</strong> Đặt lịch và theo dõi các buổi tư vấn y tế</li>
+                <li><strong>Hồ sơ tiêm chủng:</strong> Xem lịch sử và kế hoạch tiêm chủng</li>
+                <li><strong>Thông tin liên hệ khẩn cấp:</strong> Cập nhật thông tin liên hệ khi cần thiết</li>
+            </ul>
+        </div>
+
+        <div class="features-notice">
+            <span class="features-notice-icon">📱</span>
+            <strong>Tính năng mới dành cho phụ huynh:</strong>
+            <ul style="margin: 10px 0 0 25px; padding: 0;">
+                <li>Nhận thông báo push về tình trạng sức khỏe của con</li>
+                <li>Xem báo cáo y tế hàng tháng</li>
+                <li>Chat trực tiếp với y tá trường (trong giờ hành chính)</li>
+                <li>Tải về các tài liệu giáo dục sức khỏe</li>
+            </ul>
+        </div>
+
+        <div class="important-note">
+            <span class="important-note-icon">⚠️</span>
+            <strong>Lưu ý quan trọng:</strong>
+            <ul style="margin: 10px 0 0 25px; padding: 0;">
+                <li>Vui lòng kiểm tra thông tin liên hệ khẩn cấp của con trong hệ thống</li>
+                <li>Cập nhật thông tin y tế nếu có thay đổi về tình trạng sức khỏe</li>
+                <li>Bật thông báo email/SMS để không bỏ lỡ thông tin quan trọng</li>
+                <li>Nếu có thắc mắc về việc liên kết này, vui lòng liên hệ nhà trường</li>
+            </ul>
+        </div>
+
+        <div class="timestamp">
+            <p>🕒 Thời gian gửi thông báo: {CURRENT_TIME}</p>
+            <p>🏥 Hệ thống: School Medical Management System</p>
+        </div>
+
+        <div class="contact-support">
+            <h4 style="color: #495057; margin-top: 0;">📞 Cần hỗ trợ?</h4>
+            <p>Nếu quý vị có bất kỳ thắc mắc nào về việc liên kết tài khoản hoặc cần hỗ trợ:</p>
+            <p>📧 Email: <a href="mailto:{SUPPORT_EMAIL}" style="color: #2196F3;">{SUPPORT_EMAIL}</a></p>
+            <p>🌐 Website: <a href="{URL}" style="color: #2196F3;">{URL}</a></p>
+            <p>☎️ Hotline: <strong>{SCHOOL_PHONE}</strong> (trong giờ hành chính)</p>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                Đội ngũ hỗ trợ kỹ thuật và y tế nhà trường luôn sẵn sàng hỗ trợ quý phụ huynh
+            </p>
+        </div>
+
+        <p style="margin-top: 30px;">Cảm ơn quý vị đã tin tưởng và đồng hành cùng School Medical Management System!</p>
+        <p style="font-weight: bold; color: #2196F3;">Chúc con em luôn khỏe mạnh và học tập tốt! 🌟</p>
+    </div>
+    <div class="footer">
+        <div class="social-links">
+            <a href="#">Facebook</a> |
+            <a href="#">Twitter</a> |
+            <a href="#">YouTube</a>
+        </div>
+        <p>© {YEAR} School Medical Management System. All rights reserved.</p>
+        <p>Địa chỉ: 123 Đường ABC, Quận XYZ, Thành phố HCM</p>
+        <p style="margin-top: 10px; font-size: 11px; color: #999;">
+            Email này được gửi tự động để thông báo liên kết học sinh mới. Vui lòng không trả lời trực tiếp.
+        </p>
+    </div>
+</div>
+</body>
+</html>

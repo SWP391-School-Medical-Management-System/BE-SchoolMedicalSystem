@@ -16,6 +16,7 @@ public class ApplicationUser : BaseEntity
     public string? StaffCode { get; set; } // ID nhân viên (cho Admin/Manager/SchoolNurse)
     public string? LicenseNumber { get; set; } // Số giấy phép hành nghề (cho SchoolNurse)
     public string? Specialization { get; set; } // Chuyên môn (cho SchoolNurse)
+    
     public string? StudentCode { get; set; } // Mã học sinh (cho Student)
     public Guid? ParentId { get; set; } // ID phụ huynh (cho Student - liên kết với User là parent)
     public string? Relationship { get; set; } // Quan hệ với học sinh: "Father", "Mother", "Guardian" (cho Parent)
@@ -32,4 +33,7 @@ public class ApplicationUser : BaseEntity
     public virtual ICollection<BlogPost> BlogPosts { get; set; }            // Bài viết blog (nếu là Admin/Manager/SchoolNurse)
     public virtual ICollection<BlogComment> BlogComments { get; set; }      // Bình luận trên blog
     public virtual ICollection<Report> GeneratedReports { get; set; }       // Báo cáo đã tạo (nếu là Admin/Manager/SchoolNurse)
+    public virtual ICollection<StudentMedication> SentMedications { get; set; }      // Thuốc phụ huynh gửi
+    public virtual ICollection<StudentMedication> ApprovedMedications { get; set; }  // Thuốc y tá phê duyệt
+    public virtual ICollection<StudentMedicationAdministration> MedicationAdministrations { get; set; } // Lịch sử cho uống thuốc
 }
