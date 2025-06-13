@@ -17,31 +17,32 @@ services:
     networks:
       - schoolmedical-network
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'StrongPassword123!' -Q 'SELECT 1' -b -o /dev/null"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'StrongPassword123!' -C -Q 'SELECT 1'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
 
   redis:
-    image: redis:latest
+    image: redis/redis-stack:latest
     restart: always
     environment:
       TZ: Asia/Ho_Chi_Minh
+      REDIS_ARGS: "--requirepass Purejoy@123# --maxmemory 256mb --maxmemory-policy allkeys-lru"
     ports:
       - "6379:6379"
-    command: redis-server --requirepass Purejoy@123# --maxmemory 256mb --maxmemory-policy allkeys-lru
     networks:
       - schoolmedical-network
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "Purejoy@123#", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  # Service tạo database
+  # Service to initialize database
   db-init:
-    image: mcr.microsoft.com/mssql-tools
+    image: mcr.microsoft.com/mssql/server:2019-latest
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -51,11 +52,13 @@ services:
       - schoolmedical-network
     command: >
       bash -c "
-        echo 'Waiting for SQL Server to be ready...'
-        sleep 5
+        echo 'Waiting for SQL Server to be fully ready...'
+        sleep 10
+        echo 'Testing connection to SQL Server...'
+        /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P 'StrongPassword123!' -C -Q 'SELECT @@VERSION' || exit 1
         echo 'Creating database and tables...'
-        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'StrongPassword123!' -i /init-db.sql
-        echo 'Database initialization completed!'
+        /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P 'StrongPassword123!' -C -i /init-db.sql
+        echo 'Database initialization completed successfully!'
       "
 
   schoolmedicalmanagementsystem.api:
@@ -70,6 +73,10 @@ services:
     ports:
       - "5200:5200"
     depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       db-init:
         condition: service_completed_successfully
     networks:
@@ -78,10 +85,18 @@ services:
       resources:
         limits:
           memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5200/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 networks:
   schoolmedical-network:
     name: schoolmedical-network
+    driver: bridge
 
 volumes:
   sqlserver_data:
+    driver: local

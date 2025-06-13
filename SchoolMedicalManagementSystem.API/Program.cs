@@ -20,9 +20,37 @@ builder.Configuration
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
     .AddEnvironmentVariables();
 
+builder.Services.AddHealthChecks();
+
 builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
 {
-    return ConnectionMultiplexer.Connect(builder.Configuration["RedisServer"]);
+    var logger = provider.GetRequiredService<ILogger<Program>>();
+    var connectionString = builder.Configuration["RedisServer"];
+    
+    if (string.IsNullOrEmpty(connectionString))
+    {
+        logger.LogError("Redis connection string is missing");
+        throw new InvalidOperationException("Redis connection string is required");
+    }
+
+    try
+    {
+        var options = ConfigurationOptions.Parse(connectionString);
+        options.AbortOnConnectFail = false;
+        options.ConnectTimeout = 30000;
+        options.SyncTimeout = 30000;
+        options.ConnectRetry = 3;
+        options.ReconnectRetryPolicy = new ExponentialRetry(5000);
+        
+        var connection = ConnectionMultiplexer.Connect(options);
+        logger.LogInformation("Redis connection established successfully");
+        return connection;
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to connect to Redis: {Message}", ex.Message);
+        throw;
+    }
 });
 
 builder.Services.AddDataAccessLayer(builder.Configuration);
@@ -38,7 +66,13 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHttpClient();
 
 var jwtSettings = builder.Configuration.GetSection("JWT");
-var webSecretKey = Encoding.UTF8.GetBytes(jwtSettings.GetValue<string>("SecretKey"));
+var secretKey = jwtSettings.GetValue<string>("SecretKey");
+if (string.IsNullOrEmpty(secretKey))
+{
+    throw new InvalidOperationException("JWT SecretKey is required");
+}
+
+var webSecretKey = Encoding.UTF8.GetBytes(secretKey);
 
 builder.Services.AddAuthentication(options =>
     {
@@ -95,7 +129,12 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
         ? builder.Configuration.GetConnectionString("production")
         : builder.Configuration.GetConnectionString("local");
 
-    Console.WriteLine($"Using database connection for environment: {env}, ConnectionString: {connectionString}");
+    if (string.IsNullOrEmpty(connectionString))
+    {
+        throw new InvalidOperationException($"Connection string for environment '{env}' is missing");
+    }
+
+    Console.WriteLine($"Using database connection for environment: {env}");
 
     options.UseSqlServer(connectionString, sqlServerOptions =>
     {
@@ -103,6 +142,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
             maxRetryCount: 10,
             maxRetryDelay: TimeSpan.FromSeconds(30),
             errorNumbersToAdd: null);
+        sqlServerOptions.CommandTimeout(60);
     });
 });
 
@@ -117,28 +157,25 @@ builder.Services.AddCors(options =>
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // bật credential support
+            .AllowCredentials(); // enable credential support
     });
 });
 
-// Test Redis connection
-try
-{
-    var redis = ConnectionMultiplexer.Connect(builder.Configuration["RedisServer"]);
-    Console.WriteLine("Redis connected successfully.");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Error connecting to Redis: {ex.Message}");
-}
-
-// Cloudinary
+// Cloudinary configuration
 var cloudName = builder.Configuration["Cloudinary:CloudName"];
 var apiKey = builder.Configuration["Cloudinary:ApiKey"];
 var apiSecret = builder.Configuration["Cloudinary:ApiSecret"];
-var cloudinaryAccount = new CloudinaryDotNet.Account(cloudName, apiKey, apiSecret);
-var cloudinary = new Cloudinary(cloudinaryAccount);
-builder.Services.AddSingleton(cloudinary);
+
+if (!string.IsNullOrEmpty(cloudName) && !string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(apiSecret))
+{
+    var cloudinaryAccount = new CloudinaryDotNet.Account(cloudName, apiKey, apiSecret);
+    var cloudinary = new Cloudinary(cloudinaryAccount);
+    builder.Services.AddSingleton(cloudinary);
+}
+else
+{
+    Console.WriteLine("Warning: Cloudinary configuration is incomplete. Image upload features may not work.");
+}
 
 var app = builder.Build();
 
@@ -148,6 +185,9 @@ await InitializeDatabaseAsync(app);
 app.UseExceptionHandlingMiddleware();
 app.UseRouting();
 app.UseCors("corspolicy");
+
+// Add health check endpoint
+app.MapHealthChecks("/health");
 
 app.UseSwagger();
 app.UseSwaggerUI();
@@ -171,64 +211,59 @@ async Task InitializeDatabaseAsync(WebApplication app)
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     var maxRetries = 30;
-    var retryDelay = TimeSpan.FromSeconds(2);
+    var retryDelay = TimeSpan.FromSeconds(3);
 
     for (int i = 0; i < maxRetries; i++)
     {
         try
         {
-            logger.LogInformation($"Attempt {i + 1}/{maxRetries}: Checking database connection...");
+            logger.LogInformation("Attempt {Attempt}/{MaxRetries}: Checking database connection...", i + 1, maxRetries);
 
             var canConnect = await context.Database.CanConnectAsync();
             if (!canConnect)
             {
-                logger.LogWarning("Cannot connect to database, retrying...");
+                logger.LogWarning("Cannot connect to database, retrying in {Delay} seconds...", retryDelay.TotalSeconds);
                 await Task.Delay(retryDelay);
                 continue;
             }
 
-            logger.LogInformation("Database connection successful.");
+            logger.LogInformation("Database connection successful");
+
+            var tablesCount = await context.Database.ExecuteSqlRawAsync(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'");
+
+            if (tablesCount == 0)
+            {
+                logger.LogInformation("Database appears to be empty, ensuring schema is created...");
+                await context.Database.EnsureCreatedAsync();
+            }
 
             var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
             if (pendingMigrations.Any())
             {
-                logger.LogInformation($"Applying {pendingMigrations.Count()} pending migrations...");
+                logger.LogInformation("Applying {Count} pending migrations...", pendingMigrations.Count());
                 await context.Database.MigrateAsync();
-                logger.LogInformation("Migrations applied successfully.");
+                logger.LogInformation("Migrations applied successfully");
             }
             else
             {
-                logger.LogInformation("No pending migrations found.");
+                logger.LogInformation("No pending migrations found");
             }
 
-            var tablesExist = await context.Database.ExecuteSqlRawAsync(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'") > 0;
-
-            if (tablesExist)
-            {
-                logger.LogInformation("Database schema verified successfully.");
-            }
-            else
-            {
-                logger.LogWarning("Database tables not found. Creating database schema...");
-                await context.Database.EnsureCreatedAsync();
-                logger.LogInformation("Database schema created successfully.");
-            }
-
+            logger.LogInformation("Database initialization completed successfully");
             return;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, $"Database initialization attempt {i + 1} failed: {ex.Message}");
+            logger.LogError(ex, "Database initialization attempt {Attempt} failed: {Message}", i + 1, ex.Message);
 
             if (i == maxRetries - 1)
             {
-                logger.LogCritical(
-                    "Database initialization failed after all retries. Application will continue but may not work properly.");
+                logger.LogCritical("Database initialization failed after all retries. Application will start but may not work properly");
                 return;
             }
 
-            logger.LogInformation($"Retrying in {retryDelay.TotalSeconds} seconds...");
+            logger.LogInformation("Retrying in {Delay} seconds...", retryDelay.TotalSeconds);
             await Task.Delay(retryDelay);
         }
     }
