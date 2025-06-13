@@ -1,7 +1,6 @@
 ﻿version: '3.8'
 
 services:
-  # SQL Server Database
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2019-latest
     restart: always
@@ -14,11 +13,16 @@ services:
       - "1433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     networks:
       - schoolmedical-network
-    user: root
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'StrongPassword123!' -Q 'SELECT 1' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
-  # Redis Cache
   redis:
     image: redis:latest
     restart: always
@@ -29,12 +33,31 @@ services:
     command: redis-server --requirepass Purejoy@123# --maxmemory 256mb --maxmemory-policy allkeys-lru
     networks:
       - schoolmedical-network
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "Purejoy@123#", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # School Medical Management System API
+  # Service tạo database
+  db-init:
+    image: mcr.microsoft.com/mssql-tools
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    volumes:
+      - ./init-db.sql:/init-db.sql
+    networks:
+      - schoolmedical-network
+    command: >
+      bash -c "
+        echo 'Waiting for SQL Server to be ready...'
+        sleep 10
+        echo 'Creating database and tables...'
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'StrongPassword123!' -i /init-db.sql
+        echo 'Database initialization completed successfully!'
+      "
+
   schoolmedicalmanagementsystem.api:
     build:
       context: .
@@ -47,8 +70,8 @@ services:
     ports:
       - "5200:5200"
     depends_on:
-      - sqlserver
-      - redis
+      db-init:
+        condition: service_completed_successfully
     networks:
       - schoolmedical-network
     deploy:
@@ -62,4 +85,3 @@ networks:
 
 volumes:
   sqlserver_data:
-  redis_data:

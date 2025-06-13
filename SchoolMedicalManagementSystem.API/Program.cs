@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using CloudinaryDotNet;
-using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -122,6 +121,7 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Test Redis connection
 try
 {
     var redis = ConnectionMultiplexer.Connect(builder.Configuration["RedisServer"]);
@@ -142,6 +142,8 @@ builder.Services.AddSingleton(cloudinary);
 
 var app = builder.Build();
 
+await InitializeDatabaseAsync(app);
+
 // Configure the HTTP request pipeline.
 app.UseExceptionHandlingMiddleware();
 app.UseRouting();
@@ -161,3 +163,73 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+async Task InitializeDatabaseAsync(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    var maxRetries = 30;
+    var retryDelay = TimeSpan.FromSeconds(2);
+
+    for (int i = 0; i < maxRetries; i++)
+    {
+        try
+        {
+            logger.LogInformation($"Attempt {i + 1}/{maxRetries}: Checking database connection...");
+
+            var canConnect = await context.Database.CanConnectAsync();
+            if (!canConnect)
+            {
+                logger.LogWarning("Cannot connect to database, retrying...");
+                await Task.Delay(retryDelay);
+                continue;
+            }
+
+            logger.LogInformation("Database connection successful.");
+
+            var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
+            if (pendingMigrations.Any())
+            {
+                logger.LogInformation($"Applying {pendingMigrations.Count()} pending migrations...");
+                await context.Database.MigrateAsync();
+                logger.LogInformation("Migrations applied successfully.");
+            }
+            else
+            {
+                logger.LogInformation("No pending migrations found.");
+            }
+
+            var tablesExist = await context.Database.ExecuteSqlRawAsync(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'") > 0;
+
+            if (tablesExist)
+            {
+                logger.LogInformation("Database schema verified successfully.");
+            }
+            else
+            {
+                logger.LogWarning("Database tables not found. Creating database schema...");
+                await context.Database.EnsureCreatedAsync();
+                logger.LogInformation("Database schema created successfully.");
+            }
+
+            return;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, $"Database initialization attempt {i + 1} failed: {ex.Message}");
+
+            if (i == maxRetries - 1)
+            {
+                logger.LogCritical(
+                    "Database initialization failed after all retries. Application will continue but may not work properly.");
+                return;
+            }
+
+            logger.LogInformation($"Retrying in {retryDelay.TotalSeconds} seconds...");
+            await Task.Delay(retryDelay);
+        }
+    }
+}
