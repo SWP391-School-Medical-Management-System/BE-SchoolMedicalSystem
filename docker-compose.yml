@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       ACCEPT_EULA: Y
-      SA_PASSWORD: "123456"
+      SA_PASSWORD: "StrongPassword123!"
       MSSQL_PID: Express
       TZ: Asia/Ho_Chi_Minh
     ports:
@@ -43,6 +43,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - TZ=Asia/Ho_Chi_Minh
+      - ALLOWED_ORIGINS=*
     ports:
       - "5200:5200"
     depends_on:
