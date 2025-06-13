@@ -26,7 +26,7 @@ COPY --from=publish /app/publish .
 COPY ["SchoolMedicalManagementSystem.API/Templates", "/app/Templates"]
 
 # Set environment variables
-ENV ASPNETCORE_URLS=http://+:5200;https://+:7280
+ENV ASPNETCORE_URLS=http://+:5200
 ENV ASPNETCORE_ENVIRONMENT=Production
 
 # Copy appsettings files

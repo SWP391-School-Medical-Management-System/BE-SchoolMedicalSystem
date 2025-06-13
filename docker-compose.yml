@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       ACCEPT_EULA: Y
-      SA_PASSWORD: "StrongPassword123!"
+      SA_PASSWORD: "123456"
       MSSQL_PID: Express
       TZ: Asia/Ho_Chi_Minh
     ports:
@@ -45,7 +45,6 @@ services:
       - TZ=Asia/Ho_Chi_Minh
     ports:
       - "5200:5200"
-      - "7280:7280"
     depends_on:
       - sqlserver
       - redis

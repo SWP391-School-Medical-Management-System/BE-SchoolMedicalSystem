@@ -113,8 +113,8 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "http://localhost:3000" // frontend dev
-                // "https://fe-smartaidoor.vercel.app"    // prod
+                "http://localhost:3000", // frontend dev
+                "https://school-medical-system.vercel.app" // prod
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
@@ -131,6 +131,7 @@ catch (Exception ex)
 {
     Console.WriteLine($"Error connecting to Redis: {ex.Message}");
 }
+
 // Cloudinary
 var cloudName = builder.Configuration["Cloudinary:CloudName"];
 var apiKey = builder.Configuration["Cloudinary:ApiKey"];
@@ -149,7 +150,10 @@ app.UseCors("corspolicy");
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsProduction())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
