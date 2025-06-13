@@ -129,9 +129,15 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
         ? builder.Configuration.GetConnectionString("production")
         : builder.Configuration.GetConnectionString("local");
 
+    // If local is null, try production (for cases where you only have production config)
     if (string.IsNullOrEmpty(connectionString))
     {
-        throw new InvalidOperationException($"Connection string for environment '{env}' is missing");
+        connectionString = builder.Configuration.GetConnectionString("production");
+    }
+
+    if (string.IsNullOrEmpty(connectionString))
+    {
+        throw new InvalidOperationException($"No connection string found for environment '{env}'");
     }
 
     Console.WriteLine($"Using database connection for environment: {env}");
@@ -179,6 +185,9 @@ else
 
 var app = builder.Build();
 
+// Simple database initialization - NO LOOP!
+await QuickDatabaseCheckAsync(app);
+
 // Configure the HTTP request pipeline.
 app.UseExceptionHandlingMiddleware();
 app.UseRouting();
@@ -201,3 +210,44 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+async Task QuickDatabaseCheckAsync(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        logger.LogInformation("Quick database connection test...");
+
+        var canConnect = await context.Database.CanConnectAsync();
+        if (canConnect)
+        {
+            logger.LogInformation("Database connection successful!");
+
+            var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
+            if (pendingMigrations.Any())
+            {
+                logger.LogInformation("Applying {Count} pending migrations...", pendingMigrations.Count());
+                await context.Database.MigrateAsync();
+                logger.LogInformation("Migrations completed!");
+            }
+            else
+            {
+                logger.LogInformation("Database is up to date!");
+            }
+        }
+        else
+        {
+            logger.LogWarning("Cannot connect to database initially, but application will continue...");
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Database initialization error: {Message}", ex.Message);
+        logger.LogInformation("Application will continue without database...");
+    }
+
+    logger.LogInformation("Database check completed - continuing with application startup!");
+}
