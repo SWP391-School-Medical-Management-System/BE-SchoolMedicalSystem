@@ -1,26 +1,24 @@
 ﻿version: '3.8'
 
 services:
+  # SQL Server Database
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2019-latest
     restart: always
     environment:
       ACCEPT_EULA: Y
-      SA_PASSWORD: "123456"
+      SA_PASSWORD: "StrongPassword123!"
       MSSQL_PID: Express
       TZ: Asia/Ho_Chi_Minh
     ports:
       - "1433:1433"
     volumes:
-      - ./sqlserver:/var/opt/mssql
+      - sqlserver_data:/var/opt/mssql
     networks:
       - schoolmedical-network
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 123456 -Q 'SELECT 1'"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    user: root
 
+  # Redis Cache
   redis:
     image: redis:latest
     restart: always
@@ -28,17 +26,15 @@ services:
       TZ: Asia/Ho_Chi_Minh
     ports:
       - "6379:6379"
-    volumes:
-      - ./redis:/data
-    command: redis-server --requirepass Purejoy@123#
+    command: redis-server --requirepass Purejoy@123# --maxmemory 256mb --maxmemory-policy allkeys-lru
     networks:
       - schoolmedical-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "Purejoy@123#", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
+  # School Medical Management System API
   schoolmedicalmanagementsystem.api:
     build:
       context: .
@@ -46,30 +42,24 @@ services:
     restart: always
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - ALLOWED_ORIGINS=*
       - TZ=Asia/Ho_Chi_Minh
     ports:
       - "5200:5200"
       - "7280:7280"
     depends_on:
-      sqlserver:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - sqlserver
+      - redis
     networks:
       - schoolmedical-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5200/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
 networks:
   schoolmedical-network:
     name: schoolmedical-network
-    external: false
 
 volumes:
-  sqlserver:
-  redis:
+  sqlserver_data:
+  redis_data:
