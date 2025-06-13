@@ -26,7 +26,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<Program>>();
     var connectionString = builder.Configuration["RedisServer"];
-    
+
     if (string.IsNullOrEmpty(connectionString))
     {
         logger.LogError("Redis connection string is missing");
@@ -41,7 +41,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
         options.SyncTimeout = 30000;
         options.ConnectRetry = 3;
         options.ReconnectRetryPolicy = new ExponentialRetry(5000);
-        
+
         var connection = ConnectionMultiplexer.Connect(options);
         logger.LogInformation("Redis connection established successfully");
         return connection;
@@ -179,8 +179,6 @@ else
 
 var app = builder.Build();
 
-await InitializeDatabaseAsync(app);
-
 // Configure the HTTP request pipeline.
 app.UseExceptionHandlingMiddleware();
 app.UseRouting();
@@ -203,68 +201,3 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
-
-async Task InitializeDatabaseAsync(WebApplication app)
-{
-    using var scope = app.Services.CreateScope();
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-    var maxRetries = 30;
-    var retryDelay = TimeSpan.FromSeconds(3);
-
-    for (int i = 0; i < maxRetries; i++)
-    {
-        try
-        {
-            logger.LogInformation("Attempt {Attempt}/{MaxRetries}: Checking database connection...", i + 1, maxRetries);
-
-            var canConnect = await context.Database.CanConnectAsync();
-            if (!canConnect)
-            {
-                logger.LogWarning("Cannot connect to database, retrying in {Delay} seconds...", retryDelay.TotalSeconds);
-                await Task.Delay(retryDelay);
-                continue;
-            }
-
-            logger.LogInformation("Database connection successful");
-
-            var tablesCount = await context.Database.ExecuteSqlRawAsync(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'");
-
-            if (tablesCount == 0)
-            {
-                logger.LogInformation("Database appears to be empty, ensuring schema is created...");
-                await context.Database.EnsureCreatedAsync();
-            }
-
-            var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
-            if (pendingMigrations.Any())
-            {
-                logger.LogInformation("Applying {Count} pending migrations...", pendingMigrations.Count());
-                await context.Database.MigrateAsync();
-                logger.LogInformation("Migrations applied successfully");
-            }
-            else
-            {
-                logger.LogInformation("No pending migrations found");
-            }
-
-            logger.LogInformation("Database initialization completed successfully");
-            return;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Database initialization attempt {Attempt} failed: {Message}", i + 1, ex.Message);
-
-            if (i == maxRetries - 1)
-            {
-                logger.LogCritical("Database initialization failed after all retries. Application will start but may not work properly");
-                return;
-            }
-
-            logger.LogInformation("Retrying in {Delay} seconds...", retryDelay.TotalSeconds);
-            await Task.Delay(retryDelay);
-        }
-    }
-}
