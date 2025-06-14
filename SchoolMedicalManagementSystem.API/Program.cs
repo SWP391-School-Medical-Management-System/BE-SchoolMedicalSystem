@@ -15,13 +15,23 @@ using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Force Production environment if not explicitly set
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")))
+{
+    builder.Environment.EnvironmentName = "Production";
+}
+
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-    .AddJsonFile($"appsettings.Production.json", optional: true, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
     .AddEnvironmentVariables();
 
+Console.WriteLine($"Running in {builder.Environment.EnvironmentName} environment");
+
+// Add health checks
 builder.Services.AddHealthChecks();
 
+// Redis configuration
 builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<Program>>();
@@ -53,8 +63,17 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
     }
 });
 
-builder.Services.AddDataAccessLayer(builder.Configuration);
-builder.Services.AddBusinessLogicLayer(builder.Configuration);
+// Add services with better error handling for Background Service
+try
+{
+    builder.Services.AddDataAccessLayer(builder.Configuration);
+    builder.Services.AddBusinessLogicLayer(builder.Configuration);
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Error adding services: {ex.Message}");
+    throw;
+}
 
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -122,17 +141,22 @@ builder.Services.AddSwaggerGen(options =>
     options.OperationFilter<GenericResponseTypeOperationFilter>();
 });
 
+// Database configuration with proper connection string selection
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     var env = builder.Environment.EnvironmentName;
-    var connectionString = env.Equals("Production", StringComparison.OrdinalIgnoreCase)
-        ? builder.Configuration.GetConnectionString("production")
-        : builder.Configuration.GetConnectionString("local");
 
-    // If local is null, try production (for cases where you only have production config)
-    if (string.IsNullOrEmpty(connectionString))
+    // Always use production connection string for containers and production
+    var connectionString = builder.Configuration.GetConnectionString("production");
+
+    // Only use local connection if explicitly in Development and local exists
+    if (env.Equals("Development", StringComparison.OrdinalIgnoreCase))
     {
-        connectionString = builder.Configuration.GetConnectionString("production");
+        var localConnectionString = builder.Configuration.GetConnectionString("local");
+        if (!string.IsNullOrEmpty(localConnectionString))
+        {
+            connectionString = localConnectionString;
+        }
     }
 
     if (string.IsNullOrEmpty(connectionString))
@@ -141,6 +165,15 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     }
 
     Console.WriteLine($"Using database connection for environment: {env}");
+
+    // Replace localhost with sqlserver for Docker environments
+    if (connectionString.Contains("localhost") &&
+        (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" ||
+         !env.Equals("Development", StringComparison.OrdinalIgnoreCase)))
+    {
+        connectionString = connectionString.Replace("localhost", "sqlserver");
+        Console.WriteLine("Replaced localhost with sqlserver for container environment");
+    }
 
     options.UseSqlServer(connectionString, sqlServerOptions =>
     {
@@ -163,8 +196,14 @@ builder.Services.AddCors(options =>
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // enable credential support
+            .AllowCredentials();
     });
+});
+
+// Configure background service exception behavior
+builder.Services.Configure<HostOptions>(hostOptions =>
+{
+    hostOptions.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
 });
 
 // Cloudinary configuration
@@ -185,10 +224,10 @@ else
 
 var app = builder.Build();
 
-// Simple database initialization - NO LOOP!
+// Simple database initialization
 await QuickDatabaseCheckAsync(app);
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 app.UseExceptionHandlingMiddleware();
 app.UseRouting();
 app.UseCors("corspolicy");
@@ -208,6 +247,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+Console.WriteLine("School Medical System API is starting...");
 
 app.Run();
 
