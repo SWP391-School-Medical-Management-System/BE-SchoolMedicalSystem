@@ -28,19 +28,22 @@ echo "2. Creating directories..."
 mkdir -p certbot/conf
 mkdir -p certbot/www
 
-# Dùng config HTTP đơn giản trước
+# Backup docker-compose.yml
 echo ""
-echo "3. Switching to HTTP-only config..."
-cp nginx-simple.conf nginx-current.conf
+echo "3. Backing up docker-compose.yml..."
+cp docker-compose.yml docker-compose.yml.backup
 
-# Cập nhật docker-compose để dùng config HTTP
-sed -i 's|./nginx\.conf:/etc/nginx/nginx.conf|./nginx-current.conf:/etc/nginx/nginx.conf|g' docker-compose.yml
-
-# Khởi động nginx và API để có thể validate domain
+# Dùng config HTTP đầu tiên
 echo ""
-echo "4. Starting services with HTTP config..."
+echo "4. Switching to HTTP-only config..."
+sed -i 's|./nginx-https\.conf:/etc/nginx/nginx.conf|./nginx-http.conf:/etc/nginx/nginx.conf|g' docker-compose.yml
+sed -i 's|- "443:443"|# - "443:443"|g' docker-compose.yml
+
+# Khởi động với HTTP config
+echo ""
+echo "5. Starting services with HTTP config..."
 docker-compose down
-docker-compose up -d nginx schoolmedicalmanagementsystem.api
+docker-compose up -d
 
 # Đợi services khởi động
 echo "Waiting for services to start..."
@@ -48,30 +51,40 @@ sleep 30
 
 # Kiểm tra services
 echo ""
-echo "5. Checking services status..."
+echo "6. Checking services status..."
 docker-compose ps
 
 # Test HTTP connection
 echo ""
-echo "6. Testing HTTP connection..."
-curl -I http://$DOMAIN 2>/dev/null && echo "HTTP OK" || echo "HTTP failed"
+echo "7. Testing HTTP connection..."
+curl -I http://$DOMAIN/health 2>/dev/null && echo "HTTP OK" || echo "HTTP failed"
 
 # Lấy SSL certificate
 echo ""
-echo "7. Obtaining SSL certificate from Let's Encrypt..."
+echo "8. Obtaining SSL certificate from Let's Encrypt..."
 docker-compose run --rm certbot \
-    certonly --webroot --webroot-path=/var/www/certbot \
-    --email $EMAIL --agree-tos --no-eff-email \
-    -d $DOMAIN
+    certonly \
+    --webroot \
+    --webroot-path=/var/www/certbot \
+    --email $EMAIL \
+    --agree-tos \
+    --no-eff-email \
+    --keep-until-expiring \
+    --rsa-key-size 2048 \
+    -d $DOMAIN \
+    --verbose
 
 # Kiểm tra certificate
 if [ -f "./certbot/conf/live/$DOMAIN/fullchain.pem" ]; then
     echo ""
     echo "SSL certificate obtained successfully!"
     
-    # Chuyển về config SSL
-    echo "8. Switching to HTTPS config..."
-    cp nginx.conf nginx-current.conf
+    # Chuyển về config HTTPS
+    echo "9. Switching to HTTPS config..."
+    sed -i 's|./nginx-http\.conf:/etc/nginx/nginx.conf|./nginx-https.conf:/etc/nginx/nginx.conf|g' docker-compose.yml
+    sed -i 's|# - "443:443"|- "443:443"|g' docker-compose.yml
+    
+    # Restart nginx
     docker-compose restart nginx
     
     # Đợi nginx restart
@@ -79,21 +92,21 @@ if [ -f "./certbot/conf/live/$DOMAIN/fullchain.pem" ]; then
     
     # Test HTTPS
     echo ""
-    echo "9. Testing HTTPS connection..."
-    curl -I https://$DOMAIN:7280 2>/dev/null && echo "HTTPS OK" || echo "HTTPS failed"
+    echo "10. Testing HTTPS connection..."
+    curl -I https://$DOMAIN/health 2>/dev/null && echo "HTTPS OK" || echo "HTTPS failed"
     
     echo ""
     echo "Setup completed successfully!"
     echo ""
     echo "Your API endpoints:"
     echo "HTTP:  http://$DOMAIN (redirects to HTTPS)"
-    echo "HTTPS: https://$DOMAIN:7280"
-    echo "Swagger: https://$DOMAIN:7280/swagger"
-    echo "Health: https://$DOMAIN:7280/health"
+    echo "HTTPS: https://$DOMAIN"
+    echo "Swagger: https://$DOMAIN/swagger"
+    echo "Health: https://$DOMAIN/health"
     
     # Setup auto-renewal
     echo ""
-    echo "10. Setting up auto-renewal..."
+    echo "11. Setting up auto-renewal..."
     (crontab -l 2>/dev/null; echo "0 12 * * * cd $(pwd) && docker-compose run --rm certbot renew --quiet && docker-compose restart nginx") | crontab -
     echo "Auto-renewal configured"
     
@@ -106,4 +119,8 @@ else
     echo "2. Check if port 80 is accessible: curl http://$DOMAIN"
     echo "3. Check firewall: ufw status"
     echo "4. Check nginx logs: docker-compose logs nginx"
+    
+    # Restore backup
+    echo "Restoring original docker-compose.yml..."
+    cp docker-compose.yml.backup docker-compose.yml
 fi

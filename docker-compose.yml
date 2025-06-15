@@ -58,15 +58,15 @@
         echo 'Database initialization completed successfully!'
       "
 
-  # Nginx reverse proxy với port 7280 cho HTTPS
+  # Nginx reverse proxy với HTTPS chuẩn
   nginx:
     image: nginx:alpine
     restart: always
     ports:
       - "80:80"
-      - "7280:443"  # Port 7280 cho HTTPS
+      - "443:443"  # Port HTTPS chuẩn
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx-https.conf:/etc/nginx/nginx.conf
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
     depends_on:
