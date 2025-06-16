@@ -20,7 +20,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpGet("{medicalRecordId}")]
-        [Authorize(Roles = "SCHOOLNURSE")]
+        //[Authorize(Roles = "SCHOOLNURSE")]
         public async Task<ActionResult<BaseListResponse<VaccinationRecordResponse>>> GetVaccinationRecords(
             Guid medicalRecordId,
             [FromQuery] int pageIndex = 1,
@@ -48,7 +48,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpPost("{medicalRecordId}")]
-        [Authorize(Roles = "SCHOOLNURSE")]
+        //[Authorize(Roles = "SCHOOLNURSE")]
         public async Task<ActionResult<BaseResponse<VaccinationRecordResponse>>> CreateVaccinationRecord(
             Guid medicalRecordId,
             [FromBody] CreateVaccinationRecordRequest model)
@@ -71,7 +71,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpPut("{recordId}")]
-        [Authorize(Roles = "SCHOOLNURSE")]
+        //[Authorize(Roles = "SCHOOLNURSE")]
         public async Task<ActionResult<BaseResponse<VaccinationRecordResponse>>> UpdateVaccinationRecord(
             Guid recordId,
             [FromBody] UpdateVaccinationRecordRequest model)

@@ -10,7 +10,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Vacci
     {
         public string Name { get; set; }
         public string Description { get; set; }
-        public int RecommendedAge { get; set; }
-        public int DoseCount { get; set; }
+        public int? RecommendedAge { get; set; }
+        public int? DoseCount { get; set; }
     }
 }

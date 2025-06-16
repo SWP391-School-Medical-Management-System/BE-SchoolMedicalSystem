@@ -48,7 +48,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "SCHOOLNURSE")]
+        //[Authorize(Roles = "SCHOOLNURSE")]
         public async Task<ActionResult<BaseResponse<VaccinationTypeResponse>>> CreateVaccinationType(
             [FromBody] CreateVaccinationTypeRequest model)
         {
@@ -70,7 +70,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "SCHOOLNURSE")]
+        //[Authorize(Roles = "SCHOOLNURSE")]
         public async Task<ActionResult<BaseResponse<VaccinationTypeResponse>>> UpdateVaccinationType(
             Guid id,
             [FromBody] UpdateVaccinationTypeRequest model)

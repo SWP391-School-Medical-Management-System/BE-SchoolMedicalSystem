@@ -1,5 +1,5 @@
-﻿// SchoolMedicalManagementSystem.BusinessLogicLayer.Services/VaccineService.cs
-using AutoMapper;
+﻿using AutoMapper;
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.VaccineRequest;
@@ -17,6 +17,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly ICacheService _cacheService;
         private readonly ILogger<VaccinationService> _logger;
+        private readonly IValidator<CreateVaccinationTypeRequest> _createVaccinationTypeValidator;
+        private readonly IValidator<UpdateVaccinationTypeRequest> _updateVaccinationTypeValidator;
 
         private const string VACCINE_TYPE_CACHE_PREFIX = "vaccine_type";
         private const string VACCINE_TYPE_LIST_PREFIX = "vaccine_types_list";
@@ -26,12 +28,16 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             IMapper mapper,
             IUnitOfWork unitOfWork,
             ICacheService cacheService,
-            ILogger<VaccinationService> logger)
+            ILogger<VaccinationService> logger,
+            IValidator<CreateVaccinationTypeRequest> createVaccinationTypeValidator,
+            IValidator<UpdateVaccinationTypeRequest> updateVaccinationTypeValidator)
         {
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _cacheService = cacheService;
             _logger = logger;
+            _createVaccinationTypeValidator = createVaccinationTypeValidator;
+            _updateVaccinationTypeValidator = updateVaccinationTypeValidator;
         }
 
         public async Task<BaseListResponse<VaccinationTypeResponse>> GetVaccinationTypesAsync(
@@ -96,14 +102,27 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 return BaseListResponse<VaccinationTypeResponse>.ErrorResult("Lỗi lấy danh sách loại vaccine.");
             }
         }
+
         public async Task<BaseResponse<VaccinationTypeResponse>> CreateVaccinationTypeAsync(CreateVaccinationTypeRequest model)
         {
             try
             {
+                var validationResult = await _createVaccinationTypeValidator.ValidateAsync(model);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    return new BaseResponse<VaccinationTypeResponse>
+                    {
+                        Success = false,
+                        Message = errors
+                    };
+                }
+
                 var vaccinationType = _mapper.Map<VaccinationType>(model);
                 vaccinationType.Id = Guid.NewGuid();
                 vaccinationType.CreatedBy = "SCHOOLNURSE";
-                vaccinationType.CreatedDate = DateTime.Now;
+                vaccinationType.CreatedDate = DateTime.UtcNow;
+                vaccinationType.IsDeleted = false; 
 
                 var repo = _unitOfWork.GetRepositoryByEntity<VaccinationType>();
                 await repo.AddAsync(vaccinationType);
@@ -134,11 +153,21 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             }
         }
 
-
         public async Task<BaseResponse<VaccinationTypeResponse>> UpdateVaccinationTypeAsync(Guid id, UpdateVaccinationTypeRequest model)
         {
             try
             {
+                var validationResult = await _updateVaccinationTypeValidator.ValidateAsync(model);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    return new BaseResponse<VaccinationTypeResponse>
+                    {
+                        Success = false,
+                        Message = errors
+                    };
+                }
+
                 var repo = _unitOfWork.GetRepositoryByEntity<VaccinationType>();
                 var vaccinationType = await repo.GetQueryable()
                     .FirstOrDefaultAsync(vt => vt.Id == id && !vt.IsDeleted);
@@ -154,7 +183,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 _mapper.Map(model, vaccinationType);
                 vaccinationType.LastUpdatedBy = "SCHOOLNURSE";
-                vaccinationType.LastUpdatedDate = DateTime.Now;
+                vaccinationType.LastUpdatedDate = DateTime.UtcNow;
 
                 await _unitOfWork.SaveChangesAsync();
                 await InvalidateAllCachesAsync();
@@ -198,7 +227,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 vaccinationType.IsDeleted = true;
                 vaccinationType.LastUpdatedBy = "SCHOOLNURSE";
-                vaccinationType.LastUpdatedDate = DateTime.Now;
+                vaccinationType.LastUpdatedDate = DateTime.UtcNow;
 
                 await _unitOfWork.SaveChangesAsync();
                 await InvalidateAllCachesAsync();

@@ -1,18 +1,13 @@
-﻿// SchoolMedicalManagementSystem.BusinessLogicLayer.Services/VaccinationRecordService.cs
-using AutoMapper;
+﻿using AutoMapper;
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.VaccineRecordRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicalRecordResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.VaccineRecordResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 {
@@ -22,6 +17,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly ICacheService _cacheService;
         private readonly ILogger<VaccinationRecordService> _logger;
+        private readonly IValidator<CreateVaccinationRecordRequest> _createVaccinationRecordValidator;
+        private readonly IValidator<UpdateVaccinationRecordRequest> _updateVaccinationRecordValidator;
 
         private const string VACCINATION_RECORD_CACHE_PREFIX = "vaccination_record";
         private const string VACCINATION_RECORD_LIST_PREFIX = "vaccination_records_list";
@@ -31,12 +28,16 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             IMapper mapper,
             IUnitOfWork unitOfWork,
             ICacheService cacheService,
-            ILogger<VaccinationRecordService> logger)
+            ILogger<VaccinationRecordService> logger,
+            IValidator<CreateVaccinationRecordRequest> createVaccinationRecordValidator,
+            IValidator<UpdateVaccinationRecordRequest> updateVaccinationRecordValidator)
         {
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _cacheService = cacheService;
             _logger = logger;
+            _createVaccinationRecordValidator = createVaccinationRecordValidator;
+            _updateVaccinationRecordValidator = updateVaccinationRecordValidator;
         }
 
         public async Task<BaseListResponse<VaccinationRecordResponse>> GetVaccinationRecordsAsync(
@@ -109,14 +110,25 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseResponse<VaccinationRecordResponse>> CreateVaccinationRecordAsync(
-      Guid medicalRecordId,
-      CreateVaccinationRecordRequest model)
+            Guid medicalRecordId,
+            CreateVaccinationRecordRequest model)
         {
             try
             {
+                var validationResult = await _createVaccinationRecordValidator.ValidateAsync(model);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    return new BaseResponse<VaccinationRecordResponse>
+                    {
+                        Success = false,
+                        Message = errors
+                    };
+                }
+
                 var recordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
                 var medicalRecord = await recordRepo.GetQueryable()
-                    .Include(mr => mr.Student) 
+                    .Include(mr => mr.Student)
                     .FirstOrDefaultAsync(mr => mr.Id == medicalRecordId && !mr.IsDeleted);
 
                 if (medicalRecord == null)
@@ -138,7 +150,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         Message = "Hồ sơ y tế không liên kết với học sinh."
                     };
                 }
-         
+
                 var vaccinationTypeRepo = _unitOfWork.GetRepositoryByEntity<VaccinationType>();
                 var vaccinationType = await vaccinationTypeRepo.GetQueryable()
                     .FirstOrDefaultAsync(vt => vt.Id == model.VaccinationTypeId && !vt.IsDeleted);
@@ -156,7 +168,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 var vaccinationRecord = _mapper.Map<VaccinationRecord>(model);
                 vaccinationRecord.Id = Guid.NewGuid();
                 vaccinationRecord.MedicalRecordId = medicalRecordId;
-                vaccinationRecord.UserId = medicalRecord.Student.Id; 
+                vaccinationRecord.UserId = medicalRecord.Student.Id;
                 vaccinationRecord.CreatedBy = "SCHOOLNURSE";
                 vaccinationRecord.CreatedDate = DateTime.UtcNow;
                 vaccinationRecord.IsDeleted = false;
@@ -214,12 +226,24 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 };
             }
         }
+
         public async Task<BaseResponse<VaccinationRecordResponse>> UpdateVaccinationRecordAsync(
             Guid recordId,
             UpdateVaccinationRecordRequest model)
         {
             try
             {
+                var validationResult = await _updateVaccinationRecordValidator.ValidateAsync(model);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    return new BaseResponse<VaccinationRecordResponse>
+                    {
+                        Success = false,
+                        Message = errors
+                    };
+                }
+
                 var recordRepo = _unitOfWork.GetRepositoryByEntity<VaccinationRecord>();
                 var vaccinationRecord = await recordRepo.GetQueryable()
                     .Include(vr => vr.VaccinationType)
@@ -236,7 +260,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 _mapper.Map(model, vaccinationRecord);
                 vaccinationRecord.LastUpdatedBy = "SCHOOLNURSE";
-                vaccinationRecord.LastUpdatedDate = DateTime.Now;
+                vaccinationRecord.LastUpdatedDate = DateTime.UtcNow; 
 
                 await _unitOfWork.SaveChangesAsync();
                 await InvalidateAllCachesAsync();
@@ -280,7 +304,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 vaccinationRecord.IsDeleted = true;
                 vaccinationRecord.LastUpdatedBy = "SCHOOLNURSE";
-                vaccinationRecord.LastUpdatedDate = DateTime.Now;
+                vaccinationRecord.LastUpdatedDate = DateTime.UtcNow;
 
                 await _unitOfWork.SaveChangesAsync();
                 await InvalidateAllCachesAsync();
