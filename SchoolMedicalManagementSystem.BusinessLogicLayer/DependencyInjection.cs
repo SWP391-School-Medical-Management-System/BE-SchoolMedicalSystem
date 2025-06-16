@@ -34,7 +34,8 @@ public static class DependencyInjection
         services.AddScoped<IMedicalItemService, MedicalItemService>();
         services.AddScoped<IHealthEventService, HealthEventService>();
         services.AddScoped<IStudentMedicationService, StudentMedicationService>();
-
+        services.AddScoped<IVaccinationRecordService, VaccinationRecordService>();
+        services.AddScoped<IVaccinationService, VaccinationService>();
         // Cloudinary
         services.AddScoped<CloudinaryService>();
         // Excel
