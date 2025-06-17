@@ -33,7 +33,7 @@ public class ApplicationUser : BaseEntity
     public virtual ICollection<BlogPost> BlogPosts { get; set; }            // Bài viết blog (nếu là Admin/Manager/SchoolNurse)
     public virtual ICollection<BlogComment> BlogComments { get; set; }      // Bình luận trên blog
     public virtual ICollection<Report> GeneratedReports { get; set; }       // Báo cáo đã tạo (nếu là Admin/Manager/SchoolNurse)
-    public virtual ICollection<StudentMedication> SentMedications { get; set; }      // Thuốc phụ huynh gửi
-    public virtual ICollection<StudentMedication> ApprovedMedications { get; set; }  // Thuốc y tá phê duyệt
-    public virtual ICollection<StudentMedicationAdministration> MedicationAdministrations { get; set; } // Lịch sử cho uống thuốc
+    public virtual ICollection<StudentMedication> SentMedications { get; set; } = new List<StudentMedication>();
+    public virtual ICollection<StudentMedication> ApprovedMedications { get; set; } = new List<StudentMedication>();
+    public virtual ICollection<MedicationAdministration> MedicationAdministrations { get; set; } = new List<MedicationAdministration>();
 }

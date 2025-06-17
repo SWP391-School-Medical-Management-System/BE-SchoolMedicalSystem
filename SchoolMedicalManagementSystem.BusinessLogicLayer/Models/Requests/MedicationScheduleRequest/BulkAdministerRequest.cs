@@ -1,7 +1,13 @@
 ﻿namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.StudentMedicationRequest;
 
-public class AdministerMedicationRequest
+public class BulkAdministerRequest
 {
+    public List<BulkAdministerItem> Schedules { get; set; } = new();
+}
+
+public class BulkAdministerItem
+{
+    public Guid ScheduleId { get; set; }
     public string ActualDosage { get; set; }
     public string? Notes { get; set; }
     public bool StudentRefused { get; set; }

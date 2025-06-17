@@ -3,6 +3,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.StudentMe
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationAdministrationResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationResponse;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
+using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers;
 
@@ -10,25 +11,34 @@ public class StudentMedicationMappingProfile : Profile
 {
     public StudentMedicationMappingProfile()
     {
-        ConfigureStudentMedicationMappings();
-        ConfigureStudentMedicationAdministrationMappings();
+        ConfigureRequestMappings();
+        ConfigureResponseMappings();
+        ConfigureAdministrationMappings();
     }
 
-    private void ConfigureStudentMedicationMappings()
+    private void ConfigureRequestMappings()
     {
         CreateMap<CreateStudentMedicationRequest, StudentMedication>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())
-            .ForMember(dest => dest.ParentId, opt => opt.Ignore()) // Set in service
+            .ForMember(dest => dest.ParentId, opt => opt.Ignore())
             .ForMember(dest => dest.ApprovedById, opt => opt.Ignore())
-            .ForMember(dest => dest.Status, opt => opt.Ignore()) // Set to PendingApproval in service
+            .ForMember(dest => dest.Status, opt => opt.Ignore())
             .ForMember(dest => dest.RejectionReason, opt => opt.Ignore())
             .ForMember(dest => dest.ApprovedAt, opt => opt.Ignore())
-            .ForMember(dest => dest.SubmittedAt, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.Code, opt => opt.Ignore())
-            .ForMember(dest => dest.CreatedBy, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.CreatedDate, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.StartDate, opt => opt.Ignore()) // BaseEntity StartDate, not medication StartDate
-            .ForMember(dest => dest.EndDate, opt => opt.Ignore()) // BaseEntity EndDate, not medication EndDate
+            .ForMember(dest => dest.SubmittedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.TotalDoses, opt => opt.MapFrom(src => 0))
+            .ForMember(dest => dest.RemainingDoses, opt => opt.MapFrom(src => 0))
+            .ForMember(dest => dest.MinStockThreshold, opt => opt.MapFrom(src => 3))
+            .ForMember(dest => dest.LowStockAlertSent, opt => opt.MapFrom(src => false))
+            .ForMember(dest => dest.AutoGenerateSchedule, opt => opt.MapFrom(src => true))
+            .ForMember(dest => dest.RequireNurseConfirmation, opt => opt.MapFrom(src => false))
+            .ForMember(dest => dest.SkipOnAbsence, opt => opt.MapFrom(src => true))
+            .ForMember(dest => dest.SkipWeekends, opt => opt.MapFrom(src => false))
+            .ForMember(dest => dest.ManagementNotes, opt => opt.Ignore())
+            .ForMember(dest => dest.SpecificTimes, opt => opt.Ignore())
+            .ForMember(dest => dest.SkipDates, opt => opt.Ignore())
+            .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
+            .ForMember(dest => dest.CreatedDate, opt => opt.Ignore())
             .ForMember(dest => dest.LastUpdatedBy, opt => opt.Ignore())
             .ForMember(dest => dest.LastUpdatedDate, opt => opt.Ignore())
             .ForMember(dest => dest.IsDeleted, opt => opt.Ignore())
@@ -36,82 +46,153 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.Parent, opt => opt.Ignore())
             .ForMember(dest => dest.ApprovedBy, opt => opt.Ignore())
             .ForMember(dest => dest.Administrations, opt => opt.Ignore())
-            .ForMember(dest => dest.Notifications, opt => opt.Ignore());
+            .ForMember(dest => dest.Schedules, opt => opt.Ignore())
+            .ForMember(dest => dest.StockHistory, opt => opt.Ignore());
 
         CreateMap<UpdateStudentMedicationRequest, StudentMedication>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
-        CreateMap<StudentMedication, StudentMedicationResponse>()
-            .ForMember(dest => dest.StatusDisplayName, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.StudentName, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.StudentCode, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.ParentName, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.ApprovedByName, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.CanApprove, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.CanAdminister, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.IsExpiringSoon, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.IsExpired, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.IsActive, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.DaysUntilExpiry, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.AdministrationCount, opt => opt.Ignore()) // Set in service
-            .AfterMap((src, dest, context) =>
-            {
-                if (src.Student != null)
-                {
-                    dest.StudentName = src.Student.FullName ?? "";
-                    dest.StudentCode = src.Student.StudentCode ?? "";
-                }
-
-                if (src.Parent != null)
-                {
-                    dest.ParentName = src.Parent.FullName ?? "";
-                }
-
-                if (src.ApprovedBy != null)
-                {
-                    dest.ApprovedByName = src.ApprovedBy.FullName ?? "";
-                }
-            });
+        CreateMap<UpdateMedicationManagementRequest, StudentMedication>()
+            .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
     }
 
-    private void ConfigureStudentMedicationAdministrationMappings()
+    private void ConfigureResponseMappings()
     {
-        CreateMap<AdministerMedicationRequest, StudentMedicationAdministration>()
-            .ForMember(dest => dest.Id, opt => opt.Ignore())
-            .ForMember(dest => dest.StudentMedicationId, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.AdministeredById, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.AdministeredAt, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.Code, opt => opt.Ignore())
-            .ForMember(dest => dest.CreatedBy, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.CreatedDate, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.StartDate, opt => opt.Ignore()) // BaseEntity field
-            .ForMember(dest => dest.EndDate, opt => opt.Ignore()) // BaseEntity field
-            .ForMember(dest => dest.LastUpdatedBy, opt => opt.Ignore())
-            .ForMember(dest => dest.LastUpdatedDate, opt => opt.Ignore())
-            .ForMember(dest => dest.IsDeleted, opt => opt.Ignore())
-            .ForMember(dest => dest.StudentMedication, opt => opt.Ignore())
-            .ForMember(dest => dest.AdministeredBy, opt => opt.Ignore());
+        CreateMap<StudentMedication, StudentMedicationListResponse>()
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => GetPriorityDisplayName(src.Priority)))
+            .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => GetStatusDisplayName(src.Status)))
+            .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : ""))
+            .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""))
+            .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
+            .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : null))
+            .ForMember(dest => dest.TotalSchedules, opt => opt.MapFrom(src => src.Schedules != null ? src.Schedules.Count(s => !s.IsDeleted) : 0))
+            .ForMember(dest => dest.TotalAdministrations, opt => opt.MapFrom(src => src.Administrations != null ? src.Administrations.Count(a => !a.IsDeleted) : 0))
+            .ForMember(dest => dest.IsExpiringSoon, opt => opt.MapFrom(src => src.ExpiryDate <= DateTime.Today.AddDays(7)))
+            .ForMember(dest => dest.IsLowStock, opt => opt.MapFrom(src => src.RemainingDoses <= src.MinStockThreshold));
 
-        CreateMap<StudentMedicationAdministration, StudentMedicationAdministrationResponse>()
-            .ForMember(dest => dest.MedicationName, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.StudentName, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.AdministeredByName, opt => opt.Ignore()) // Set in service
-            .AfterMap((src, dest, context) =>
-            {
-                if (src.StudentMedication != null)
-                {
-                    dest.MedicationName = src.StudentMedication.MedicationName ?? "";
+        CreateMap<StudentMedication, StudentMedicationDetailResponse>()
+            .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => GetStatusDisplayName(src.Status)))
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => GetPriorityDisplayName(src.Priority)))
+            .ForMember(dest => dest.TimeOfDayDisplayName, opt => opt.MapFrom(src => GetTimeOfDayDisplayName(src.TimeOfDay)))
+            .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : ""))
+            .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""))
+            .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
+            .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : null))
+            .ForMember(dest => dest.TotalSchedules, opt => opt.MapFrom(src => src.Schedules != null ? src.Schedules.Count(s => !s.IsDeleted) : 0))
+            .ForMember(dest => dest.TotalAdministrations, opt => opt.MapFrom(src => src.Administrations != null ? src.Administrations.Count(a => !a.IsDeleted) : 0))
+            .ForMember(dest => dest.TotalStockReceived, opt => opt.MapFrom(src => src.StockHistory != null ? src.StockHistory.Where(s => !s.IsDeleted).Sum(s => s.QuantityAdded) : 0))
+            .ForMember(dest => dest.IsExpiringSoon, opt => opt.MapFrom(src => src.ExpiryDate <= DateTime.Today.AddDays(7)))
+            .ForMember(dest => dest.IsLowStock, opt => opt.MapFrom(src => src.RemainingDoses <= src.MinStockThreshold))
+            .ForMember(dest => dest.DaysUntilExpiry, opt => opt.MapFrom(src => (int)(src.ExpiryDate - DateTime.Today).TotalDays));
 
-                    if (src.StudentMedication.Student != null)
-                    {
-                        dest.StudentName = src.StudentMedication.Student.FullName ?? "";
-                    }
-                }
+        CreateMap<StudentMedication, StudentMedicationResponse>()
+            .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => GetStatusDisplayName(src.Status)))
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => GetPriorityDisplayName(src.Priority)))
+            .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : ""))
+            .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""))
+            .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
+            .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : null));
 
-                if (src.AdministeredBy != null)
-                {
-                    dest.AdministeredByName = src.AdministeredBy.FullName ?? "";
-                }
-            });
+        CreateMap<StudentMedication, ParentMedicationResponse>()
+            .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => GetStatusDisplayName(src.Status)))
+            .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : ""))
+            .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""))
+            .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : null))
+            .ForMember(dest => dest.IsLowStock, opt => opt.MapFrom(src => src.RemainingDoses <= src.MinStockThreshold))
+            .ForMember(dest => dest.IsExpiringSoon, opt => opt.MapFrom(src => src.ExpiryDate <= DateTime.Today.AddDays(7)))
+            .ForMember(dest => dest.TotalAdministrations, opt => opt.MapFrom(src => src.Administrations != null ? src.Administrations.Count(a => !a.IsDeleted) : 0))
+            .ForMember(dest => dest.LastAdministeredAt, opt => opt.MapFrom(src => GetLastAdministeredAt(src.Administrations)));
+
+        CreateMap<StudentMedication, PendingApprovalResponse>()
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => GetPriorityDisplayName(src.Priority)))
+            .ForMember(dest => dest.TimeOfDayDisplayName, opt => opt.MapFrom(src => GetTimeOfDayDisplayName(src.TimeOfDay)))
+            .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : ""))
+            .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""))
+            .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
+            .ForMember(dest => dest.DaysWaiting, opt => opt.MapFrom(src => src.SubmittedAt.HasValue ? 
+                (int)(DateTime.Now - src.SubmittedAt.Value).TotalDays : 0));
     }
+
+    private void ConfigureAdministrationMappings()
+    {
+        CreateMap<MedicationAdministration, MedicationAdministrationResponse>()
+            .ForMember(dest => dest.AdministeredByName, opt => opt.MapFrom(src =>
+                src.AdministeredBy != null ? src.AdministeredBy.FullName : ""))
+            .ForMember(dest => dest.MedicationName, opt => opt.MapFrom(src =>
+                src.StudentMedication != null ? src.StudentMedication.MedicationName : ""))
+            .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src =>
+                src.StudentMedication != null && src.StudentMedication.Student != null
+                    ? src.StudentMedication.Student.FullName : ""))
+            .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src =>
+                src.StudentMedication != null && src.StudentMedication.Student != null
+                    ? src.StudentMedication.Student.StudentCode : ""))
+            .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src =>
+                src.StudentMedication != null && src.StudentMedication.Parent != null
+                    ? src.StudentMedication.Parent.FullName : ""))
+            .ForMember(dest => dest.MedicationPriority, opt => opt.MapFrom(src =>
+                src.StudentMedication != null ? src.StudentMedication.Priority : MedicationPriority.Normal))
+            .ForMember(dest => dest.MedicationPurpose, opt => opt.MapFrom(src =>
+                src.StudentMedication != null ? src.StudentMedication.Purpose : ""))
+            .ForMember(dest => dest.RemainingDoses, opt => opt.MapFrom(src =>
+                src.StudentMedication != null ? src.StudentMedication.RemainingDoses : 0))
+            .ForMember(dest => dest.IsLowStock, opt => opt.MapFrom(src =>
+                src.StudentMedication != null &&
+                src.StudentMedication.RemainingDoses <= src.StudentMedication.MinStockThreshold));
+    }
+
+    #region Helper Methods
+
+    private static string GetStatusDisplayName(StudentMedicationStatus status)
+    {
+        return status switch
+        {
+            StudentMedicationStatus.PendingApproval => "Chờ phê duyệt",
+            StudentMedicationStatus.Approved => "Đã phê duyệt",
+            StudentMedicationStatus.Rejected => "Bị từ chối",
+            StudentMedicationStatus.Active => "Đang thực hiện",
+            StudentMedicationStatus.Completed => "Hoàn thành",
+            StudentMedicationStatus.Discontinued => "Ngưng sử dụng",
+            _ => status.ToString()
+        };
+    }
+
+    private static string GetPriorityDisplayName(MedicationPriority priority)
+    {
+        return priority switch
+        {
+            MedicationPriority.Low => "Thấp",
+            MedicationPriority.Normal => "Bình thường",
+            MedicationPriority.High => "Cao",
+            MedicationPriority.Critical => "Rất quan trọng",
+            _ => priority.ToString()
+        };
+    }
+
+    private static string GetTimeOfDayDisplayName(MedicationTimeOfDay timeOfDay)
+    {
+        return timeOfDay switch
+        {
+            MedicationTimeOfDay.BeforeBreakfast => "Trước bữa sáng",
+            MedicationTimeOfDay.AfterBreakfast => "Sau bữa sáng",
+            MedicationTimeOfDay.BeforeLunch => "Trước bữa trưa",
+            MedicationTimeOfDay.AfterLunch => "Sau bữa trưa",
+            MedicationTimeOfDay.BeforeDinner => "Trước bữa tối",
+            MedicationTimeOfDay.AfterDinner => "Sau bữa tối",
+            MedicationTimeOfDay.BeforeBed => "Trước khi ngủ",
+            MedicationTimeOfDay.SpecificTime => "Giờ cụ thể",
+            _ => timeOfDay.ToString()
+        };
+    }
+
+    private static DateTime? GetLastAdministeredAt(ICollection<MedicationAdministration>? administrations)
+    {
+        if (administrations == null || !administrations.Any()) return null;
+
+        return administrations
+            .Where(a => !a.IsDeleted)
+            .OrderByDescending(a => a.AdministeredAt)
+            .FirstOrDefault()?.AdministeredAt;
+    }
+
+    #endregion
 }

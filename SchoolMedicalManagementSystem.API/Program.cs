@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using CloudinaryDotNet;
-using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -58,7 +57,8 @@ builder.Services.AddAuthentication(options =>
             ValidAudiences = new[] { jwtSettings.GetValue<string>("ValidAudience") },
             IssuerSigningKey = new SymmetricSecurityKey(webSecretKey),
             RoleClaimType = "r",
-            NameClaimType = "uid"
+            NameClaimType = "uid",
+            ClockSkew = TimeSpan.Zero
         };
     });
 

@@ -2,6 +2,6 @@
 
 namespace SchoolMedicalManagementSystem.DataAccessLayer.RepositoryContracts;
 
-public interface IStudentMedicationRepository : IBaseRepository<StudentMedicationAdministration>
+public interface IStudentMedicationRepository : IBaseRepository<MedicationAdministration>
 {
 }
