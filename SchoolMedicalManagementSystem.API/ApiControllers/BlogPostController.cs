@@ -18,10 +18,17 @@ public class BlogPostController : ControllerBase
         _blogPostService = blogPostService;
     }
 
+    #region Blog Post Management
+
     [HttpGet]
     public async Task<ActionResult<BaseListResponse<BlogPostResponse>>> GetBlogPosts(
-      [FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10, [FromQuery] string searchTerm = "",
-      [FromQuery] string category = null, [FromQuery] bool? isPublished = null, [FromQuery] string orderBy = null, CancellationToken cancellationToken = default)
+      [FromQuery] int pageIndex = 1,
+      [FromQuery] int pageSize = 10,
+      [FromQuery] string searchTerm = "",
+      [FromQuery] string category = null,
+      [FromQuery] bool? isPublished = null,
+      [FromQuery] string orderBy = null,
+      CancellationToken cancellationToken = default)
     {
         try
         {
@@ -68,7 +75,9 @@ public class BlogPostController : ControllerBase
 
     [HttpPut("{id}")]
     [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<BlogPostResponse>>> UpdateBlogPost(Guid id, [FromBody] UpdateBlogPostRequest model)
+    public async Task<ActionResult<BaseResponse<BlogPostResponse>>> UpdateBlogPost(
+        Guid id, 
+        [FromBody] UpdateBlogPostRequest model)
     {
         try
         {
@@ -95,6 +104,28 @@ public class BlogPostController : ControllerBase
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
         }
     }
+
+    [HttpGet("featured")]
+    public async Task<ActionResult<BaseListResponse<BlogPostResponse>>> GetFeaturedBlogPosts(
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(BaseListResponse<BlogPostResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+            var response = await _blogPostService.GetFeaturedBlogPostsAsync(pageIndex, pageSize, cancellationToken);
+            return response.Success ? Ok(response) : NotFound(response);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, BaseListResponse<BlogPostResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+    #endregion
+
+    #region Blog Comment Management
 
     [HttpPost("comments")]
     public async Task<ActionResult<BaseResponse<BlogCommentResponse>>> CreateBlogComment([FromBody] CreateBlogCommentRequest model)
@@ -139,20 +170,6 @@ public class BlogPostController : ControllerBase
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
         }
     }
-    [HttpGet("featured")]
-    public async Task<ActionResult<BaseListResponse<BlogPostResponse>>> GetFeaturedBlogPosts(
-    [FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            if (pageIndex < 1 || pageSize < 1)
-                return BadRequest(BaseListResponse<BlogPostResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
-            var response = await _blogPostService.GetFeaturedBlogPostsAsync(pageIndex, pageSize, cancellationToken);
-            return response.Success ? Ok(response) : NotFound(response);
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, BaseListResponse<BlogPostResponse>.ErrorResult("Lỗi hệ thống."));
-        }
-    }
+
+    #endregion
 }

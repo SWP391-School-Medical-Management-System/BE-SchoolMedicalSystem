@@ -24,7 +24,11 @@ public class BlogPostService : IBlogPostService
     private const string BLOG_POST_CACHE_PREFIX = "blog_post";
     private const string BLOG_POST_LIST_PREFIX = "blog_posts_list";
 
-    public BlogPostService(IMapper mapper, IUnitOfWork unitOfWork, ILogger<BlogPostService> logger, ICacheService cacheService,
+    public BlogPostService(
+        IMapper mapper,
+        IUnitOfWork unitOfWork,
+        ILogger<BlogPostService> logger,
+        ICacheService cacheService,
         IValidator<CreateBlogPostRequest> createBlogPostValidator,
         IValidator<UpdateBlogPostRequest> updateBlogPostValidator,
         IValidator<CreateBlogCommentRequest> createBlogCommentValidator)
@@ -37,8 +41,17 @@ public class BlogPostService : IBlogPostService
         _updateBlogPostValidator = updateBlogPostValidator;
         _createBlogCommentValidator = createBlogCommentValidator;
     }
+
     #region Blog Post
-    public async Task<BaseListResponse<BlogPostResponse>> GetBlogPostsAsync(int pageIndex = 1, int pageSize = 10, string searchTerm = "", string category = null, bool? isPublished = null, string orderBy = null, CancellationToken cancellationToken = default)
+
+    public async Task<BaseListResponse<BlogPostResponse>> GetBlogPostsAsync(
+        int pageIndex = 1,
+        int pageSize = 10,
+        string searchTerm = "",
+        string category = null,
+        bool? isPublished = null,
+        string orderBy = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -155,7 +168,9 @@ public class BlogPostService : IBlogPostService
             return BaseResponse<BlogPostResponse>.ErrorResult($"Lỗi tạo bài viết: {ex.Message}");
         }
     }
-    public async Task<BaseResponse<BlogPostResponse>> UpdateBlogPostAsync(Guid id, UpdateBlogPostRequest model)
+    public async Task<BaseResponse<BlogPostResponse>> UpdateBlogPostAsync(
+        Guid id,
+        UpdateBlogPostRequest model)
     {
         try
         {
@@ -211,7 +226,10 @@ public class BlogPostService : IBlogPostService
         }
     }
 
-    public async Task<BaseListResponse<BlogPostResponse>> GetFeaturedBlogPostsAsync(int pageIndex = 1, int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<BaseListResponse<BlogPostResponse>> GetFeaturedBlogPostsAsync(
+        int pageIndex = 1,
+        int pageSize = 10,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -245,6 +263,7 @@ public class BlogPostService : IBlogPostService
     }
 
     #endregion
+
     #region Blog Comment
 
     public async Task<BaseResponse<BlogCommentResponse>> CreateBlogCommentAsync(CreateBlogCommentRequest model)
@@ -404,7 +423,10 @@ public class BlogPostService : IBlogPostService
     #endregion
 
     #region Helper Methods
-    private IQueryable<BlogPost> ApplyBlogPostOrdering(IQueryable<BlogPost> query, string orderBy)
+
+    private IQueryable<BlogPost> ApplyBlogPostOrdering(
+        IQueryable<BlogPost> query,
+        string orderBy)
     {
         if (string.IsNullOrEmpty(orderBy))
             return query.OrderByDescending(bp => bp.CreatedDate); 
