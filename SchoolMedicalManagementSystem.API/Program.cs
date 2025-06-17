@@ -110,7 +110,8 @@ builder.Services.AddAuthentication(options =>
             ValidAudiences = new[] { jwtSettings.GetValue<string>("ValidAudience") },
             IssuerSigningKey = new SymmetricSecurityKey(webSecretKey),
             RoleClaimType = "r",
-            NameClaimType = "uid"
+            NameClaimType = "uid",
+            ClockSkew = TimeSpan.Zero
         };
     });
 

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Helpers;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.AuthRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.AuthResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
@@ -18,6 +19,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthSer
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Utilities;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
+using StackExchange.Redis;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services.AuthService;
 
@@ -35,6 +37,7 @@ public class AuthService : IAuthService
     private readonly IValidator<VerifyOtpRequest> _verifyOtpValidator;
     private readonly IValidator<SetForgotPasswordRequest> _setForgotPasswordValidator;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IConnectionMultiplexer _connectionMultiplexer;
 
     private const string USER_CACHE_PREFIX = "user_info";
     private const string USER_CACHE_SET = "user_cache_keys";
@@ -51,7 +54,8 @@ public class AuthService : IAuthService
         IValidator<ForgotPasswordRequest> forgotPasswordValidator,
         IValidator<VerifyOtpRequest> verifyOtpValidator,
         IValidator<SetForgotPasswordRequest> setForgotPasswordValidator,
-        IHttpContextAccessor httpContextAccessor
+        IHttpContextAccessor httpContextAccessor,
+        IConnectionMultiplexer connectionMultiplexer
     )
     {
         _unitOfWork = unitOfWork;
@@ -66,6 +70,7 @@ public class AuthService : IAuthService
         _verifyOtpValidator = verifyOtpValidator;
         _setForgotPasswordValidator = setForgotPasswordValidator;
         _httpContextAccessor = httpContextAccessor;
+        _connectionMultiplexer = connectionMultiplexer;
     }
 
     public async Task<BaseResponse<LoginResponse>> LoginAsync(LoginRequest model)
@@ -91,7 +96,7 @@ public class AuthService : IAuthService
             if (cachedUserInfo != null)
             {
                 _logger.LogDebug("User info found in cache for: {Username}", model.Username);
-                
+
                 if (!VerifyPassword(model.Password, cachedUserInfo.PasswordHash))
                 {
                     return new BaseResponse<LoginResponse>
@@ -105,7 +110,7 @@ public class AuthService : IAuthService
                 {
                     await _cacheService.RemoveAsync(userCacheKey);
                     user = await GetUserFromDatabase(model.Username);
-                    
+
                     if (user == null || user.IsDeleted || !user.IsActive)
                     {
                         return new BaseResponse<LoginResponse>
@@ -114,12 +119,13 @@ public class AuthService : IAuthService
                             Message = "Tài khoản không tồn tại hoặc đã bị vô hiệu hóa."
                         };
                     }
+
                     roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
                 }
                 else
                 {
-                    user = new ApplicationUser 
-                    { 
+                    user = new ApplicationUser
+                    {
                         Id = cachedUserInfo.Id,
                         Username = cachedUserInfo.Username,
                         Email = cachedUserInfo.Email,
@@ -134,7 +140,7 @@ public class AuthService : IAuthService
             else
             {
                 _logger.LogDebug("User info not in cache, querying database for: {Username}", model.Username);
-                
+
                 user = await GetUserFromDatabase(model.Username);
 
                 if (user == null)
@@ -220,30 +226,19 @@ public class AuthService : IAuthService
     {
         try
         {
-            var principal = GetPrincipalFromExpiredToken(model.AccessToken);
-            if (principal == null)
+            if (string.IsNullOrWhiteSpace(model.RefreshToken))
             {
                 return new BaseResponse<LoginResponse>
                 {
                     Success = false,
-                    Message = "Token không hợp lệ hoặc đã hết hạn."
+                    Message = "Refresh token không được để trống."
                 };
             }
 
-            var userIdClaim = principal.Claims.FirstOrDefault(c => c.Type == "uid");
-            if (userIdClaim == null)
-            {
-                return new BaseResponse<LoginResponse>
-                {
-                    Success = false,
-                    Message = "Token không hợp lệ."
-                };
-            }
+            // Sử dụng JWT refresh token để extract userId
+            var userId = await GetUserIdFromRefreshToken(model.RefreshToken);
 
-            var userId = userIdClaim.Value;
-
-            var storedRefreshToken = await GetRefreshTokenFromRedis(userId);
-            if (storedRefreshToken == null || storedRefreshToken != model.RefreshToken)
+            if (string.IsNullOrEmpty(userId))
             {
                 return new BaseResponse<LoginResponse>
                 {
@@ -252,25 +247,41 @@ public class AuthService : IAuthService
                 };
             }
 
-            var userCacheKey = _cacheService.GenerateCacheKey(USER_CACHE_PREFIX, "id", userId);
-            var cachedUserInfo = await _cacheService.GetAsync<CachedUserInfo>(userCacheKey);
-            
+            // Kiểm tra refresh token còn trong Redis không
+            var storedRefreshToken = await GetRefreshTokenFromRedis(userId);
+            if (storedRefreshToken == null || storedRefreshToken != model.RefreshToken)
+            {
+                await RemoveRefreshTokenFromRedis(userId);
+                return new BaseResponse<LoginResponse>
+                {
+                    Success = false,
+                    Message = "Refresh token không hợp lệ hoặc đã hết hạn."
+                };
+            }
+
             ApplicationUser user = null;
             List<string> roles = null;
 
+            // Tìm user từ cache trước
+            var userCacheKey = _cacheService.GenerateCacheKey(USER_CACHE_PREFIX, "id", userId);
+            var cachedUserInfo = await _cacheService.GetAsync<CachedUserInfo>(userCacheKey);
+
             if (cachedUserInfo != null && !cachedUserInfo.IsDeleted && cachedUserInfo.IsActive)
             {
-                user = new ApplicationUser 
-                { 
+                user = new ApplicationUser
+                {
                     Id = cachedUserInfo.Id,
                     Username = cachedUserInfo.Username,
                     Email = cachedUserInfo.Email,
                     FullName = cachedUserInfo.FullName
                 };
                 roles = cachedUserInfo.Roles;
+
+                _logger.LogDebug("User info retrieved from cache for refresh token: {UserId}", userId);
             }
             else
             {
+                // Tìm user từ database
                 var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
                 user = await userRepo.GetQueryable()
                     .Include(u => u.UserRoles)
@@ -279,6 +290,7 @@ public class AuthService : IAuthService
 
                 if (user == null)
                 {
+                    await RemoveRefreshTokenFromRedis(userId);
                     return new BaseResponse<LoginResponse>
                     {
                         Success = false,
@@ -287,9 +299,28 @@ public class AuthService : IAuthService
                 }
 
                 roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+
+                // Cập nhật cache
+                var cacheData = new CachedUserInfo
+                {
+                    Id = user.Id,
+                    Username = user.Username,
+                    Email = user.Email,
+                    FullName = user.FullName,
+                    PasswordHash = user.PasswordHash,
+                    IsActive = user.IsActive,
+                    IsDeleted = user.IsDeleted,
+                    Roles = roles
+                };
+
+                await _cacheService.SetAsync(userCacheKey, cacheData, TimeSpan.FromMinutes(5));
+                await _cacheService.AddToTrackingSetAsync(userCacheKey, USER_CACHE_SET);
+
+                _logger.LogDebug("User info retrieved from database and cached for refresh token: {UserId}", userId);
             }
 
-            var newToken = GenerateJwtToken(user, roles);
+            // Tạo tokens mới
+            var newAccessToken = GenerateJwtToken(user, roles);
             var newRefreshToken = GenerateRefreshToken();
 
             await StoreRefreshTokenInRedis(userId, newRefreshToken);
@@ -301,9 +332,12 @@ public class AuthService : IAuthService
                 Email = user.Email,
                 FullName = user.FullName,
                 Role = roles.FirstOrDefault(),
-                Token = newToken,
+                Token = newAccessToken,
                 RefreshToken = newRefreshToken
             };
+
+            _logger.LogInformation("Token refreshed successfully for user: {UserId} with 60-minute access token",
+                userId);
 
             return new BaseResponse<LoginResponse>
             {
@@ -314,11 +348,11 @@ public class AuthService : IAuthService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error refreshing token");
+            _logger.LogError(ex, "Error refreshing token: {Error}", ex.Message);
             return new BaseResponse<LoginResponse>
             {
                 Success = false,
-                Message = $"Lỗi hệ thống: {ex.Message}"
+                Message = "Lỗi hệ thống khi làm mới token."
             };
         }
     }
@@ -526,7 +560,7 @@ public class AuthService : IAuthService
                 await _cacheService.RemoveAsync(key);
             }
 
-            _logger.LogDebug("Invalidated user cache for username: {Username}, email: {Email}, userId: {UserId}", 
+            _logger.LogDebug("Invalidated user cache for username: {Username}, email: {Email}, userId: {UserId}",
                 username, email, userId);
         }
         catch (Exception ex)
@@ -664,62 +698,88 @@ public class AuthService : IAuthService
 
     private string HashPassword(string password)
     {
-        using var sha256 = SHA256.Create();
-        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-        var builder = new StringBuilder();
-        foreach (var b in bytes)
-        {
-            builder.Append(b.ToString("x2"));
-        }
-
-        return builder.ToString();
+        return PasswordHelper.HashPassword(password);
     }
 
     private string GenerateJwtToken(ApplicationUser user, List<string> roles)
     {
         var claims = new List<Claim>
         {
-            new Claim("uid", user.Id.ToString())
+            new Claim("uid", user.Id.ToString()),
+            new Claim("r", roles.FirstOrDefault() ?? "USER")
         };
-
-        foreach (var role in roles)
-        {
-            claims.Add(new Claim("r", role));
-        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:SecretKey"]));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        double expiryMinutes = double.Parse(_configuration["JWT:ExpiryMinutes"]);
+        var expiryMinutes = double.Parse(_configuration["JWT:ExpiryMinutes"] ?? "60");
+        var expiry = DateTime.UtcNow.AddMinutes(expiryMinutes);
 
         var token = new JwtSecurityToken(
             issuer: _configuration["JWT:ValidIssuer"],
             audience: _configuration["JWT:ValidAudience"],
             claims: claims,
-            expires: DateTime.Now.AddMinutes(expiryMinutes),
+            expires: expiry,
             signingCredentials: credentials
         );
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+        _logger.LogDebug("Generated compact JWT token for user {UserId} with expiry: {Expiry}",
+            user.Id, expiry.ToString("yyyy-MM-dd HH:mm:ss UTC"));
+
+        return tokenString;
     }
 
     private string GenerateRefreshToken()
     {
-        var randomNumber = new byte[64];
+        var randomNumber = new byte[32];
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(randomNumber);
-        return Convert.ToBase64String(randomNumber);
+        var token = Convert.ToBase64String(randomNumber);
+
+        token = token.Trim();
+
+        _logger.LogInformation("Generated clean token: '{Token}' (Length: {Length})", token, token.Length);
+        return token;
     }
 
     private async Task StoreRefreshTokenInRedis(string userId, string refreshToken)
     {
-        var cacheOptions = new DistributedCacheEntryOptions
+        try
         {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(7)
-        };
+            var refreshExpiryDays = double.Parse(_configuration["JWT:RefreshExpiryDays"] ?? "7");
+            var cacheOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(refreshExpiryDays)
+            };
 
-        var key = $"refresh_token:{userId}";
-        await _cache.SetStringAsync(key, refreshToken, cacheOptions);
+            var userToTokenKey = $"refresh_token:{userId}";
+            var tokenToUserKey = $"token_to_user:{refreshToken}";
+
+            await _cache.SetStringAsync(userToTokenKey, refreshToken, cacheOptions);
+            await _cache.SetStringAsync(tokenToUserKey, userId, cacheOptions);
+
+            _logger.LogInformation("Stored refresh token mappings - UserId: {UserId}, TokenKey: {TokenKey}",
+                userId, tokenToUserKey);
+
+            var verifyUserId = await _cache.GetStringAsync(tokenToUserKey);
+            var verifyToken = await _cache.GetStringAsync(userToTokenKey);
+
+            if (verifyUserId == userId && verifyToken == refreshToken)
+            {
+                _logger.LogInformation("Mapping verification SUCCESS");
+            }
+            else
+            {
+                _logger.LogError("Mapping verification FAILED");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error storing refresh token mappings");
+            throw;
+        }
     }
 
     private async Task<string> GetRefreshTokenFromRedis(string userId)
@@ -730,56 +790,58 @@ public class AuthService : IAuthService
 
     private async Task RemoveRefreshTokenFromRedis(string userId)
     {
-        var key = $"refresh_token:{userId}";
-        await _cache.RemoveAsync(key);
-    }
-
-    private ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
-    {
-        var tokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:SecretKey"])),
-            ValidateIssuer = true,
-            ValidIssuer = _configuration["JWT:ValidIssuer"],
-            ValidateAudience = true,
-            ValidAudience = _configuration["JWT:ValidAudience"],
-            ValidateLifetime = false
-        };
-
-        var tokenHandler = new JwtSecurityTokenHandler();
-
         try
         {
-            var principal =
-                tokenHandler.ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken);
+            var userToTokenKey = $"refresh_token:{userId}";
 
-            if (securityToken is not JwtSecurityToken jwtSecurityToken ||
-                !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256,
-                    StringComparison.InvariantCultureIgnoreCase))
+            var refreshToken = await _cache.GetStringAsync(userToTokenKey);
+
+            await _cache.RemoveAsync(userToTokenKey);
+
+            if (!string.IsNullOrEmpty(refreshToken))
             {
-                return null;
+                var tokenToUserKey = $"token_to_user:{refreshToken}";
+                await _cache.RemoveAsync(tokenToUserKey);
+                _logger.LogInformation("Removed both refresh token mappings for user: {UserId}", userId);
+            }
+            else
+            {
+                _logger.LogWarning("No refresh token found for user: {UserId}", userId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error removing refresh token mappings for user: {UserId}", userId);
+        }
+    }
+
+    private async Task<string> GetUserIdFromRefreshToken(string refreshToken)
+    {
+        try
+        {
+            var tokenToUserKey = $"token_to_user:{refreshToken}";
+
+            var userId = await _cache.GetStringAsync(tokenToUserKey);
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                _logger.LogInformation("Found userId: {UserId} for refresh token", userId);
+                return userId;
             }
 
-            return principal;
+            _logger.LogWarning("No userId found for refresh token key: {Key}", tokenToUserKey);
+            return null;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Error in direct refresh token lookup");
             return null;
         }
     }
 
     private bool VerifyPassword(string password, string passwordHash)
     {
-        using var sha256 = SHA256.Create();
-        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-        var builder = new StringBuilder();
-        foreach (var b in bytes)
-        {
-            builder.Append(b.ToString("x2"));
-        }
-
-        return builder.ToString() == passwordHash;
+        return PasswordHelper.VerifyPassword(password, passwordHash);
     }
 
     #endregion

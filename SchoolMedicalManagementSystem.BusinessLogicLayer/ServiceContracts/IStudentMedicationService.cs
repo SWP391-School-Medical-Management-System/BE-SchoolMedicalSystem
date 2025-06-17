@@ -1,5 +1,6 @@
 ﻿using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.StudentMedicationRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationAdministrationResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationResponse;
 using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 
@@ -7,13 +8,23 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 
 public interface IStudentMedicationService
 {
-    Task<BaseListResponse<StudentMedicationResponse>> GetStudentMedicationsAsync(
-        int pageIndex, int pageSize, string searchTerm, string orderBy,
-        Guid? studentId = null, Guid? parentId = null, StudentMedicationStatus? status = null,
-        bool? expiringSoon = null, bool? requiresAdministration = null,
-        CancellationToken cancellationToken = default);
+    // Basic CRUD Operations
+    Task<BaseListResponse<StudentMedicationListResponse>> GetStudentMedicationsAsync
+    (
+        int pageIndex,
+        int pageSize,
+        string searchTerm,
+        string orderBy,
+        Guid? studentId = null,
+        Guid? parentId = null,
+        StudentMedicationStatus? status = null,
+        bool? expiringSoon = null,
+        bool? requiresAdministration = null,
+        CancellationToken cancellationToken = default
+    );
 
-    Task<BaseResponse<StudentMedicationResponse>> GetStudentMedicationByIdAsync(Guid medicationId);
+    Task<BaseResponse<StudentMedicationDetailResponse>> GetStudentMedicationByIdAsync(Guid medicationId);
+
     Task<BaseResponse<StudentMedicationResponse>> CreateStudentMedicationAsync(CreateStudentMedicationRequest model);
 
     Task<BaseResponse<StudentMedicationResponse>> UpdateStudentMedicationAsync(Guid medicationId,
@@ -21,18 +32,34 @@ public interface IStudentMedicationService
 
     Task<BaseResponse<bool>> DeleteStudentMedicationAsync(Guid medicationId);
 
+    // Approval Workflow
     Task<BaseResponse<StudentMedicationResponse>> ApproveStudentMedicationAsync(Guid medicationId,
         ApproveStudentMedicationRequest request);
 
-    Task<BaseListResponse<StudentMedicationResponse>> GetPendingApprovalsAsync(int pageIndex, int pageSize,
-        CancellationToken cancellationToken = default);
+    Task<BaseResponse<StudentMedicationResponse>> RejectStudentMedicationAsync(Guid medicationId,
+        RejectStudentMedicationRequest request);
 
+    Task<BaseListResponse<PendingApprovalResponse>> GetPendingApprovalsAsync
+    (
+        int pageIndex,
+        int pageSize,
+        CancellationToken cancellationToken = default
+    );
+
+    // Status Management
     Task<BaseResponse<StudentMedicationResponse>> UpdateMedicationStatusAsync(Guid medicationId,
         UpdateMedicationStatusRequest request);
 
-    Task<BaseResponse<List<StudentMedicationResponse>>> GetExpiredMedicationsAsync();
-    Task<BaseResponse<List<StudentMedicationResponse>>> GetExpiringSoonMedicationsAsync(int days = 7);
+    // Parent Specific Methods
+    Task<BaseListResponse<ParentMedicationResponse>> GetMyChildrenMedicationsAsync
+    (
+        int pageIndex,
+        int pageSize,
+        StudentMedicationStatus? status = null,
+        CancellationToken cancellationToken = default
+    );
 
-    Task<BaseListResponse<StudentMedicationResponse>> GetMyChildrenMedicationsAsync(int pageIndex, int pageSize,
-        StudentMedicationStatus? status = null, CancellationToken cancellationToken = default);
+    Task<BaseListResponse<MedicationAdministrationResponse>> GetAdministrationHistoryAsync(Guid medicationId,
+        int pageIndex, int pageSize, DateTime? fromDate = null, DateTime? toDate = null,
+        CancellationToken cancellationToken = default);
 }

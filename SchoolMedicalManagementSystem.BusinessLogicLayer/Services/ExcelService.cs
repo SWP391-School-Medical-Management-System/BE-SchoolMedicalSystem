@@ -250,7 +250,7 @@ public class ExcelService : IExcelService
             var managers = new List<ManagerExcelModel>();
             var rowCount = worksheet.Dimension?.Rows ?? 0;
 
-            for (int row = 3; row <= rowCount; row++)
+            for (int row = 2; row <= rowCount; row++)
             {
                 var manager = ReadManagerFromRow(worksheet, row);
                 if (manager != null)
@@ -370,7 +370,7 @@ public class ExcelService : IExcelService
             var nurses = new List<SchoolNurseExcelModel>();
             var rowCount = worksheet.Dimension?.Rows ?? 0;
 
-            for (int row = 3; row <= rowCount; row++)
+            for (int row = 2; row <= rowCount; row++)
             {
                 var nurse = ReadSchoolNurseFromRow(worksheet, row);
                 if (nurse != null)
@@ -578,33 +578,8 @@ public class ExcelService : IExcelService
         var phoneNumber = worksheet.Cells[row, 4].Text?.Trim();
         var address = worksheet.Cells[row, 5].Text?.Trim();
         var gender = worksheet.Cells[row, 6].Text?.Trim();
-        var dateOfBirthText = "";
-        var dateCell = worksheet.Cells[row, 7];
+        var dateOfBirthText = GetDateValue(worksheet.Cells[row, 7]);
         var staffCode = worksheet.Cells[row, 8].Text?.Trim();
-
-        if (dateCell.Value != null)
-        {
-            if (dateCell.Value is DateTime dateValue)
-            {
-                dateOfBirthText = dateValue.ToString("dd/MM/yyyy");
-            }
-            else if (dateCell.Value is double serialDate)
-            {
-                try
-                {
-                    var date = DateTime.FromOADate(serialDate);
-                    dateOfBirthText = date.ToString("dd/MM/yyyy");
-                }
-                catch
-                {
-                    dateOfBirthText = dateCell.Text?.Trim();
-                }
-            }
-            else
-            {
-                dateOfBirthText = dateCell.Text?.Trim();
-            }
-        }
 
         if (string.IsNullOrEmpty(username) && string.IsNullOrEmpty(email) && string.IsNullOrEmpty(fullName))
             return null;
@@ -644,7 +619,7 @@ public class ExcelService : IExcelService
 
         if (!string.IsNullOrEmpty(dateOfBirthText))
         {
-            if (DateTime.TryParse(dateOfBirthText, out DateTime dateOfBirth))
+            if (TryParseDateSafely(dateOfBirthText, out DateTime dateOfBirth))
             {
                 manager.DateOfBirth = dateOfBirth;
                 if (dateOfBirth > DateTime.Now.AddYears(-18))
@@ -652,7 +627,8 @@ public class ExcelService : IExcelService
             }
             else
             {
-                errors.Add("Ngày sinh không đúng định dạng");
+                errors.Add($"Ngày sinh không đúng định dạng. Nhập: '{dateOfBirthText}'. " +
+                           "Định dạng chấp nhận: dd/MM/yyyy (ví dụ: 15/03/2003)");
             }
         }
 
@@ -672,35 +648,10 @@ public class ExcelService : IExcelService
         var phoneNumber = worksheet.Cells[row, 4].Text?.Trim();
         var address = worksheet.Cells[row, 5].Text?.Trim();
         var gender = worksheet.Cells[row, 6].Text?.Trim();
-        var dateOfBirthText = "";
-        var dateCell = worksheet.Cells[row, 7];
+        var dateOfBirthText = GetDateValue(worksheet.Cells[row, 7]);
         var staffCode = worksheet.Cells[row, 8].Text?.Trim();
         var licenseNumber = worksheet.Cells[row, 9].Text?.Trim();
         var specialization = worksheet.Cells[row, 10].Text?.Trim();
-
-        if (dateCell.Value != null)
-        {
-            if (dateCell.Value is DateTime dateValue)
-            {
-                dateOfBirthText = dateValue.ToString("dd/MM/yyyy");
-            }
-            else if (dateCell.Value is double serialDate)
-            {
-                try
-                {
-                    var date = DateTime.FromOADate(serialDate);
-                    dateOfBirthText = date.ToString("dd/MM/yyyy");
-                }
-                catch
-                {
-                    dateOfBirthText = dateCell.Text?.Trim();
-                }
-            }
-            else
-            {
-                dateOfBirthText = dateCell.Text?.Trim();
-            }
-        }
 
         if (string.IsNullOrEmpty(username) && string.IsNullOrEmpty(email) && string.IsNullOrEmpty(fullName))
             return null;
@@ -745,7 +696,7 @@ public class ExcelService : IExcelService
 
         if (!string.IsNullOrEmpty(dateOfBirthText))
         {
-            if (DateTime.TryParse(dateOfBirthText, out DateTime dateOfBirth))
+            if (TryParseDateSafely(dateOfBirthText, out DateTime dateOfBirth))
             {
                 nurse.DateOfBirth = dateOfBirth;
                 if (dateOfBirth > DateTime.Now.AddYears(-18))
@@ -753,7 +704,8 @@ public class ExcelService : IExcelService
             }
             else
             {
-                errors.Add("Ngày sinh không đúng định dạng");
+                errors.Add($"Ngày sinh không đúng định dạng. Nhập: '{dateOfBirthText}'. " +
+                           "Định dạng chấp nhận: dd/MM/yyyy (ví dụ: 15/03/2003)");
             }
         }
 
@@ -792,6 +744,7 @@ public class ExcelService : IExcelService
             worksheet.Cells[1, i + 1].Style.Font.Bold = true;
             worksheet.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
             worksheet.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+            worksheet.Cells[1, i + 1].Style.Border.BorderAround(ExcelBorderStyle.Thin);
         }
 
         worksheet.Cells[2, 1].Value = "manager001";
@@ -803,15 +756,47 @@ public class ExcelService : IExcelService
         worksheet.Cells[2, 7].Value = "01/01/1980";
         worksheet.Cells[2, 8].Value = "MG001";
 
-        using (var range = worksheet.Cells[2, 1, 2, headers.Length])
+        worksheet.Cells[3, 1].Value = "manager002";
+        worksheet.Cells[3, 2].Value = "manager002@school.edu.vn";
+        worksheet.Cells[3, 3].Value = "Trần Thị B";
+        worksheet.Cells[3, 4].Value = "0912345678";
+        worksheet.Cells[3, 5].Value = "456 Đường DEF, Quận 2, TP.HCM";
+        worksheet.Cells[3, 6].Value = "Female";
+        worksheet.Cells[3, 7].Value = "15/05/1985";
+        worksheet.Cells[3, 8].Value = "MG002";
+
+        using (var range = worksheet.Cells[2, 1, 3, headers.Length])
         {
             range.Style.Fill.PatternType = ExcelFillStyle.Solid;
             range.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
             range.Style.Font.Italic = true;
+            range.Style.Border.BorderAround(ExcelBorderStyle.Thin);
         }
 
         worksheet.Cells.AutoFitColumns();
-        worksheet.Cells[2, 1].AddComment("Dòng này là ví dụ, bạn có thể xóa và nhập dữ liệu từ dòng 3", "System");
+
+        var warningComment = "⚠️ QUAN TRỌNG: PHẢI XÓA DỮ LIỆU MẪU TRƯỚC KHI IMPORT!\n\n" +
+                             "- Các dòng 2-3 này chỉ là VÍ DỤ về định dạng\n" +
+                             "- PHẢI XÓA TẤT CẢ dữ liệu mẫu trước khi nhập thật\n" +
+                             "- Bắt đầu nhập dữ liệu thực từ dòng 2\n" +
+                             "- Nếu không xóa, hệ thống sẽ cố tạo tài khoản với dữ liệu giả!\n\n" +
+                             "CÁCH LÀM:\n" +
+                             "1. Chọn dòng 2-3 (dữ liệu mẫu)\n" +
+                             "2. Nhấn Delete để xóa\n" +
+                             "3. Nhập dữ liệu thật của bạn từ dòng 2";
+
+        worksheet.Cells[2, 1].AddComment(warningComment, "System");
+
+        var formatComment = "ĐỊNH DẠNG DỮ LIỆU:\n" +
+                            "- Tên đăng nhập: Không trùng, không dấu\n" +
+                            "- Email: Đúng định dạng @domain.com\n" +
+                            "- Số điện thoại: 10-11 số\n" +
+                            "- Giới tính: Male/Female/Other\n" +
+                            "- Ngày sinh: dd/MM/yyyy (VD: 01/01/1980)\n" +
+                            "- Mã nhân viên: Không trùng, duy nhất";
+
+        worksheet.Cells[3, 1].AddComment(formatComment, "System");
+
         await Task.CompletedTask;
     }
 
@@ -829,10 +814,11 @@ public class ExcelService : IExcelService
             worksheet.Cells[1, i + 1].Style.Font.Bold = true;
             worksheet.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
             worksheet.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+            worksheet.Cells[1, i + 1].Style.Border.BorderAround(ExcelBorderStyle.Thin);
         }
 
         worksheet.Cells[2, 1].Value = "nurse001";
-        worksheet.Cells[2, 2].Value = "nurse@school.edu.vn";
+        worksheet.Cells[2, 2].Value = "nurse001@school.edu.vn";
         worksheet.Cells[2, 3].Value = "Trần Thị B";
         worksheet.Cells[2, 4].Value = "0912345678";
         worksheet.Cells[2, 5].Value = "456 Đường DEF, Quận 2, TP.HCM";
@@ -842,15 +828,51 @@ public class ExcelService : IExcelService
         worksheet.Cells[2, 9].Value = "YT123456";
         worksheet.Cells[2, 10].Value = "Y tế học đường";
 
-        using (var range = worksheet.Cells[2, 1, 2, headers.Length])
+        worksheet.Cells[3, 1].Value = "nurse002";
+        worksheet.Cells[3, 2].Value = "nurse002@school.edu.vn";
+        worksheet.Cells[3, 3].Value = "Phạm Văn C";
+        worksheet.Cells[3, 4].Value = "0923456789";
+        worksheet.Cells[3, 5].Value = "789 Đường GHI, Quận 3, TP.HCM";
+        worksheet.Cells[3, 6].Value = "Male";
+        worksheet.Cells[3, 7].Value = "20/08/1987";
+        worksheet.Cells[3, 8].Value = "NS002";
+        worksheet.Cells[3, 9].Value = "YT789012";
+        worksheet.Cells[3, 10].Value = "Điều dưỡng nhi khoa";
+
+        using (var range = worksheet.Cells[2, 1, 3, headers.Length])
         {
             range.Style.Fill.PatternType = ExcelFillStyle.Solid;
             range.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
             range.Style.Font.Italic = true;
+            range.Style.Border.BorderAround(ExcelBorderStyle.Thin);
         }
 
         worksheet.Cells.AutoFitColumns();
-        worksheet.Cells[2, 1].AddComment("Dòng này là ví dụ, bạn có thể xóa và nhập dữ liệu từ dòng 3", "System");
+
+        var warningComment = "⚠️ QUAN TRỌNG: PHẢI XÓA DỮ LIỆU MẪU TRƯỚC KHI IMPORT!\n\n" +
+                             "- Các dòng 2-3 này chỉ là VÍ DỤ về định dạng\n" +
+                             "- PHẢI XÓA TẤT CẢ dữ liệu mẫu trước khi nhập thật\n" +
+                             "- Bắt đầu nhập dữ liệu thực từ dòng 2\n" +
+                             "- Nếu không xóa, hệ thống sẽ cố tạo tài khoản với dữ liệu giả!\n\n" +
+                             "CÁCH LÀM:\n" +
+                             "1. Chọn dòng 2-3 (dữ liệu mẫu)\n" +
+                             "2. Nhấn Delete để xóa\n" +
+                             "3. Nhập dữ liệu thật của bạn từ dòng 2";
+
+        worksheet.Cells[2, 1].AddComment(warningComment, "System");
+
+        var formatComment = "ĐỊNH DẠNG DỮ LIỆU:\n" +
+                            "- Tên đăng nhập: Không trùng, không dấu\n" +
+                            "- Email: Đúng định dạng @domain.com\n" +
+                            "- Số điện thoại: 10-11 số\n" +
+                            "- Giới tính: Male/Female/Other\n" +
+                            "- Ngày sinh: dd/MM/yyyy (VD: 15/05/1985)\n" +
+                            "- Mã nhân viên: Không trùng, duy nhất\n" +
+                            "- Số chứng chỉ: Bắt buộc, do cơ quan có thẩm quyền cấp\n" +
+                            "- Chuyên môn: Tùy chọn, mô tả chuyên môn";
+
+        worksheet.Cells[3, 1].AddComment(formatComment, "System");
+
         await Task.CompletedTask;
     }
 
@@ -859,6 +881,12 @@ public class ExcelService : IExcelService
         var instructions = new[]
         {
             "HƯỚNG DẪN IMPORT MANAGER",
+            "",
+            "⚠️ QUAN TRỌNG: PHẢI XÓA TẤT CẢ DỮ LIỆU MẪU TRƯỚC KHI IMPORT:",
+            "   - Xóa các dòng mẫu từ dòng 2-3 trong sheet 'Template_Manager'",
+            "   - Chỉ giữ lại dòng tiêu đề (dòng 1)",
+            "   - Bắt đầu nhập dữ liệu thật từ dòng 2",
+            "   - Nếu không xóa dữ liệu mẫu, hệ thống sẽ cố tạo tài khoản với dữ liệu giả",
             "",
             "1. QUY TẮC CHUNG:",
             "   - File phải có định dạng Excel (.xlsx hoặc .xls)",
@@ -869,16 +897,50 @@ public class ExcelService : IExcelService
             "   - Cột A: Tên Đăng Nhập (bắt buộc, duy nhất)",
             "   - Cột B: Email (bắt buộc, duy nhất, đúng định dạng)",
             "   - Cột C: Họ Tên (bắt buộc)",
-            "   - Cột D: Số Điện Thoại (tùy chọn)",
+            "   - Cột D: Số Điện Thoại (tùy chọn, 10-11 số)",
             "   - Cột E: Địa Chỉ (tùy chọn)",
             "   - Cột F: Giới Tính (Male/Female hoặc Other)",
             "   - Cột G: Ngày Sinh (định dạng dd/MM/yyyy, tuổi >= 18)",
             "   - Cột H: Mã Nhân Viên (bắt buộc, duy nhất)",
             "",
-            "3. LƯU Ý:",
+            "3. QUY TẮC VALIDATION:",
+            "   - Tên đăng nhập không được trùng với tài khoản hiện có",
+            "   - Email không được trùng với tài khoản hiện có",
+            "   - Mã nhân viên phải duy nhất trong hệ thống",
+            "   - Số điện thoại không được trùng (nếu có)",
+            "   - Tuổi phải từ 18 trở lên",
+            "   - Giới tính chỉ chấp nhận: Male, Female, Other",
+            "",
+            "4. CÁCH THỰC HIỆN IMPORT:",
+            "   BƯỚC 1: Tải template về máy",
+            "   BƯỚC 2: ⚠️ XÓA TẤT CẢ dữ liệu mẫu (dòng 2-3)",
+            "   BƯỚC 3: Nhập dữ liệu thật từ dòng 2 trở đi",
+            "   BƯỚC 4: Kiểm tra lại định dạng ngày tháng",
+            "   BƯỚC 5: Lưu file và upload lên hệ thống",
+            "",
+            "5. SAU KHI IMPORT THÀNH CÔNG:",
             "   - Hệ thống sẽ tự động tạo mật khẩu và gửi qua email",
+            "   - Manager sẽ nhận được email kích hoạt tài khoản",
             "   - Tên đăng nhập và email không được trùng với tài khoản hiện có",
-            "   - Mã nhân viên phải duy nhất trong hệ thống"
+            "   - Mã nhân viên phải duy nhất trong hệ thống",
+            "",
+            "6. CÁC LỖI THƯỜNG GẶP:",
+            "   - QUÊN XÓA dữ liệu mẫu → Hệ thống cố tạo user với data giả",
+            "   - Thiếu thông tin bắt buộc (Username, Email, Họ tên, Mã nhân viên)",
+            "   - Trùng lặp Username/Email/Mã nhân viên",
+            "   - Định dạng email không đúng",
+            "   - Định dạng ngày sinh không đúng (phải dd/MM/yyyy)",
+            "   - Tuổi dưới 18",
+            "   - Giới tính không đúng format (phải là Male/Female/Other)",
+            "",
+            "7. LƯU Ý QUAN TRỌNG:",
+            "   ⚠️ LUÔN XÓA DỮ LIỆU MẪU TRƯỚC KHI IMPORT",
+            "   ⚠️ Dữ liệu mẫu chỉ để tham khảo định dạng",
+            "   ⚠️ Nếu import với dữ liệu mẫu sẽ tạo tài khoản giả",
+            "   ★ Kiểm tra kỹ email trước khi import",
+            "   ★ Mật khẩu sẽ được gửi qua email sau khi tạo thành công",
+            "   ★ Manager có quyền quản lý học sinh, phụ huynh và lớp học",
+            ""
         };
 
         await CreateInstructionContent(worksheet, instructions);
@@ -890,6 +952,12 @@ public class ExcelService : IExcelService
         {
             "HƯỚNG DẪN IMPORT SCHOOL NURSE",
             "",
+            "⚠️ QUAN TRỌNG: PHẢI XÓA TẤT CẢ DỮ LIỆU MẪU TRƯỚC KHI IMPORT:",
+            "   - Xóa các dòng mẫu từ dòng 2-3 trong sheet 'Template_SchoolNurse'",
+            "   - Chỉ giữ lại dòng tiêu đề (dòng 1)",
+            "   - Bắt đầu nhập dữ liệu thật từ dòng 2",
+            "   - Nếu không xóa dữ liệu mẫu, hệ thống sẽ cố tạo tài khoản với dữ liệu giả",
+            "",
             "1. QUY TẮC CHUNG:",
             "   - File phải có định dạng Excel (.xlsx hoặc .xls)",
             "   - Kích thước file không vượt quá 10MB",
@@ -899,7 +967,7 @@ public class ExcelService : IExcelService
             "   - Cột A: Tên Đăng Nhập (bắt buộc, duy nhất)",
             "   - Cột B: Email (bắt buộc, duy nhất, đúng định dạng)",
             "   - Cột C: Họ Tên (bắt buộc)",
-            "   - Cột D: Số Điện Thoại (tùy chọn)",
+            "   - Cột D: Số Điện Thoại (tùy chọn, 10-11 số)",
             "   - Cột E: Địa Chỉ (tùy chọn)",
             "   - Cột F: Giới Tính (Male/Female hoặc Other)",
             "   - Cột G: Ngày Sinh (định dạng dd/MM/yyyy, tuổi >= 18)",
@@ -907,9 +975,50 @@ public class ExcelService : IExcelService
             "   - Cột I: Số Chứng Chỉ (bắt buộc)",
             "   - Cột J: Chuyên Môn (tùy chọn)",
             "",
-            "3. LƯU Ý:",
+            "3. QUY TẮC VALIDATION:",
+            "   - Tên đăng nhập không được trùng với tài khoản hiện có",
+            "   - Email không được trùng với tài khoản hiện có",
+            "   - Mã nhân viên phải duy nhất trong hệ thống",
+            "   - Số chứng chỉ bắt buộc phải có",
+            "   - Số điện thoại không được trùng (nếu có)",
+            "   - Tuổi phải từ 18 trở lên",
+            "   - Giới tính chỉ chấp nhận: Male, Female, Other",
+            "",
+            "4. THÔNG TIN CHUYÊN MÔN:",
+            "   - Số chứng chỉ phải được cấp bởi cơ quan có thẩm quyền",
+            "   - Chuyên môn có thể gồm: Y tế học đường, Điều dưỡng nhi khoa, Y học cộng đồng...",
+            "   - School Nurse chịu trách nhiệm chăm sóc sức khỏe học sinh",
+            "",
+            "5. CÁCH THỰC HIỆN IMPORT:",
+            "   BƯỚC 1: Tải template về máy",
+            "   BƯỚC 2: ⚠️ XÓA TẤT CẢ dữ liệu mẫu (dòng 2-3)",
+            "   BƯỚC 3: Nhập dữ liệu thật từ dòng 2 trở đi",
+            "   BƯỚC 4: Kiểm tra lại định dạng ngày tháng",
+            "   BƯỚC 5: Lưu file và upload lên hệ thống",
+            "",
+            "6. SAU KHI IMPORT THÀNH CÔNG:",
             "   - Hệ thống sẽ tự động tạo mật khẩu và gửi qua email",
-            "   - Số chứng chỉ phải được cấp bởi cơ quan có thẩm quyền"
+            "   - School Nurse sẽ nhận được email kích hoạt tài khoản",
+            "   - Có thể đăng nhập và bắt đầu công việc chăm sóc sức khỏe học sinh",
+            "",
+            "7. CÁC LỖI THƯỜNG GẶP:",
+            "   - QUÊN XÓA dữ liệu mẫu → Hệ thống cố tạo user với data giả",
+            "   - Thiếu thông tin bắt buộc (Username, Email, Họ tên, Mã nhân viên, Số chứng chỉ)",
+            "   - Trùng lặp Username/Email/Mã nhân viên",
+            "   - Định dạng email không đúng",
+            "   - Định dạng ngày sinh không đúng (phải dd/MM/yyyy)",
+            "   - Tuổi dưới 18",
+            "   - Giới tính không đúng format (phải là Male/Female/Other)",
+            "   - Thiếu số chứng chỉ hành nghề",
+            "",
+            "8. LƯU Ý QUAN TRỌNG:",
+            "   ⚠️ LUÔN XÓA DỮ LIỆU MẪU TRƯỚC KHI IMPORT",
+            "   ⚠️ Dữ liệu mẫu chỉ để tham khảo định dạng",
+            "   ⚠️ Nếu import với dữ liệu mẫu sẽ tạo tài khoản giả",
+            "   ★ Số chứng chỉ phải hợp lệ và do cơ quan có thẩm quyền cấp",
+            "   ★ School Nurse có trách nhiệm chăm sóc sức khỏe toàn trường",
+            "   ★ Mật khẩu sẽ được gửi qua email sau khi tạo thành công",
+            ""
         };
 
         await CreateInstructionContent(worksheet, instructions);
