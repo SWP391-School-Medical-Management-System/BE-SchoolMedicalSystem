@@ -1,7 +1,6 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
 EXPOSE 5200
-EXPOSE 7280
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG BUILD_CONFIGURATION=Release
@@ -22,15 +21,17 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-# Copy Templates folder if exists (similar to IntelligentDoorManagementSystem)
 COPY ["SchoolMedicalManagementSystem.API/Templates", "/app/Templates"]
 
-# Set environment variables
-ENV ASPNETCORE_URLS=http://+:5200;https://+:7280
+ENV ASPNETCORE_URLS=http://+:5200
 ENV ASPNETCORE_ENVIRONMENT=Production
+ENV DOTNET_RUNNING_IN_CONTAINER=true
 
-# Copy appsettings files
 COPY ["SchoolMedicalManagementSystem.API/appsettings.json", "/app/"]
 COPY ["SchoolMedicalManagementSystem.API/appsettings.Production.json", "/app/"]
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
 
 ENTRYPOINT ["dotnet", "SchoolMedicalManagementSystem.API.dll"]

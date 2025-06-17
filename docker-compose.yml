@@ -1,43 +1,115 @@
-﻿version: '3.8'
-
-services:
+﻿services:
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2019-latest
     restart: always
     environment:
       ACCEPT_EULA: Y
-      SA_PASSWORD: "123456"
+      SA_PASSWORD: "StrongPassword123!"
       MSSQL_PID: Express
       TZ: Asia/Ho_Chi_Minh
     ports:
       - "1433:1433"
     volumes:
-      - ./sqlserver:/var/opt/mssql
+      - sqlserver_data:/var/opt/mssql
+      - ./init-db.sql:/init-db.sql
     networks:
       - schoolmedical-network
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 123456 -Q 'SELECT 1'"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'StrongPassword123!' -C -Q 'SELECT 1'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
 
   redis:
-    image: redis:latest
+    image: redis/redis-stack:latest
     restart: always
     environment:
       TZ: Asia/Ho_Chi_Minh
+      REDIS_ARGS: "--requirepass Purejoy@123# --maxmemory 256mb --maxmemory-policy allkeys-lru"
     ports:
       - "6379:6379"
-    volumes:
-      - ./redis:/data
-    command: redis-server --requirepass Purejoy@123#
     networks:
       - schoolmedical-network
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "Purejoy@123#", "ping"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 5
+      start_period: 30s
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    volumes:
+      - ./init-db.sql:/init-db.sql
+    networks:
+      - schoolmedical-network
+    command: >
+      bash -c "
+        echo 'Waiting for SQL Server to be fully ready...'
+        sleep 10
+        echo 'Testing connection to SQL Server...'
+        /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P 'StrongPassword123!' -C -Q 'SELECT @@VERSION' || exit 1
+        echo 'Creating database and tables...'
+        /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P 'StrongPassword123!' -C -i /init-db.sql
+        echo 'Database initialization completed successfully!'
+      "
+
+  # Nginx reverse proxy với HTTPS chuẩn
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-https.conf:/etc/nginx/nginx.conf
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - schoolmedicalmanagementsystem.api
+    networks:
+      - schoolmedical-network
+    command: >
+      sh -c "
+        while :; do
+          sleep 6h & wait $!;
+          nginx -s reload;
+        done & nginx -g 'daemon off;'
+      "
+
+  # Certbot để lấy SSL certificate từ Let's Encrypt
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    profiles: ["certbot"]
+
+  # No-IP IP updater
+  noip-updater:
+    image: alpine:latest
+    restart: always
+    environment:
+      - NOIP_USERNAME=pe37zxv
+      - NOIP_PASSWORD=rnp6UyUbBStB
+      - HOSTNAME=schoolmedicalsystem.ddns.net
+    volumes:
+      - ./update-noip.sh:/update-noip.sh
+    command: >
+      sh -c "
+        apk add --no-cache curl &&
+        chmod +x /update-noip.sh &&
+        while true; do
+          /update-noip.sh &&
+          sleep 300
+        done
+      "
+    networks:
+      - schoolmedical-network
 
   schoolmedicalmanagementsystem.api:
     build:
@@ -46,30 +118,30 @@ services:
     restart: always
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - ALLOWED_ORIGINS=*
       - TZ=Asia/Ho_Chi_Minh
-    ports:
-      - "5200:5200"
-      - "7280:7280"
+      - ASPNETCORE_URLS=http://+:5200
+      - DOTNET_RUNNING_IN_CONTAINER=true
+    expose:
+      - "5200"
     depends_on:
       sqlserver:
         condition: service_healthy
       redis:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     networks:
       - schoolmedical-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5200/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
 networks:
   schoolmedical-network:
     name: schoolmedical-network
-    external: false
+    driver: bridge
 
 volumes:
-  sqlserver:
-  redis:
+  sqlserver_data:
+    driver: local

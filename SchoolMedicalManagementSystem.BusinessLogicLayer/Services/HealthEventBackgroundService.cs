@@ -13,37 +13,16 @@ public class HealthEventBackgroundService : BackgroundService
     private readonly ILogger<HealthEventBackgroundService> _logger;
     private readonly IServiceProvider _serviceProvider;
 
-    private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(15); // Check mỗi 15 giây
-    private readonly TimeSpan _escalationThreshold = TimeSpan.FromSeconds(30); // Escalate sau 30 giây ⚡
-    private readonly TimeSpan _reminderThreshold = TimeSpan.FromMinutes(2); // Reminder sau 2 phút
-    private readonly TimeSpan _cleanupThreshold = TimeSpan.FromMinutes(5); // Cleanup sau 5 phút
+    private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(30);
+    private readonly TimeSpan _escalationThreshold = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _reminderThreshold = TimeSpan.FromMinutes(10);
+    private readonly TimeSpan _cleanupThreshold = TimeSpan.FromHours(1);
 
-    // Check interval and thresholds
-    private readonly TimeSpan _escalationDuplicateCheck = TimeSpan.FromMinutes(3); // 3 phút cho escalation
-    private readonly TimeSpan _reminderDuplicateCheck = TimeSpan.FromMinutes(2); // 2 phút cho reminder
+    private readonly TimeSpan _escalationDuplicateCheck = TimeSpan.FromMinutes(15);
+    private readonly TimeSpan _reminderDuplicateCheck = TimeSpan.FromMinutes(30);
 
-    private double GetTotalSeconds(TimeSpan timeSpan)
-    {
-        return timeSpan.Days * 86400 + timeSpan.Hours * 3600 + timeSpan.Minutes * 60 + timeSpan.Seconds +
-               timeSpan.Milliseconds / 1000.0;
-    }
-
-    private double GetTotalMinutes(TimeSpan timeSpan)
-    {
-        return GetTotalSeconds(timeSpan) / 60.0;
-    }
-
-    private DateTime GetSafeDateTime(DateTime? nullableDateTime, DateTime fallback = default)
-    {
-        return nullableDateTime ?? (fallback == default ? DateTime.Now : fallback);
-    }
-
-    private TimeSpan GetSafeDuration(DateTime? startDateTime, DateTime? endDateTime = null)
-    {
-        var start = GetSafeDateTime(startDateTime);
-        var end = endDateTime ?? DateTime.Now;
-        return end - start;
-    }
+    private int _consecutiveErrors = 0;
+    private readonly int _maxConsecutiveErrors = 5;
 
     public HealthEventBackgroundService(
         ILogger<HealthEventBackgroundService> logger,
@@ -55,18 +34,45 @@ public class HealthEventBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("Health Event Background Service started");
+
+        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await ProcessHealthEventsAsync(stoppingToken);
+                _consecutiveErrors = 0;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("Health Event Background Service is stopping due to cancellation");
+                break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in Health Event Background Service");
+                _consecutiveErrors++;
+
+                if (_consecutiveErrors <= _maxConsecutiveErrors)
+                {
+                    _logger.LogWarning(ex, "Error #{Count} in Health Event Background Service: {Message}",
+                        _consecutiveErrors, ex.Message);
+                }
+                else
+                {
+                    _logger.LogError(ex, "Too many consecutive errors ({Count}) in Health Event Background Service. " +
+                                         "Will continue but may have issues.", _consecutiveErrors);
+                }
+
+                var delay = TimeSpan.FromSeconds(Math.Min(60, 5 * Math.Pow(2, Math.Min(_consecutiveErrors - 1, 4))));
+                await Task.Delay(delay, stoppingToken);
             }
 
-            await Task.Delay(_checkInterval, stoppingToken);
+            if (!stoppingToken.IsCancellationRequested)
+            {
+                await Task.Delay(_checkInterval, stoppingToken);
+            }
         }
 
         _logger.LogInformation("Health Event Background Service stopped");
@@ -74,9 +80,36 @@ public class HealthEventBackgroundService : BackgroundService
 
     private async Task ProcessHealthEventsAsync(CancellationToken cancellationToken)
     {
+        if (!await IsDatabaseAvailableAsync(cancellationToken))
+        {
+            _logger.LogDebug("Database not available, skipping health event processing");
+            return;
+        }
+
         await EscalatePendingEventsAsync(cancellationToken);
         await SendReminderNotificationsAsync(cancellationToken);
         await CleanupOldCompletedEventsAsync(cancellationToken);
+    }
+
+    private async Task<bool> IsDatabaseAvailableAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+            await unitOfWork.GetRepositoryByEntity<HealthEvent>()
+                .GetQueryable()
+                .Take(1)
+                .AnyAsync(cancellationToken);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug("Database connectivity check failed: {Message}", ex.Message);
+            return false;
+        }
     }
 
     /// <summary>
@@ -99,10 +132,13 @@ public class HealthEventBackgroundService : BackgroundService
                              he.CreatedDate.HasValue &&
                              he.CreatedDate.Value <= cutoffTime &&
                              !he.IsDeleted)
+                .Take(10)
                 .ToListAsync(cancellationToken);
 
             if (pendingEvents.Any())
             {
+                _logger.LogInformation("Found {Count} pending events for escalation", pendingEvents.Count);
+
                 var managers = await unitOfWork.GetRepositoryByEntity<ApplicationUser>()
                     .GetQueryable()
                     .Include(u => u.UserRoles)
@@ -110,6 +146,12 @@ public class HealthEventBackgroundService : BackgroundService
                     .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "MANAGER") &&
                                 u.IsActive && !u.IsDeleted)
                     .ToListAsync(cancellationToken);
+
+                if (!managers.Any())
+                {
+                    _logger.LogWarning("No managers found for escalation");
+                    return;
+                }
 
                 foreach (var healthEvent in pendingEvents)
                 {
@@ -123,29 +165,22 @@ public class HealthEventBackgroundService : BackgroundService
                         var duration = DateTime.Now - createdDate;
 
                         _logger.LogWarning("ESCALATED: Event {EventId} for student {StudentName} - " +
-                                           "Created: {CreatedDate}, Escalated after: {Duration} seconds",
+                                           "Created: {CreatedDate}, Escalated after: {Duration}",
                             healthEvent.Id,
                             healthEvent.Student?.FullName,
                             createdDate,
-                            GetTotalSeconds(duration));
-                    }
-                    else
-                    {
-                        _logger.LogDebug("Skipping escalation for event {EventId} - recent escalation already sent",
-                            healthEvent.Id);
+                            duration);
                     }
                 }
 
                 await unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-            else
-            {
-                _logger.LogDebug("No pending events found for escalation");
+                _logger.LogInformation("Escalation processing completed");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error escalating pending events");
+            throw;
         }
     }
 
@@ -169,38 +204,41 @@ public class HealthEventBackgroundService : BackgroundService
                              he.AssignedAt.HasValue &&
                              he.AssignedAt.Value <= reminderCutoff &&
                              !he.IsDeleted)
+                .Take(10)
                 .ToListAsync(cancellationToken);
 
             if (longRunningEvents.Any())
             {
-                _logger.LogInformation("Found {Count} long-running events (> {Threshold})",
-                    longRunningEvents.Count, _reminderThreshold);
-            }
+                _logger.LogInformation("Found {Count} long-running events for reminders", longRunningEvents.Count);
 
-            foreach (var healthEvent in longRunningEvents)
-            {
-                if (healthEvent.HandledBy != null)
+                foreach (var healthEvent in longRunningEvents)
                 {
-                    await CreateReminderNotificationAsync(unitOfWork, healthEvent);
+                    if (healthEvent.HandledBy != null)
+                    {
+                        var hasRecentReminder = await CheckRecentReminderNotificationAsync(unitOfWork, healthEvent.Id);
 
-                    var duration = GetSafeDuration(healthEvent.AssignedAt, DateTime.Now);
-                    _logger.LogInformation("REMINDER sent for event {EventId} to nurse {NurseName} - " +
-                                           "In progress for: {Duration} seconds",
-                        healthEvent.Id,
-                        healthEvent.HandledBy.FullName,
-                        GetTotalSeconds(duration));
+                        if (!hasRecentReminder)
+                        {
+                            await CreateReminderNotificationAsync(unitOfWork, healthEvent);
+
+                            var duration = DateTime.Now - (healthEvent.AssignedAt ?? DateTime.Now);
+                            _logger.LogInformation("REMINDER sent for event {EventId} to nurse {NurseName} - " +
+                                                   "In progress for: {Duration}",
+                                healthEvent.Id,
+                                healthEvent.HandledBy.FullName,
+                                duration);
+                        }
+                    }
                 }
-            }
 
-            if (longRunningEvents.Any())
-            {
                 await unitOfWork.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Sent {Count} reminder notifications", longRunningEvents.Count);
+                _logger.LogInformation("Reminder processing completed");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending reminder notifications");
+            throw;
         }
     }
 
@@ -223,12 +261,12 @@ public class HealthEventBackgroundService : BackgroundService
                             n.HealthEvent.CompletedAt.HasValue &&
                             n.HealthEvent.CompletedAt.Value <= cleanupCutoff &&
                             !n.IsDeleted)
+                .Take(50)
                 .ToListAsync(cancellationToken);
 
             if (oldNotifications.Any())
             {
-                _logger.LogInformation("Found {Count} old notifications for cleanup (> {Threshold})",
-                    oldNotifications.Count, _cleanupThreshold);
+                _logger.LogInformation("Cleaning up {Count} old notifications", oldNotifications.Count);
 
                 foreach (var notification in oldNotifications)
                 {
@@ -238,32 +276,52 @@ public class HealthEventBackgroundService : BackgroundService
                 }
 
                 await unitOfWork.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Cleaned up {Count} old notifications", oldNotifications.Count);
+                _logger.LogInformation("Cleanup completed");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error cleaning up old completed events");
+            throw;
         }
     }
 
-    // Check for recent escalation notifications to prevent duplicates
     private async Task<bool> CheckRecentEscalationNotificationAsync(IUnitOfWork unitOfWork, Guid healthEventId)
     {
         try
         {
-            var notificationRepo = unitOfWork.GetRepositoryByEntity<Notification>();
             var recentEscalationCutoff = DateTime.Now.Subtract(_escalationDuplicateCheck);
 
-            return await notificationRepo.GetQueryable()
+            return await unitOfWork.GetRepositoryByEntity<Notification>()
+                .GetQueryable()
                 .AnyAsync(n => n.HealthEventId == healthEventId &&
-                               n.Title.Contains("cần can thiệp") && // Check escalation notification
+                               n.Title.Contains("cần can thiệp") &&
                                n.CreatedDate >= recentEscalationCutoff &&
                                !n.IsDeleted);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking recent escalation notification for event {EventId}", healthEventId);
+            return false;
+        }
+    }
+
+    private async Task<bool> CheckRecentReminderNotificationAsync(IUnitOfWork unitOfWork, Guid healthEventId)
+    {
+        try
+        {
+            var recentReminderCutoff = DateTime.Now.Subtract(_reminderDuplicateCheck);
+
+            return await unitOfWork.GetRepositoryByEntity<Notification>()
+                .GetQueryable()
+                .AnyAsync(n => n.HealthEventId == healthEventId &&
+                               n.Title.Contains("đang xử lý") &&
+                               n.CreatedDate >= recentReminderCutoff &&
+                               !n.IsDeleted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking recent reminder notification for event {EventId}", healthEventId);
             return false;
         }
     }
@@ -277,7 +335,7 @@ public class HealthEventBackgroundService : BackgroundService
 
         foreach (var manager in managers)
         {
-            var waitTimeSeconds = GetTotalSeconds(DateTime.Now - (healthEvent.CreatedDate ?? DateTime.Now));
+            var waitTime = DateTime.Now - (healthEvent.CreatedDate ?? DateTime.Now);
 
             var notification = new Notification
             {
@@ -287,7 +345,7 @@ public class HealthEventBackgroundService : BackgroundService
                           $"({healthEvent.Student?.StudentCode}) đã chờ xử lý quá lâu.{Environment.NewLine}{Environment.NewLine}" +
                           $"Vị trí: {healthEvent.Location}{Environment.NewLine}" +
                           $"Thời gian xảy ra: {healthEvent.OccurredAt:dd/MM/yyyy HH:mm:ss}{Environment.NewLine}" +
-                          $"Thời gian chờ: {waitTimeSeconds:F0} giây{Environment.NewLine}" +
+                          $"Thời gian chờ: {waitTime:hh\\:mm\\:ss}{Environment.NewLine}" +
                           $"Mô tả: {healthEvent.Description}{Environment.NewLine}" +
                           $"Mức độ: {(healthEvent.IsEmergency ? "KHẨN CẤP" : "Bình thường")}{Environment.NewLine}{Environment.NewLine}" +
                           "Vui lòng phân công ngay cho School Nurse phù hợp.",
@@ -312,37 +370,18 @@ public class HealthEventBackgroundService : BackgroundService
     private async Task CreateReminderNotificationAsync(IUnitOfWork unitOfWork, HealthEvent healthEvent)
     {
         var notificationRepo = unitOfWork.GetRepositoryByEntity<Notification>();
-
-        var recentReminderCutoff = DateTime.Now.Subtract(_reminderDuplicateCheck);
-
-        var recentReminder = await notificationRepo.GetQueryable()
-            .AnyAsync(n => n.HealthEventId == healthEvent.Id &&
-                           n.Title.Contains("đang xử lý") && // Check reminder notification
-                           n.CreatedDate >= recentReminderCutoff &&
-                           !n.IsDeleted);
-
-        if (recentReminder)
-        {
-            _logger.LogDebug(
-                "Skipping reminder for health event {HealthEventId} - recent reminder already sent within {Duration}",
-                healthEvent.Id, _reminderDuplicateCheck);
-            return;
-        }
-
-        var processingDuration = GetSafeDuration(healthEvent.AssignedAt, DateTime.Now);
-        var durationMinutes = GetTotalMinutes(processingDuration);
-        var reminderMinutes = GetTotalMinutes(_reminderThreshold);
-        var startTime = GetSafeDateTime(healthEvent.AssignedAt, GetSafeDateTime(healthEvent.CreatedDate, DateTime.Now));
+        var processingDuration = DateTime.Now - (healthEvent.AssignedAt ?? DateTime.Now);
+        var startTime = healthEvent.AssignedAt ?? healthEvent.CreatedDate ?? DateTime.Now;
 
         var notification = new Notification
         {
             Id = Guid.NewGuid(),
             Title = $"Sự kiện y tế đang xử lý - {healthEvent.Student?.FullName}",
             Content = $"Bạn đang xử lý sự kiện y tế của học sinh {healthEvent.Student?.FullName} " +
-                      $"({healthEvent.Student?.StudentCode}) đã {durationMinutes:F1} phút.{Environment.NewLine}{Environment.NewLine}" +
+                      $"({healthEvent.Student?.StudentCode}) đã {processingDuration:hh\\:mm\\:ss}.{Environment.NewLine}{Environment.NewLine}" +
                       $"Vị trí: {healthEvent.Location}{Environment.NewLine}" +
                       $"Bắt đầu xử lý: {startTime:dd/MM/yyyy HH:mm:ss}{Environment.NewLine}" +
-                      $"Thời gian xử lý: {durationMinutes:F1} phút{Environment.NewLine}" +
+                      $"Thời gian xử lý: {processingDuration:hh\\:mm\\:ss}{Environment.NewLine}" +
                       $"Mô tả: {healthEvent.Description}{Environment.NewLine}{Environment.NewLine}" +
                       "Vui lòng cập nhật tiến trình hoặc hoàn thành xử lý.",
             NotificationType = NotificationType.HealthEvent,

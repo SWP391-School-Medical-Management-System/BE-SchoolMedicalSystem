@@ -8,6 +8,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthSer
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services.AuthService;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services.EmailService;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.MedicalCondition;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.User;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer;
@@ -35,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IHealthEventService, HealthEventService>();
         services.AddScoped<IStudentMedicationService, StudentMedicationService>();
         services.AddScoped<IMedicationScheduleService, MedicationScheduleService>();
+        services.AddScoped<IBlogPostService, BlogPostService>();
 
         // Cloudinary
         services.AddScoped<CloudinaryService>();

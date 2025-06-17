@@ -25,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<IMedicalItemRepository, MedicalItemRepository>();
         services.AddScoped<IHealthEventRepository, HealthEventRepository>();
         services.AddScoped<IStudentMedicationRepository, StudentMedicationRepository>();
+        services.AddScoped<IBlogPostRepository, BlogPostRepository>();
+        services.AddScoped<IBlogCommentRepository, BlogCommentRepository>();
 
         return services;
     }

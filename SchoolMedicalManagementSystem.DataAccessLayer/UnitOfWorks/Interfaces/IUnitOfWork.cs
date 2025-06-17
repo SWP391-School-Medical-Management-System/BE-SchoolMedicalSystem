@@ -15,4 +15,6 @@ public interface IUnitOfWork : IBaseUnitOfWork
     public IMedicalConditionRepository MedicalConditionRepository { get; }
     public IHealthEventRepository HealthEventRepository { get; }
     public IStudentMedicationRepository StudentMedicationRepository { get; }
+    public IBlogPostRepository BlogPostRepository { get; }
+    public IBlogCommentRepository BlogCommentRepository { get; }
 }
