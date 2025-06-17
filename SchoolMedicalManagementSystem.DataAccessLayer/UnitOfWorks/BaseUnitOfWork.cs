@@ -28,6 +28,14 @@ public class BaseUnitOfWork<TContext> : IBaseUnitOfWork
         return result > 0;
     }
 
+    #region DbContext Access
+
+    public DbContext GetDbContext() => _context;
+
+    public IExecutionStrategy CreateExecutionStrategy() => _context.Database.CreateExecutionStrategy();
+
+    #endregion
+
     #region Dispose()
 
     public void Dispose()
@@ -80,6 +88,12 @@ public class BaseUnitOfWork<TContext> : IBaseUnitOfWork
     public async Task<IDbContextTransaction> BeginTransactionAsync(
         CancellationToken cancellationToken = default
     )
+    {
+        return await _context.Database.BeginTransactionAsync(cancellationToken);
+    }
+
+    public async Task<IDbContextTransaction> BeginTransactionWithoutRetryAsync(
+        CancellationToken cancellationToken = default)
     {
         return await _context.Database.BeginTransactionAsync(cancellationToken);
     }
