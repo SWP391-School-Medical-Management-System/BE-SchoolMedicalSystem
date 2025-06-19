@@ -123,7 +123,7 @@ public class MedicalItemController : ControllerBase
     // - School Nurse: Can update own Pending/Rejected items
     // - Manager: Can update Approved items (basic info)
     [HttpPut("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE,MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<MedicalItemResponse>>> UpdateMedicalItem(
         Guid id, [FromBody] UpdateMedicalItemRequest model)
     {
@@ -145,7 +145,7 @@ public class MedicalItemController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE,MANAGER")]
     public async Task<ActionResult<BaseResponse<bool>>> DeleteMedicalItem(Guid id)
     {
         try
@@ -328,7 +328,7 @@ public class MedicalItemController : ControllerBase
     }
 
     [HttpPut("{id}/stock")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE,MANAGER")]
     public async Task<ActionResult<BaseResponse<bool>>> UpdateStockQuantity(
         Guid id,
         [FromBody] UpdateStockQuantityRequest request)
