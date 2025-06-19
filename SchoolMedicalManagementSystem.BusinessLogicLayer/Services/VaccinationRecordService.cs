@@ -337,7 +337,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 Id = vaccinationRecord.Id,
                 VaccinationTypeName = vaccinationRecord.VaccinationType.Name,
                 DoseNumber = vaccinationRecord.DoseNumber,
-                AdministeredDate = vaccinationRecord.AdministeredDate,
+                AdministeredDate = (DateTime)vaccinationRecord.AdministeredDate,
                 AdministeredBy = vaccinationRecord.AdministeredBy,
                 BatchNumber = vaccinationRecord.BatchNumber,
                 Notes = vaccinationRecord.Notes

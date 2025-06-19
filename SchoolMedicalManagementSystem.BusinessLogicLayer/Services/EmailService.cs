@@ -153,4 +153,9 @@ public class EmailService : IEmailService
         var template = await File.ReadAllTextAsync(templatePath);
         return template;
     }
+
+    public async Task SendEmailAsync(string to, string subject, string htmlBody)
+    {
+        await SendEmailInternalAsync(to, subject, htmlBody);
+    }
 }

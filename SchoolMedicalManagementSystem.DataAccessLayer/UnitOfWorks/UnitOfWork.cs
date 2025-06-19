@@ -23,4 +23,6 @@ public class UnitOfWork : BaseUnitOfWork<ApplicationDbContext>, IUnitOfWork
     public IStudentMedicationRepository StudentMedicationRepository => GetRepository<IStudentMedicationRepository>();
     public IVaccinationTypeRepository VaccinationTypeRepository => GetRepository<IVaccinationTypeRepository>();
     public IVaccinationRecordRepository VaccinationRecordRepository => GetRepository<IVaccinationRecordRepository>();
+    public IBlogPostRepository BlogPostRepository => GetRepository<IBlogPostRepository>();
+    public IBlogCommentRepository BlogCommentRepository => GetRepository<IBlogCommentRepository>();
 }

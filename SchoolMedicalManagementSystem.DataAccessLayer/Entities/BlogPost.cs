@@ -11,7 +11,8 @@ public class BlogPost : BaseEntity
     public Guid? AuthorId { get; set; }        // ID tác giả
     public bool IsPublished { get; set; }     // Đã xuất bản chưa
     public string CategoryName { get; set; }  // Tên danh mục, ví dụ: "Sức khỏe học đường", "Dinh dưỡng", "Phòng bệnh"
-    
+    public bool IsFeatured { get; set; }      // Đánh dấu bài viết nổi bật, mặc định là false
+
     public virtual ApplicationUser? Author { get; set; }     // Tác giả bài viết
     public virtual ICollection<BlogComment> Comments { get; set; } // Bình luận
 }

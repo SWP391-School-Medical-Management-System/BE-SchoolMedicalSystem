@@ -36,4 +36,9 @@ public class ApplicationUser : BaseEntity
     public virtual ICollection<StudentMedication> SentMedications { get; set; }      // Thuốc phụ huynh gửi
     public virtual ICollection<StudentMedication> ApprovedMedications { get; set; }  // Thuốc y tá phê duyệt
     public virtual ICollection<StudentMedicationAdministration> MedicationAdministrations { get; set; } // Lịch sử cho uống thuốc
+    public virtual ICollection<VaccinationSession> CreatedVaccinationSessions { get; set; }
+    public virtual ICollection<VaccinationSession> ApprovedVaccinationSessions { get; set; }
+    public virtual ICollection<VaccinationConsent> VaccinationConsents { get; set; }
+    public virtual ICollection<VaccinationConsent> ParentVaccinationConsents { get; set; }
+    public virtual ICollection<VaccinationAssignment> VaccinationAssignments { get; set; }
 }
