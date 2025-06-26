@@ -19,7 +19,8 @@ public class UserMappingProfile : Profile
         CreateMap<UpdateSchoolNurseRequest, ApplicationUser>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
-        CreateMap<CreateStudentRequest, ApplicationUser>();
+        CreateMap<CreateStudentRequest, ApplicationUser>()
+               .ForMember(dest => dest.ParentId, opt => opt.MapFrom(src => src.ParentId));
         CreateMap<UpdateStudentRequest, ApplicationUser>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 

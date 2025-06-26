@@ -13,6 +13,8 @@ public class CreateStudentRequestValidator : BaseUserRequestValidator<CreateStud
 
         RuleFor(x => x.ParentId)
            .Must(id => id == null || id != Guid.Empty)
+           .WithMessage("Mã phụ huynh cần được cung cấp.")
+           .Must(id => id == null || id != Guid.Empty)
            .WithMessage("Mã phụ huynh cần được cung cấp.");
 
         RuleFor(x => x.ClassId)

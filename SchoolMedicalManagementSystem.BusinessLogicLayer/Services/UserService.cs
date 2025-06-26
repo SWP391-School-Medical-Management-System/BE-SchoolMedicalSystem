@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Helpers;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
@@ -137,6 +138,7 @@ public class UserService : IUserService
             {
                 user.ProfileImageUrl = profileImageUrl;
             }
+
             user.LastUpdatedBy = user.Username;
             user.LastUpdatedDate = DateTime.Now;
 
@@ -230,7 +232,7 @@ public class UserService : IUserService
 
     private async Task<string> ProcessProfileImage(IFormFile file)
     {
-        if (file.Length > 2 * 1024 * 1024) 
+        if (file.Length > 2 * 1024 * 1024)
         {
             throw new ArgumentException("Kích thước ảnh vượt quá 2MB.");
         }
@@ -245,10 +247,11 @@ public class UserService : IUserService
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
         var imageData = ms.ToArray();
-        string fileName = $"{Guid.NewGuid()}{fileExtension}"; 
+        string fileName = $"{Guid.NewGuid()}{fileExtension}";
 
         return await _cloudinaryService.UploadImageAsync(imageData, fileName);
     }
+
     #endregion
 
     #region Staff Management (Admin)
@@ -884,7 +887,6 @@ public class UserService : IUserService
             };
         }
     }
-
 
     #endregion
 
@@ -1959,6 +1961,12 @@ public class UserService : IUserService
     {
         try
         {
+            var templateValidation = await ValidateManagerTemplate(file);
+            if (templateValidation != null && !templateValidation.Success)
+            {
+                return templateValidation;
+            }
+
             var excelResult = await _excelService.ReadManagerExcelAsync(file);
 
             if (!excelResult.Success)
@@ -2064,6 +2072,12 @@ public class UserService : IUserService
     {
         try
         {
+            var templateValidation = await ValidateSchoolNurseTemplate(file);
+            if (templateValidation != null && !templateValidation.Success)
+            {
+                return templateValidation;
+            }
+
             var excelResult = await _excelService.ReadSchoolNurseExcelAsync(file);
 
             if (!excelResult.Success)
@@ -2342,13 +2356,7 @@ public class UserService : IUserService
 
                     if (hasParentInfo)
                     {
-                        if (isNewParent)
-                        {
-                            var parentPassword = GenerateDefaultPassword();
-                            await _emailService.SendAccountCreationEmailAsync(data.ParentEmail,
-                                data.GeneratedParentUsername, parentPassword);
-                        }
-                        else
+                        if (!isNewParent)
                         {
                             var existingParent = existingParents.ContainsKey(data.ParentPhoneNumber)
                                 ? existingParents[data.ParentPhoneNumber]
@@ -2522,15 +2530,7 @@ public class UserService : IUserService
 
     private string HashPassword(string password)
     {
-        using var sha256 = SHA256.Create();
-        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-        var builder = new StringBuilder();
-        foreach (var b in bytes)
-        {
-            builder.Append(b.ToString("x2"));
-        }
-
-        return builder.ToString();
+        return PasswordHelper.HashPassword(password);
     }
 
     private StudentResponse MapToStudentResponse(ApplicationUser student)
@@ -2869,6 +2869,8 @@ public class UserService : IUserService
 
             await _unitOfWork.GetRepositoryByEntity<UserRole>().AddAsync(userRole);
             await _unitOfWork.SaveChangesAsync();
+
+            await _emailService.SendAccountCreationEmailAsync(parent.Email, parent.Username, defaultPassword);
 
             var parentResponse = _mapper.Map<ParentResponse>(parent);
 
@@ -3340,6 +3342,114 @@ public class UserService : IUserService
     #endregion
 
     #region Validation Methods
+
+    private async Task<BaseResponse<ExcelImportResult<ManagerResponse>>> ValidateManagerTemplate(IFormFile file)
+    {
+        try
+        {
+            using var stream = new MemoryStream();
+            await file.CopyToAsync(stream);
+
+            using var package = new ExcelPackage(stream);
+            var worksheet = package.Workbook.Worksheets.FirstOrDefault();
+
+            if (worksheet == null)
+            {
+                return new BaseResponse<ExcelImportResult<ManagerResponse>>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy worksheet trong file Excel."
+                };
+            }
+
+            var warnings = new List<string>();
+            var rowCount = worksheet.Dimension?.Rows ?? 0;
+
+            if (rowCount >= 2)
+            {
+                var firstRowData = worksheet.Cells[2, 1].Text?.Trim();
+                if (firstRowData == "manager001" || firstRowData == "manager002")
+                {
+                    warnings.Add(
+                        "⚠️ CẢNH BÁO: Phát hiện dữ liệu mẫu trong file! Vui lòng xóa tất cả dữ liệu mẫu trước khi import.");
+                }
+            }
+
+            if (warnings.Any())
+            {
+                return new BaseResponse<ExcelImportResult<ManagerResponse>>
+                {
+                    Success = false,
+                    Message = "File chứa dữ liệu mẫu. " + string.Join(" ", warnings)
+                };
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating manager template");
+            return new BaseResponse<ExcelImportResult<ManagerResponse>>
+            {
+                Success = false,
+                Message = $"Lỗi kiểm tra template: {ex.Message}"
+            };
+        }
+    }
+
+    private async Task<BaseResponse<ExcelImportResult<SchoolNurseResponse>>> ValidateSchoolNurseTemplate(IFormFile file)
+    {
+        try
+        {
+            using var stream = new MemoryStream();
+            await file.CopyToAsync(stream);
+
+            using var package = new ExcelPackage(stream);
+            var worksheet = package.Workbook.Worksheets.FirstOrDefault();
+
+            if (worksheet == null)
+            {
+                return new BaseResponse<ExcelImportResult<SchoolNurseResponse>>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy worksheet trong file Excel."
+                };
+            }
+
+            var warnings = new List<string>();
+            var rowCount = worksheet.Dimension?.Rows ?? 0;
+
+            if (rowCount >= 2)
+            {
+                var firstRowData = worksheet.Cells[2, 1].Text?.Trim();
+                if (firstRowData == "nurse001" || firstRowData == "nurse002")
+                {
+                    warnings.Add(
+                        "⚠️ CẢNH BÁO: Phát hiện dữ liệu mẫu trong file! Vui lòng xóa tất cả dữ liệu mẫu trước khi import.");
+                }
+            }
+
+            if (warnings.Any())
+            {
+                return new BaseResponse<ExcelImportResult<SchoolNurseResponse>>
+                {
+                    Success = false,
+                    Message = "File chứa dữ liệu mẫu. " + string.Join(" ", warnings)
+                };
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating school nurse template");
+            return new BaseResponse<ExcelImportResult<SchoolNurseResponse>>
+            {
+                Success = false,
+                Message = $"Lỗi kiểm tra template: {ex.Message}"
+            };
+        }
+    }
 
     private async Task<(bool CanDelete, string Reason)> ValidateStudentDeletion(Guid studentId)
     {

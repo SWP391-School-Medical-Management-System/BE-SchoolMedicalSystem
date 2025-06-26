@@ -72,7 +72,9 @@ public class ApplicationDbContext : DbContext
 
     // Student Medications
     public DbSet<StudentMedication> StudentMedications { get; set; }
-    public DbSet<StudentMedicationAdministration> StudentMedicationAdministrations { get; set; }
+    public DbSet<MedicationAdministration> StudentMedicationAdministrations { get; set; }
+    public DbSet<MedicationSchedule> MedicationSchedules { get; set; }
+    public DbSet<MedicationStock> MedicationStocks { get; set; }
 
     // Vaccinations
     public DbSet<VaccinationType> VaccinationTypes { get; set; }
@@ -238,7 +240,7 @@ public class ApplicationDbContext : DbContext
 
         #endregion
 
-        #region HealthEvent Relationships - CRITICAL FIX
+        #region HealthEvent Relationships
 
         modelBuilder.Entity<HealthEvent>()
             .HasOne(e => e.Student)
@@ -282,7 +284,7 @@ public class ApplicationDbContext : DbContext
 
         #endregion
 
-        #region StudentMedication Relationships
+        #region StudentMedication Relationship
 
         modelBuilder.Entity<StudentMedication>()
             .HasOne(sm => sm.Student)
@@ -300,29 +302,33 @@ public class ApplicationDbContext : DbContext
             .HasOne(sm => sm.ApprovedBy)
             .WithMany(u => u.ApprovedMedications)
             .HasForeignKey(sm => sm.ApprovedById)
-            .OnDelete(DeleteBehavior.NoAction);
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<StudentMedication>()
             .HasMany(sm => sm.Administrations)
-            .WithOne(sma => sma.StudentMedication)
-            .HasForeignKey(sma => sma.StudentMedicationId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<StudentMedication>()
-            .HasMany(sm => sm.Notifications)
-            .WithOne()
-            .HasForeignKey("StudentMedicationId")
+            .WithOne(ma => ma.StudentMedication)
+            .HasForeignKey(ma => ma.StudentMedicationId)
             .OnDelete(DeleteBehavior.Cascade);
 
         #endregion
 
-        #region StudentMedicationAdministration Relationships
+        #region MedicationAdministration Relationships
 
-        modelBuilder.Entity<StudentMedicationAdministration>()
-            .HasOne(sma => sma.AdministeredBy)
+        modelBuilder.Entity<MedicationAdministration>()
+            .HasOne(ma => ma.AdministeredBy)
             .WithMany(u => u.MedicationAdministrations)
-            .HasForeignKey(sma => sma.AdministeredById)
+            .HasForeignKey(ma => ma.AdministeredById)
             .OnDelete(DeleteBehavior.NoAction);
+
+        #endregion
+
+        #region MedicationStock Relationships
+
+        modelBuilder.Entity<MedicationStock>()
+            .HasOne(ms => ms.StudentMedication)
+            .WithMany(sm => sm.StockHistory)
+            .HasForeignKey(ms => ms.StudentMedicationId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         #endregion
 
@@ -553,6 +559,20 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(va => va.NurseId)
             .OnDelete(DeleteBehavior.NoAction);
 
+        #region MedicationSchedule Relationships
+
+        modelBuilder.Entity<MedicationSchedule>()
+            .HasOne(ms => ms.StudentMedication)
+            .WithMany(sm => sm.Schedules)
+            .HasForeignKey(ms => ms.StudentMedicationId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<MedicationSchedule>()
+            .HasOne(ms => ms.Administration)
+            .WithMany(ma => ma.CompletedSchedules)
+            .HasForeignKey(ms => ms.AdministrationId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         #endregion
     }
 
@@ -588,6 +608,12 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<StudentMedication>().Property(sm => sm.Status)
             .HasConversion(new EnumToStringConverter<StudentMedicationStatus>());
 
+        modelBuilder.Entity<StudentMedication>().Property(sm => sm.TimeOfDay)
+            .HasConversion(new EnumToStringConverter<MedicationTimeOfDay>());
+
+        modelBuilder.Entity<StudentMedication>().Property(ms => ms.Priority)
+            .HasConversion(new EnumToStringConverter<MedicationPriority>());
+
         // Report enums
         modelBuilder.Entity<Report>().Property(r => r.ReportType)
             .HasConversion(new EnumToStringConverter<ReportType>());
@@ -605,6 +631,13 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<MedicalItem>().Property(a => a.Priority)
             .HasConversion(new EnumToStringConverter<PriorityLevel>());
+
+        // MedicationSchedule enums
+        modelBuilder.Entity<MedicationSchedule>().Property(ms => ms.Status)
+            .HasConversion(new EnumToStringConverter<MedicationScheduleStatus>());
+
+        modelBuilder.Entity<MedicationSchedule>().Property(ms => ms.Priority)
+            .HasConversion(new EnumToStringConverter<MedicationPriority>());
     }
 
     private void ConfigureDefaultValues(ModelBuilder modelBuilder)
@@ -647,11 +680,19 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<HealthEvent>().Property(he => he.IsEmergency).HasDefaultValue(false);
 
         // StudentMedicationAdministration defaults
-        modelBuilder.Entity<StudentMedicationAdministration>().Property(sma => sma.StudentRefused)
+        modelBuilder.Entity<MedicationAdministration>().Property(sma => sma.StudentRefused)
             .HasDefaultValue(false);
 
         // StudentClass defaults
         modelBuilder.Entity<StudentClass>().Property(sc => sc.EnrollmentDate).HasDefaultValueSql("GETDATE()");
+
+        // MedicationSchedule defaults
+        modelBuilder.Entity<MedicationSchedule>().Property(ms => ms.Status)
+            .HasDefaultValue(MedicationScheduleStatus.Pending);
+        modelBuilder.Entity<MedicationSchedule>().Property(ms => ms.ReminderSent)
+            .HasDefaultValue(false);
+        modelBuilder.Entity<MedicationSchedule>().Property(ms => ms.ReminderCount)
+            .HasDefaultValue(0);
 
         // BaseEntity defaults for all entities
         var entityTypes = modelBuilder.Model.GetEntityTypes()
@@ -691,9 +732,9 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<StudentMedication>().HasIndex(sm => sm.EndDate);
 
         // StudentMedicationAdministration indexes
-        modelBuilder.Entity<StudentMedicationAdministration>().HasIndex(sma => sma.StudentMedicationId);
-        modelBuilder.Entity<StudentMedicationAdministration>().HasIndex(sma => sma.AdministeredById);
-        modelBuilder.Entity<StudentMedicationAdministration>().HasIndex(sma => sma.AdministeredAt);
+        modelBuilder.Entity<MedicationAdministration>().HasIndex(sma => sma.StudentMedicationId);
+        modelBuilder.Entity<MedicationAdministration>().HasIndex(sma => sma.AdministeredById);
+        modelBuilder.Entity<MedicationAdministration>().HasIndex(sma => sma.AdministeredAt);
 
         // Notification indexes
         modelBuilder.Entity<Notification>().HasIndex(n => n.RecipientId);
@@ -709,6 +750,9 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<MedicalCondition>().HasIndex(mc => mc.MedicalRecordId);
         modelBuilder.Entity<MedicalCondition>().HasIndex(mc => mc.Type);
         modelBuilder.Entity<MedicalCondition>().HasIndex(mc => mc.Severity);
+
+        // MedicationStock indexes
+        modelBuilder.Entity<MedicationStock>().HasIndex(ms => ms.StudentMedicationId);
 
         // MedicalItem indexes
         modelBuilder.Entity<MedicalItem>().HasIndex(mi => mi.Type);
@@ -749,12 +793,13 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Appointment>().HasIndex(a => a.AppointmentDate);
         modelBuilder.Entity<Appointment>().HasIndex(a => a.Status);
 
+
         // VaccinationSession indexes
         modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.VaccineTypeId);
         modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.CreatedById);
         modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.ApprovedById);
         modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.Status);
-        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.StartTime); 
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.StartTime);
 
         // VaccinationSessionClass indexes
         modelBuilder.Entity<VaccinationSessionClass>().HasIndex(vsc => vsc.SessionId);
@@ -770,7 +815,18 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.SessionId);
         modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.ClassId);
         modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.NurseId);
+
+        // MedicationSchedule indexes
+        modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => ms.StudentMedicationId);
+        modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => ms.ScheduledDate);
+        modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => ms.ScheduledTime);
+        modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => ms.Status);
+        modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => ms.AdministrationId);
+        modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => new { ms.ScheduledDate, ms.Status });
+        modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => new { ms.StudentMedicationId, ms.ScheduledDate });
     }
+
+    #endregion
 
     #endregion
 
@@ -873,4 +929,5 @@ public class ApplicationDbContext : DbContext
     }
 
     #endregion
+
 }

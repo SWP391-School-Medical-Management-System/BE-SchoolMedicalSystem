@@ -35,10 +35,11 @@ public class ApplicationUser : BaseEntity
     public virtual ICollection<Report> GeneratedReports { get; set; }       // Báo cáo đã tạo (nếu là Admin/Manager/SchoolNurse)
     public virtual ICollection<StudentMedication> SentMedications { get; set; }      // Thuốc phụ huynh gửi
     public virtual ICollection<StudentMedication> ApprovedMedications { get; set; }  // Thuốc y tá phê duyệt
-    public virtual ICollection<StudentMedicationAdministration> MedicationAdministrations { get; set; } // Lịch sử cho uống thuốc
+    public virtual ICollection<MedicationAdministration> MedicationAdministrations { get; set; } // Lịch sử cho uống thuốc
     public virtual ICollection<VaccinationSession> CreatedVaccinationSessions { get; set; }  // Tạo buổi tiêm 
     public virtual ICollection<VaccinationSession> ApprovedVaccinationSessions { get; set; }  // Sự đồng thuận để tạo buổi tiêm
     public virtual ICollection<VaccinationConsent> VaccinationConsents { get; set; }    //  Xin phép phụ huynh 
     public virtual ICollection<VaccinationConsent> ParentVaccinationConsents { get; set; }  // Sự đồng thuận của phụ huynh
     public virtual ICollection<VaccinationAssignment> VaccinationAssignments { get; set; }  // Phân công nhân viên y tế
+
 }

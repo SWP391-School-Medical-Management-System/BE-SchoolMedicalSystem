@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OfficeOpenXml;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.BackgroundServices;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthService;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
@@ -36,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IStudentMedicationService, StudentMedicationService>();
         services.AddScoped<IVaccinationRecordService, VaccinationRecordService>();
         services.AddScoped<IVaccinationService, VaccinationService>();
+        services.AddScoped<IMedicationScheduleService, MedicationScheduleService>();
         services.AddScoped<IBlogPostService, BlogPostService>();
         services.AddScoped<IVaccinationSessionService, VaccinationSessionService>();
 
@@ -55,6 +57,9 @@ public static class DependencyInjection
 
         // Background Service
         services.AddHostedService<HealthEventBackgroundService>();
+        services.AddHostedService<MedicationReminderService>();
+        services.AddHostedService<MedicationScheduleGeneratorService>();
+        services.AddHostedService<MedicationDataCleanupService>();
 
         // Add Http Context Accessor
         services.AddDistributedMemoryCache();
