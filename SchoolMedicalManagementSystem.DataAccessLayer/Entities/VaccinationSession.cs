@@ -8,6 +8,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 public class VaccinationSession : BaseEntity
 {
     public Guid VaccineTypeId { get; set; }        // Foreign Key đến VaccinationType
+    public string VaccineTypeName { get; set; }    // Lưu tên vaccine cố định
     public string SessionName { get; set; }        // Tên của buổi tiêm
     public string ResponsibleOrganizationName { get; set; }  // Tên tổ chức chịu trách nhiệm
     public string Location { get; set; }           // Địa điểm tiêm
@@ -17,6 +18,7 @@ public class VaccinationSession : BaseEntity
     public Guid CreatedById { get; set; }          // Foreign Key đến ApplicationUser (School Nurse)
     public Guid? ApprovedById { get; set; }        // Foreign Key đến ApplicationUser (Manager), nullable
     public DateTime? ApprovedDate { get; set; }    // Thời gian duyệt, nullable
+    public string Posology { get; set; }           // Liều lượng tiêm trong buổi tiêm
     public string SideEffect {  get; set; }        // Tác dụng phụ
     public string Contraindication { get; set; }   // Chống chỉ định
     public string Notes { get; set; }              // Ghi chú, tùy chọn

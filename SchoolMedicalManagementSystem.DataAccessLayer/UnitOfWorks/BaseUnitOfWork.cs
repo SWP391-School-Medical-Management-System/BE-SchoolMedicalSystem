@@ -124,5 +124,27 @@ public class BaseUnitOfWork<TContext> : IBaseUnitOfWork
         });
     }
 
+    public async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken = default)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            using (var transaction = await BeginTransactionAsync(cancellationToken))
+            {
+                try
+                {
+                    var result = await operation();
+                    await CommitTransactionAsync(transaction, cancellationToken);
+                    return result;
+                }
+                catch
+                {
+                    await RollbackTransactionAsync(transaction, cancellationToken);
+                    throw;
+                }
+            }
+        });
+    }
+
     #endregion
 }

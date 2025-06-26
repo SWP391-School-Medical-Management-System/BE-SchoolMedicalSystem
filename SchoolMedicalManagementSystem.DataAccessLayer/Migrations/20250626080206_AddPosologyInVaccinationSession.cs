@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
 {
     /// <inheritdoc />
-    public partial class UpdateVaccinationSession : Migration
+    public partial class AddPosologyInVaccinationSession : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -408,15 +408,17 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     VaccineTypeId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    VaccineTypeName = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     SessionName = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     ResponsibleOrganizationName = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Location = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     StartTime = table.Column<DateTime>(type: "datetime2", nullable: false),
                     EndTime = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     CreatedById = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ApprovedById = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     ApprovedDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Posology = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     SideEffect = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Contraindication = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(max)", nullable: false),
@@ -670,7 +672,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                     SessionId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     StudentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ParentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     ResponseDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     ConsentFormUrl = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Code = table.Column<string>(type: "nvarchar(max)", nullable: true),
@@ -1055,22 +1057,22 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                 columns: new[] { "Id", "Code", "CreatedBy", "CreatedDate", "EndDate", "LastUpdatedBy", "LastUpdatedDate", "Name", "StartDate" },
                 values: new object[,]
                 {
-                    { new Guid("1a388e2b-a398-4c6f-872c-9c318df9b000"), null, null, new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6493), null, null, null, "ADMIN", null },
-                    { new Guid("2b587a39-c4f1-4e7c-908b-0a22951a2a94"), null, null, new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6511), null, null, null, "MANAGER", null },
-                    { new Guid("3c31e27c-3c6d-4a1b-a520-5db6a8e3fdb1"), null, null, new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6514), null, null, null, "SCHOOLNURSE", null },
-                    { new Guid("4d4eddd2-3396-4b1a-981b-c82f638d1e89"), null, null, new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6516), null, null, null, "PARENT", null },
-                    { new Guid("5e0bd535-7f4b-439f-a31f-32d31c9e146a"), null, null, new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6519), null, null, null, "STUDENT", null }
+                    { new Guid("1a388e2b-a398-4c6f-872c-9c318df9b000"), null, null, new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7387), null, null, null, "ADMIN", null },
+                    { new Guid("2b587a39-c4f1-4e7c-908b-0a22951a2a94"), null, null, new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7418), null, null, null, "MANAGER", null },
+                    { new Guid("3c31e27c-3c6d-4a1b-a520-5db6a8e3fdb1"), null, null, new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7421), null, null, null, "SCHOOLNURSE", null },
+                    { new Guid("4d4eddd2-3396-4b1a-981b-c82f638d1e89"), null, null, new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7424), null, null, null, "PARENT", null },
+                    { new Guid("5e0bd535-7f4b-439f-a31f-32d31c9e146a"), null, null, new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7427), null, null, null, "STUDENT", null }
                 });
 
             migrationBuilder.InsertData(
                 table: "Users",
                 columns: new[] { "Id", "Address", "Code", "CreatedBy", "CreatedDate", "DateOfBirth", "Email", "EndDate", "FullName", "Gender", "IsActive", "LastUpdatedBy", "LastUpdatedDate", "LicenseNumber", "ParentId", "PasswordHash", "PhoneNumber", "ProfileImageUrl", "Relationship", "Specialization", "StaffCode", "StartDate", "StudentCode", "Username" },
-                values: new object[] { new Guid("8a1a9e51-a0e5-4dc9-8698-9bedd2ca422d"), "School Medical System Headquarters", null, null, new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(7663), null, "admin@schoolmedical.com", null, "System Administrator", null, true, null, null, null, null, "fcf7bb6d546cfb82d2e55486984ae7a1862a666acb441e0cf8b4ed34a4fcf9d7", "0987654321", null, null, null, "AD123", null, null, "admin" });
+                values: new object[] { new Guid("8a1a9e51-a0e5-4dc9-8698-9bedd2ca422d"), "School Medical System Headquarters", null, null, new DateTime(2025, 6, 26, 15, 2, 5, 356, DateTimeKind.Local).AddTicks(176), null, "admin@schoolmedical.com", null, "System Administrator", null, true, null, null, null, null, "fcf7bb6d546cfb82d2e55486984ae7a1862a666acb441e0cf8b4ed34a4fcf9d7", "0987654321", null, null, null, "AD123", null, null, "admin" });
 
             migrationBuilder.InsertData(
                 table: "UserRoles",
                 columns: new[] { "RoleId", "UserId", "Code", "CreatedBy", "CreatedDate", "EndDate", "Id", "LastUpdatedBy", "LastUpdatedDate", "StartDate" },
-                values: new object[] { new Guid("1a388e2b-a398-4c6f-872c-9c318df9b000"), new Guid("8a1a9e51-a0e5-4dc9-8698-9bedd2ca422d"), null, null, new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(7783), null, new Guid("33c6c33f-b44b-4e93-8c93-83d10a44fc43"), null, null, null });
+                values: new object[] { new Guid("1a388e2b-a398-4c6f-872c-9c318df9b000"), new Guid("8a1a9e51-a0e5-4dc9-8698-9bedd2ca422d"), null, null, new DateTime(2025, 6, 26, 15, 2, 5, 356, DateTimeKind.Local).AddTicks(432), null, new Guid("276255bd-d0e9-4275-9548-757101f89763"), null, null, null });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Appointments_AppointmentDate",
@@ -1471,6 +1473,11 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                 column: "SessionId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_VaccinationConsents_Status",
+                table: "VaccinationConsents",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_VaccinationConsents_StudentId",
                 table: "VaccinationConsents",
                 column: "StudentId");
@@ -1519,6 +1526,16 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                 name: "IX_VaccinationSessions_CreatedById",
                 table: "VaccinationSessions",
                 column: "CreatedById");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_VaccinationSessions_StartTime",
+                table: "VaccinationSessions",
+                column: "StartTime");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_VaccinationSessions_Status",
+                table: "VaccinationSessions",
+                column: "Status");
 
             migrationBuilder.CreateIndex(
                 name: "IX_VaccinationSessions_VaccineTypeId",

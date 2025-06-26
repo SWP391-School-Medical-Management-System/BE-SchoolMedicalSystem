@@ -13,6 +13,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Vacci
         public DateTime AdministeredDate { get; set; }
         public string AdministeredBy { get; set; }
         public string BatchNumber { get; set; }
+        public string Symptoms { get; set; }
+        public string VaccinationStatus { get; set; }
         public string Notes { get; set; }
     }
 }

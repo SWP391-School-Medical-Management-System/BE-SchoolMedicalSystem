@@ -14,7 +14,8 @@ public class UserMappingProfile : Profile
         CreateMap<UpdateManagerRequest, ApplicationUser>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
-        CreateMap<CreateSchoolNurseRequest, ApplicationUser>();
+        CreateMap<CreateStudentRequest, ApplicationUser>()
+               .ForMember(dest => dest.ParentId, opt => opt.MapFrom(src => src.ParentId));
         CreateMap<UpdateSchoolNurseRequest, ApplicationUser>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
@@ -25,6 +26,25 @@ public class UserMappingProfile : Profile
         CreateMap<CreateParentRequest, ApplicationUser>();
         CreateMap<UpdateParentRequest, ApplicationUser>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+
+        CreateMap<CreateSchoolNurseRequest, ApplicationUser>()
+            .ForMember(dest => dest.Username, opt => opt.MapFrom(src => src.Username))
+            .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
+            .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
+            .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
+            .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
+            .ForMember(dest => dest.Gender, opt => opt.MapFrom(src => src.Gender))
+            .ForMember(dest => dest.DateOfBirth, opt => opt.MapFrom(src => src.DateOfBirth))
+            .ForMember(dest => dest.StaffCode, opt => opt.MapFrom(src => src.StaffCode))
+            .ForMember(dest => dest.LicenseNumber, opt => opt.MapFrom(src => src.LicenseNumber))
+            .ForMember(dest => dest.Specialization, opt => opt.MapFrom(src => src.Specialization))
+            .ForMember(dest => dest.Id, opt => opt.Ignore()) // ID s? ???c t?o t? ??ng
+            .ForMember(dest => dest.PasswordHash, opt => opt.Ignore()) // M?t kh?u s? ???c x? lý trong service
+            .ForMember(dest => dest.IsActive, opt => opt.MapFrom(src => false)) // M?c ??nh ch?a kích ho?t
+            .ForMember(dest => dest.CreatedDate, opt => opt.Ignore()) // ???c gán trong service
+            .ForMember(dest => dest.LastUpdatedDate, opt => opt.Ignore()) // ???c gán trong service
+            .ForMember(dest => dest.UserRoles, opt => opt.Ignore()) // Vai trò s? ???c gán trong service
+            .ForMember(dest => dest.ProfileImageUrl, opt => opt.Ignore()); // Có th? b? qua n?u không cung c?p
 
         CreateMap<ApplicationUser, ManagerResponse>();
 

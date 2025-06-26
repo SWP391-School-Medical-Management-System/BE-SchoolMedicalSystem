@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IVaccinationRecordService, VaccinationRecordService>();
         services.AddScoped<IVaccinationService, VaccinationService>();
         services.AddScoped<IBlogPostService, BlogPostService>();
+        services.AddScoped<IVaccinationSessionService, VaccinationSessionService>();
 
         // Cloudinary
         services.AddScoped<CloudinaryService>();

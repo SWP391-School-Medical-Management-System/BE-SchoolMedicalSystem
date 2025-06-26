@@ -748,6 +748,28 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Appointment>().HasIndex(a => a.CounselorId);
         modelBuilder.Entity<Appointment>().HasIndex(a => a.AppointmentDate);
         modelBuilder.Entity<Appointment>().HasIndex(a => a.Status);
+
+        // VaccinationSession indexes
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.VaccineTypeId);
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.CreatedById);
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.ApprovedById);
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.Status);
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.StartTime); 
+
+        // VaccinationSessionClass indexes
+        modelBuilder.Entity<VaccinationSessionClass>().HasIndex(vsc => vsc.SessionId);
+        modelBuilder.Entity<VaccinationSessionClass>().HasIndex(vsc => vsc.ClassId);
+
+        // VaccinationConsent indexes
+        modelBuilder.Entity<VaccinationConsent>().HasIndex(vc => vc.SessionId);
+        modelBuilder.Entity<VaccinationConsent>().HasIndex(vc => vc.StudentId);
+        modelBuilder.Entity<VaccinationConsent>().HasIndex(vc => vc.ParentId);
+        modelBuilder.Entity<VaccinationConsent>().HasIndex(vc => vc.Status);
+
+        // VaccinationAssignment indexes
+        modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.SessionId);
+        modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.ClassId);
+        modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.NurseId);
     }
 
     #endregion

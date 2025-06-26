@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<IVaccinationTypeRepository, VaccinationTypeRepository>();
         services.AddScoped<IBlogPostRepository, BlogPostRepository>();
         services.AddScoped<IBlogCommentRepository, BlogCommentRepository>();
+        services.AddScoped<IVaccinationSessionRepository, VaccinationSessionRepository>();
 
         return services;
     }

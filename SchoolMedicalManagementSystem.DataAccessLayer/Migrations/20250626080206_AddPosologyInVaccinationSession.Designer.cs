@@ -12,8 +12,8 @@ using SchoolMedicalManagementSystem.DataAccessLayer.Context;
 namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250619094121_UpdateVaccinationSession")]
-    partial class UpdateVaccinationSession
+    [Migration("20250626080206_AddPosologyInVaccinationSession")]
+    partial class AddPosologyInVaccinationSession
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -136,7 +136,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                         {
                             Id = new Guid("8a1a9e51-a0e5-4dc9-8698-9bedd2ca422d"),
                             Address = "School Medical System Headquarters",
-                            CreatedDate = new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(7663),
+                            CreatedDate = new DateTime(2025, 6, 26, 15, 2, 5, 356, DateTimeKind.Local).AddTicks(176),
                             Email = "admin@schoolmedical.com",
                             FullName = "System Administrator",
                             IsActive = true,
@@ -1281,35 +1281,35 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                         new
                         {
                             Id = new Guid("1a388e2b-a398-4c6f-872c-9c318df9b000"),
-                            CreatedDate = new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6493),
+                            CreatedDate = new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7387),
                             IsDeleted = false,
                             Name = "ADMIN"
                         },
                         new
                         {
                             Id = new Guid("2b587a39-c4f1-4e7c-908b-0a22951a2a94"),
-                            CreatedDate = new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6511),
+                            CreatedDate = new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7418),
                             IsDeleted = false,
                             Name = "MANAGER"
                         },
                         new
                         {
                             Id = new Guid("3c31e27c-3c6d-4a1b-a520-5db6a8e3fdb1"),
-                            CreatedDate = new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6514),
+                            CreatedDate = new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7421),
                             IsDeleted = false,
                             Name = "SCHOOLNURSE"
                         },
                         new
                         {
                             Id = new Guid("4d4eddd2-3396-4b1a-981b-c82f638d1e89"),
-                            CreatedDate = new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6516),
+                            CreatedDate = new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7424),
                             IsDeleted = false,
                             Name = "PARENT"
                         },
                         new
                         {
                             Id = new Guid("5e0bd535-7f4b-439f-a31f-32d31c9e146a"),
-                            CreatedDate = new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(6519),
+                            CreatedDate = new DateTime(2025, 6, 26, 15, 2, 5, 355, DateTimeKind.Local).AddTicks(7427),
                             IsDeleted = false,
                             Name = "STUDENT"
                         });
@@ -1635,8 +1635,8 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                         {
                             UserId = new Guid("8a1a9e51-a0e5-4dc9-8698-9bedd2ca422d"),
                             RoleId = new Guid("1a388e2b-a398-4c6f-872c-9c318df9b000"),
-                            CreatedDate = new DateTime(2025, 6, 19, 16, 41, 20, 406, DateTimeKind.Local).AddTicks(7783),
-                            Id = new Guid("33c6c33f-b44b-4e93-8c93-83d10a44fc43"),
+                            CreatedDate = new DateTime(2025, 6, 26, 15, 2, 5, 356, DateTimeKind.Local).AddTicks(432),
+                            Id = new Guid("276255bd-d0e9-4275-9548-757101f89763"),
                             IsDeleted = false
                         });
                 });
@@ -1743,7 +1743,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("StudentId")
                         .HasColumnType("uniqueidentifier");
@@ -1753,6 +1753,8 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                     b.HasIndex("ParentId");
 
                     b.HasIndex("SessionId");
+
+                    b.HasIndex("Status");
 
                     b.HasIndex("StudentId");
 
@@ -1894,6 +1896,10 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Posology")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ResponsibleOrganizationName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1914,16 +1920,24 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("VaccineTypeId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("VaccineTypeName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ApprovedById");
 
                     b.HasIndex("CreatedById");
+
+                    b.HasIndex("StartTime");
+
+                    b.HasIndex("Status");
 
                     b.HasIndex("VaccineTypeId");
 

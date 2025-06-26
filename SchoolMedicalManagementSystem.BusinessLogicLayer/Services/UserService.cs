@@ -1036,6 +1036,8 @@ public class UserService : IUserService
             }
 
             var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var studentClassRepo = _unitOfWork.GetRepositoryByEntity<StudentClass>();
+            var schoolClassRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
 
             var duplicateCheck = await userRepo.GetQueryable().AnyAsync(u =>
                 (u.Username == model.Username || u.Email == model.Email || u.StudentCode == model.StudentCode)
@@ -1061,6 +1063,47 @@ public class UserService : IUserService
                     {
                         Success = false,
                         Message = "Số điện thoại đã được sử dụng."
+                    };
+                }
+            }
+
+            if (model.ParentId.HasValue)
+            {
+                var parent = await userRepo.GetQueryable()
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Id == model.ParentId.Value && !u.IsDeleted);
+
+                if (parent == null)
+                {
+                    return new BaseResponse<StudentResponse>
+                    {
+                        Success = false,
+                        Message = "Phụ huynh không tồn tại."
+                    };
+                }
+
+                if (!parent.UserRoles.Any(ur => ur.Role.Name == "PARENT"))
+                {
+                    return new BaseResponse<StudentResponse>
+                    {
+                        Success = false,
+                        Message = "Người dùng được chỉ định không phải là phụ huynh."
+                    };
+                }
+            }
+
+            if (model.ClassId.HasValue)
+            {
+                var schoolClass = await schoolClassRepo.GetQueryable()
+                    .FirstOrDefaultAsync(sc => sc.Id == model.ClassId.Value && !sc.IsDeleted);
+
+                if (schoolClass == null)
+                {
+                    return new BaseResponse<StudentResponse>
+                    {
+                        Success = false,
+                        Message = "Lớp học không tồn tại."
                     };
                 }
             }
@@ -1101,6 +1144,22 @@ public class UserService : IUserService
             };
 
             await _unitOfWork.GetRepositoryByEntity<UserRole>().AddAsync(userRole);
+
+            if (model.ClassId.HasValue)
+            {
+                var studentClass = new StudentClass
+                {
+                    Id = Guid.NewGuid(),
+                    StudentId = user.Id,
+                    ClassId = model.ClassId.Value,
+                    EnrollmentDate = DateTime.Now,
+                    CreatedBy = managerRoleName,
+                    CreatedDate = DateTime.Now
+                };
+
+                await studentClassRepo.AddAsync(studentClass);
+            }
+
             await _unitOfWork.SaveChangesAsync();
 
             await _emailService.SendAccountCreationEmailAsync(user.Email, user.Username, defaultPassword);

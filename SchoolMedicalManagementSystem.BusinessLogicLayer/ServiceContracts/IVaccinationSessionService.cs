@@ -11,6 +11,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
 {
     public interface IVaccinationSessionService
     {
+
+        #region CRUD Vaccination Session
+
         Task<BaseListResponse<VaccinationSessionResponse>> GetVaccinationSessionsAsync(
             int pageIndex,
             int pageSize,
@@ -18,8 +21,19 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
             string orderBy,
             CancellationToken cancellationToken = default);
 
+        Task<BaseListResponse<VaccinationSessionResponse>> GetSessionsByStudentIdAsync(
+        Guid studentId,
+        CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<VaccinationSessionDetailResponse>> GetSessionDetailAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default);
+
         Task<BaseResponse<VaccinationSessionResponse>> CreateVaccinationSessionAsync(
             CreateVaccinationSessionRequest model);
+
+        Task<BaseResponse<CreateWholeVaccinationSessionResponse>> CreateWholeVaccinationSessionAsync(
+            CreateWholeVaccinationSessionRequest model);
 
         Task<BaseResponse<VaccinationSessionResponse>> UpdateVaccinationSessionAsync(
             Guid sessionId,
@@ -27,8 +41,29 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
 
         Task<BaseResponse<bool>> DeleteVaccinationSessionAsync(Guid sessionId);
 
-        Task<BaseResponse<bool>> ApproveSessionAsync(Guid sessionId);
+        #endregion
+
+        #region Process  Session
+        Task<BaseResponse<bool>> ApproveSessionAsync(
+            Guid sessionId
+            , CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<bool>> DeclineSessionAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default);
 
         Task<BaseResponse<bool>> FinalizeSessionAsync(Guid sessionId);
+
+        Task<BaseResponse<bool>> ParentApproveAsync(
+          Guid sessionId,
+          ParentApproveRequest request,
+          CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<bool>> AssignNurseToSessionAsync(AssignNurseToSessionRequest request, CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<bool>> MarkStudentVaccinatedAsync(Guid sessionId, Guid studentId, CancellationToken cancellationToken = default);
+
+        Task<BaseListResponse<ClassStudentConsentStatusResponse>> GetClassStudentConsentStatusAsync(Guid sessionId, Guid classId, CancellationToken cancellationToken = default);
+        #endregion
     }
 }
