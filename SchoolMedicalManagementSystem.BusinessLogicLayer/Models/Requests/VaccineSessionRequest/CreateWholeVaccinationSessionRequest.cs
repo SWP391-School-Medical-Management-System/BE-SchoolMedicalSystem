@@ -26,6 +26,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Vacci
         public string Location { get; set; }
 
         [Required]
+        public DateTime StartDate { get; set; }
+
+        [Required]
         public DateTime StartTime { get; set; }
 
         [Required]

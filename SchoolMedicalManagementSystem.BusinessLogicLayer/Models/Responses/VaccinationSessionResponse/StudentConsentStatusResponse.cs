@@ -12,5 +12,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Vacc
         public string StudentName { get; set; }
         public string Status { get; set; }
         public DateTime? ResponseDate { get; set; }
+        public string VaccinationStatus { get; set; }
     }
 }

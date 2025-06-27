@@ -340,6 +340,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 AdministeredDate = (DateTime)vaccinationRecord.AdministeredDate,
                 AdministeredBy = vaccinationRecord.AdministeredBy,
                 BatchNumber = vaccinationRecord.BatchNumber,
+                Symptoms = vaccinationRecord.Symptoms,
+                VaccinationStatus = vaccinationRecord.VaccinationStatus,
                 Notes = vaccinationRecord.Notes
             };
         }

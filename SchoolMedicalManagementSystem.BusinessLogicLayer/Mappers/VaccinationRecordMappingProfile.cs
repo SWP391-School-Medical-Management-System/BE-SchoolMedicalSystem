@@ -54,7 +54,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForAllMembers(opt => opt.Condition((src, dest, member) => member != null));
 
             CreateMap<VaccinationRecord, VaccinationRecordResponse>()
-                .ForMember(dest => dest.VaccinationTypeName, opt => opt.MapFrom(src => src.VaccinationType.Name));
+                .ForMember(dest => dest.VaccinationTypeName, opt => opt.MapFrom(src => src.VaccinationType.Name))
+                .ForMember(dest => dest.VaccinationStatus, opt => opt.MapFrom(src => src.VaccinationStatus));
+
         }
     }
 }

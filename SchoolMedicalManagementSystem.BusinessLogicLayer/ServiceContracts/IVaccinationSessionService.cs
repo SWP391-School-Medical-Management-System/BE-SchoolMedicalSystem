@@ -25,6 +25,10 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
         Guid studentId,
         CancellationToken cancellationToken = default);
 
+        Task<BaseListResponse<ClassStudentConsentStatusResponse>> GetAllClassStudentConsentStatusAsync(
+            Guid sessionId,
+            CancellationToken cancellationToken = default);
+
         Task<BaseResponse<VaccinationSessionDetailResponse>> GetSessionDetailAsync(
         Guid sessionId,
         CancellationToken cancellationToken = default);
@@ -49,8 +53,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
             , CancellationToken cancellationToken = default);
 
         Task<BaseResponse<bool>> DeclineSessionAsync(
-        Guid sessionId,
-        CancellationToken cancellationToken = default);
+            Guid sessionId,
+            string reason,
+            CancellationToken cancellationToken = default);
 
         Task<BaseResponse<bool>> FinalizeSessionAsync(Guid sessionId);
 

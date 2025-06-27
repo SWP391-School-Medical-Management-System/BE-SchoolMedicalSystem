@@ -1,13 +1,13 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.VaccineSessionRequest;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.VaccinationSessionResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-
 namespace SchoolMedicalManagementSystem.API.ApiControllers
 {
     [Route("api/[controller]")]
@@ -96,6 +96,29 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
                     return StatusCode(500, BaseListResponse<VaccinationSessionResponse>.ErrorResult("Lỗi hệ thống."));
                 }
             }
+
+        [HttpGet("{sessionId}/all-class-student-status")]
+        [Authorize(Roles = "SCHOOLNURSE, MANAGER, PARENT")]
+        public async Task<ActionResult<BaseListResponse<ClassStudentConsentStatusResponse>>> GetAllClassStudentConsentStatus(
+            Guid sessionId,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var response = await _vaccinationSessionService.GetAllClassStudentConsentStatusAsync(sessionId, cancellationToken);
+
+                if (!response.Success)
+                {
+                    return NotFound(response);
+                }
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, BaseListResponse<ClassStudentConsentStatusResponse>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
 
         [HttpGet("{sessionId}/detail")]
         [Authorize(Roles = "SCHOOLNURSE, MANAGER, PARENT")]
@@ -237,11 +260,12 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         [Authorize(Roles = "MANAGER")]
         public async Task<ActionResult<BaseResponse<bool>>> DeclineSession(
             Guid sessionId,
+            [FromQuery] string reason,
             CancellationToken cancellationToken = default)
-            {
+        {
                 try
                 {
-                    var result = await _vaccinationSessionService.DeclineSessionAsync(sessionId, cancellationToken);
+                    var result = await _vaccinationSessionService.DeclineSessionAsync(sessionId, reason, cancellationToken);
 
                     if (!result.Success)
                     {
