@@ -44,7 +44,7 @@ public class BlogPostController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<BlogPostResponse>>> GetBlogPostById(Guid id)
     {
         try
@@ -59,7 +59,7 @@ public class BlogPostController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<BlogPostResponse>>> CreateBlogPost([FromBody] CreateBlogPostRequest model)
     {
         try
@@ -74,7 +74,7 @@ public class BlogPostController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<BlogPostResponse>>> UpdateBlogPost(
         Guid id, 
         [FromBody] UpdateBlogPostRequest model)
@@ -91,7 +91,7 @@ public class BlogPostController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<bool>>> DeleteBlogPost(Guid id)
     {
         try
@@ -142,7 +142,7 @@ public class BlogPostController : ControllerBase
     }
 
     [HttpPut("comments/{commentId}/approve")]
-    [Authorize(Roles = "MANAGER")] 
+    [Authorize(Roles = "MANAGER, SCHOOLNURSE")] 
     public async Task<ActionResult<BaseResponse<bool>>> ApproveBlogComment(Guid commentId)
     {
         try
