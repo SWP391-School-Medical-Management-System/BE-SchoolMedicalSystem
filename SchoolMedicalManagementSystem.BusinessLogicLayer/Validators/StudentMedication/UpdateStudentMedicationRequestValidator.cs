@@ -104,9 +104,19 @@ public class UpdateStudentMedicationRequestValidator : AbstractValidator<UpdateS
             .IsInEnum().When(x => x.Priority.HasValue)
             .WithMessage("Mức độ ưu tiên không hợp lệ.");
 
-        RuleFor(x => x.TimeOfDay)
-            .IsInEnum().When(x => x.TimeOfDay.HasValue)
-            .WithMessage("Thời điểm uống thuốc không hợp lệ.");
+        RuleFor(x => x.TimesOfDay)
+            .NotNull().When(x => x.TimesOfDay != null && x.TimesOfDay.Count > 0)
+            .WithMessage("Phải chọn ít nhất một thời điểm trong ngày.")
+            .Must(list => list.Count > 0).When(x => x.TimesOfDay != null && x.TimesOfDay.Count > 0)
+            .WithMessage("Phải chọn ít nhất một thời điểm trong ngày.");
+
+        RuleFor(x => x.SpecificTimes)
+            .NotNull().When(x => x.SpecificTimes != null && x.SpecificTimes.Count > 0)
+            .WithMessage("Danh sách thời gian cụ thể không được để trống.")
+            .Must(list => list.Count > 0).When(x => x.SpecificTimes != null && x.SpecificTimes.Count > 0)
+            .WithMessage("Phải cung cấp ít nhất một thời gian cụ thể.")
+            .Must(BeValidSpecificTimes).When(x => x.SpecificTimes != null && x.SpecificTimes.Count > 0)
+            .WithMessage("Thời gian cụ thể phải trong khoảng 7:00 - 16:30 và không trùng lặp.");
 
         RuleFor(x => x)
             .Must(HaveValidDateRange)
@@ -158,7 +168,6 @@ public class UpdateStudentMedicationRequestValidator : AbstractValidator<UpdateS
         if (string.IsNullOrWhiteSpace(dosage))
             return true;
 
-        // Updated pattern to match Vietnamese medication units
         var dosagePattern =
             @"^[\d\.\,\s]*\s*(viên|ml|mg|g|lần|giọt|thìa|túi|gói|cap|capsule|tablet|mcg|µg|IU|unit)(\s+.*)?$";
         return System.Text.RegularExpressions.Regex.IsMatch(dosage.Trim(), dosagePattern,
@@ -254,8 +263,7 @@ public class UpdateStudentMedicationRequestValidator : AbstractValidator<UpdateS
         if (string.IsNullOrWhiteSpace(prescriptionNumber))
             return true;
 
-        // Allow alphanumeric with common separators
-        var prescriptionPattern = @"^[a-zA-Z0-9\-\_\/\.\s]+$";
+        var prescriptionPattern = @"^[a-zA-Z0-9\-_/.\s]+$";
         return System.Text.RegularExpressions.Regex.IsMatch(prescriptionNumber, prescriptionPattern);
     }
 
@@ -324,7 +332,8 @@ public class UpdateStudentMedicationRequestValidator : AbstractValidator<UpdateS
                !string.IsNullOrEmpty(request.SpecialNotes) ||
                !string.IsNullOrEmpty(request.EmergencyContactInstructions) ||
                request.Priority.HasValue ||
-               request.TimeOfDay.HasValue;
+               request.TimesOfDay.Count > 0 ||
+               request.SpecificTimes.Count > 0;
     }
 
     private bool HaveReasonableUpdateWindow(UpdateStudentMedicationRequest request)
@@ -334,6 +343,28 @@ public class UpdateStudentMedicationRequestValidator : AbstractValidator<UpdateS
 
         var duration = request.EndDate.Value - request.StartDate.Value;
         return duration.TotalDays >= 1 && duration.TotalDays <= 365;
+    }
+
+    private bool BeValidSpecificTimes(List<TimeSpan> times)
+    {
+        if (times == null || times.Count == 0)
+            return true;
+
+        var validTimes = new HashSet<TimeSpan>();
+        var schoolStartTime = new TimeSpan(7, 0, 0);  // 7:00 AM
+        var schoolEndTime = new TimeSpan(16, 30, 0);  // 4:30 PM
+
+        foreach (var time in times)
+        {
+            // Kiểm tra thời gian trong khoảng giờ học
+            if (time < schoolStartTime || time > schoolEndTime)
+                return false;
+
+            // Kiểm tra trùng lặp
+            if (!validTimes.Add(time))
+                return false;
+        }
+        return true;
     }
 
     #endregion

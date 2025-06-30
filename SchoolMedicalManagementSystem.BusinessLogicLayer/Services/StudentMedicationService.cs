@@ -6,12 +6,14 @@ using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Helpers;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.StudentMedicationRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicationStockResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationAdministrationResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
+using System.Text.Json;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
 
@@ -28,7 +30,9 @@ public class StudentMedicationService : IStudentMedicationService
 
     private const string MEDICATION_CACHE_PREFIX = "student_medication";
     private const string MEDICATION_LIST_PREFIX = "student_medications_list";
+    private const string MEDICATION_STOCK_PREFIX = "medication_stock";
     private const string MEDICATION_CACHE_SET = "student_medication_cache_keys";
+    private const string STOCK_CACHE_SET = "medication_stock_cache_keys";
     private const string STATISTICS_PREFIX = "medication_statistics";
 
     public StudentMedicationService(
@@ -89,16 +93,18 @@ public class StudentMedicationService : IStudentMedicationService
             }
 
             var query = _unitOfWork.GetRepositoryByEntity<StudentMedication>().GetQueryable()
+                .AsSplitQuery()
                 .Include(sm => sm.Student)
                 .Include(sm => sm.Parent)
                 .Include(sm => sm.ApprovedBy)
-                .Include(sm => sm.Administrations)
-                .Include(sm => sm.Schedules)
+                .Include(sm => sm.Administrations.Where(a => !a.IsDeleted))
+                .Include(sm => sm.Schedules.Where(s => !s.IsDeleted))
                 .Where(sm => !sm.IsDeleted)
                 .AsQueryable();
 
-            query = ApplyFilters(query, searchTerm, studentId, parentId, status, expiringSoon, requiresAdministration);
-            query = ApplyOrdering(query, orderBy);
+            query = ApplyStudentMedicationFilters(query, searchTerm, studentId, parentId, status, expiringSoon,
+                requiresAdministration);
+            query = ApplyStudentMedicationOrdering(query, orderBy);
 
             var totalCount = await query.CountAsync(cancellationToken);
             var medications = await query
@@ -128,27 +134,58 @@ public class StudentMedicationService : IStudentMedicationService
     {
         try
         {
-            var cacheKey = _cacheService.GenerateCacheKey(MEDICATION_CACHE_PREFIX, medicationId.ToString());
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                return BaseResponse<StudentMedicationDetailResponse>.ErrorResult(
+                    "Không thể xác định người dùng hiện tại.");
+            }
+
+            var cacheKey = _cacheService.GenerateCacheKey(MEDICATION_CACHE_PREFIX, "detail", medicationId.ToString());
             var cachedResponse = await _cacheService.GetAsync<BaseResponse<StudentMedicationDetailResponse>>(cacheKey);
 
             if (cachedResponse != null)
             {
+                var canAccess = await ValidateAccessPermissionAsync(currentUserId, medicationId);
+                if (!canAccess)
+                {
+                    return BaseResponse<StudentMedicationDetailResponse>.ErrorResult(
+                        "Bạn không có quyền xem thông tin thuốc này.");
+                }
+
+                _logger.LogDebug("Cache hit for medication detail: {MedicationId}", medicationId);
                 return cachedResponse;
             }
 
             var medicationRepo = _unitOfWork.GetRepositoryByEntity<StudentMedication>();
             var medication = await medicationRepo.GetQueryable()
+                .AsSplitQuery()
                 .Include(sm => sm.Student)
                 .Include(sm => sm.Parent)
                 .Include(sm => sm.ApprovedBy)
-                .Include(sm => sm.Administrations)
-                .Include(sm => sm.Schedules)
+                .Include(sm => sm.Administrations.Where(a => !a.IsDeleted))
+                .Include(sm => sm.Schedules.Where(s => !s.IsDeleted))
+                .Include(sm => sm.StockHistory.Where(s => !s.IsDeleted))
                 .Where(sm => sm.Id == medicationId && !sm.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (medication == null)
             {
                 return BaseResponse<StudentMedicationDetailResponse>.ErrorResult("Không tìm thấy thuốc học sinh.");
+            }
+
+            var currentUser = await GetCurrentUserWithRoles();
+            if (currentUser == null)
+            {
+                return BaseResponse<StudentMedicationDetailResponse>.ErrorResult(
+                    "Không thể xác định quyền của người dùng.");
+            }
+
+            var hasPermission = await ValidateUserAccessToMedicationAsync(currentUser, medication);
+            if (!hasPermission)
+            {
+                return BaseResponse<StudentMedicationDetailResponse>.ErrorResult(
+                    "Bạn không có quyền xem thông tin thuốc này.");
             }
 
             var medicationResponse = _mapper.Map<StudentMedicationDetailResponse>(medication);
@@ -202,6 +239,17 @@ public class StudentMedicationService : IStudentMedicationService
 
             var medication = _mapper.Map<StudentMedication>(model);
 
+            // Xử lý TimesOfDay và SpecificTimes
+            if (model.TimesOfDay != null && model.TimesOfDay.Count > 0)
+            {
+                medication.TimesOfDay = JsonSerializer.Serialize(model.TimesOfDay);
+            }
+
+            if (model.SpecificTimes != null && model.SpecificTimes.Count > 0)
+            {
+                medication.SpecificTimes = JsonSerializer.Serialize(model.SpecificTimes);
+            }
+
             SetAdditionalMedicationProperties(medication, currentUserId, parentValidation.ParentRoleName);
 
             var medicationRepo = _unitOfWork.GetRepositoryByEntity<StudentMedication>();
@@ -214,6 +262,7 @@ public class StudentMedicationService : IStudentMedicationService
             await InvalidateAllCachesAsync();
 
             medication = await medicationRepo.GetQueryable()
+                .AsSplitQuery()
                 .Include(sm => sm.Student)
                 .Include(sm => sm.Parent)
                 .Include(sm => sm.ApprovedBy)
@@ -324,8 +373,18 @@ public class StudentMedicationService : IStudentMedicationService
                 medication.EmergencyContactInstructions = model.EmergencyContactInstructions;
             if (model.Priority.HasValue)
                 medication.Priority = model.Priority.Value;
-            if (model.TimeOfDay.HasValue)
-                medication.TimeOfDay = model.TimeOfDay.Value;
+
+            // Cập nhật TimesOfDay và SpecificTimes nếu có
+            if (model.TimesOfDay != null && model.TimesOfDay.Count > 0)
+            {
+                medication.TimesOfDay = JsonSerializer.Serialize(model.TimesOfDay);
+            }
+
+            if (model.SpecificTimes != null && model.SpecificTimes.Count > 0)
+            {
+                medication.SpecificTimes = JsonSerializer.Serialize(model.SpecificTimes);
+            }
+
             medication.LastUpdatedBy = parentRoleName;
             medication.LastUpdatedDate = DateTime.Now;
 
@@ -366,63 +425,66 @@ public class StudentMedicationService : IStudentMedicationService
 
             if (medication == null)
             {
-                return BaseResponse<StudentMedicationResponse>.ErrorResult("Không tìm thấy thuốc học sinh.");
+                return BaseResponse<StudentMedicationResponse>.ErrorResult("Không tìm thấy thuốc.");
             }
 
-            if (medication.ParentId != currentUserId)
+            var parentValidation = await ValidateParentPermissionsAsync(currentUserId, medication.StudentId);
+            if (!parentValidation.IsValid)
+            {
+                return BaseResponse<StudentMedicationResponse>.ErrorResult(parentValidation.ErrorMessage);
+            }
+
+            if (medication.Status != StudentMedicationStatus.Active && 
+                medication.Status != StudentMedicationStatus.Approved)
             {
                 return BaseResponse<StudentMedicationResponse>.ErrorResult(
-                    "Bạn chỉ có thể gửi thêm thuốc cho con em mình.");
+                    "Chỉ có thể thêm thuốc cho thuốc đã được phê duyệt hoặc đang hoạt động.");
             }
 
-            if (medication.Status != StudentMedicationStatus.Active)
-            {
-                return BaseResponse<StudentMedicationResponse>.ErrorResult(
-                    "Chỉ có thể gửi thêm thuốc cho thuốc đang ở trạng thái Active.");
-            }
-
-            var parentRoleName = await GetParentRoleName();
-
-            var stockRecord = new MedicationStock
+            // Tạo stock record mới
+            var stockRepo = _unitOfWork.GetRepositoryByEntity<MedicationStock>();
+            var newStock = new MedicationStock
             {
                 Id = Guid.NewGuid(),
-                StudentMedicationId = request.StudentMedicationId,
+                StudentMedicationId = medication.Id,
                 QuantityAdded = request.AdditionalQuantity,
-                QuantityUnit = request.QuantityUnit,
+                QuantityUnit = medication.QuantityUnit,
                 ExpiryDate = request.NewExpiryDate,
                 DateAdded = DateTime.Now,
                 Notes = request.Notes,
                 IsInitialStock = false,
-                CreatedBy = parentRoleName,
+                CreatedBy = parentValidation.ParentRoleName,
                 CreatedDate = DateTime.Now
             };
 
-            await _unitOfWork.GetRepositoryByEntity<MedicationStock>().AddAsync(stockRecord);
+            await stockRepo.AddAsync(newStock);
 
+            // Cập nhật tổng số lượng thuốc
             medication.QuantitySent += request.AdditionalQuantity;
-            medication.ExpiryDate = request.NewExpiryDate;
-            medication.LowStockAlertSent = false;
-            medication.LastUpdatedBy = "PARENT";
+            
+            // Tính toán lại TotalDoses và RemainingDoses
+            await RecalculateMedicationDosesAsync(medication);
+
+            medication.LastUpdatedBy = parentValidation.ParentRoleName;
             medication.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
-
             await CreateAdditionalMedicationNotificationAsync(medication, request.AdditionalQuantity);
-
             await InvalidateAllCachesAsync();
 
             var medicationResponse = _mapper.Map<StudentMedicationResponse>(medication);
 
-            _logger.LogInformation("Added {Quantity} {Unit} to medication {MedicationId}",
-                request.AdditionalQuantity, request.QuantityUnit, request.StudentMedicationId);
+            _logger.LogInformation("Added {Quantity} more medication for {MedicationId} - New TotalDoses: {TotalDoses}, New RemainingDoses: {RemainingDoses}",
+                request.AdditionalQuantity, medication.Id, medication.TotalDoses, medication.RemainingDoses);
 
             return BaseResponse<StudentMedicationResponse>.SuccessResult(
-                medicationResponse, $"Gửi thêm {request.AdditionalQuantity} {request.QuantityUnit} thuốc thành công.");
+                medicationResponse,
+                $"Đã thêm {request.AdditionalQuantity} {medication.QuantityUnit} thuốc thành công.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error adding more medication");
-            return BaseResponse<StudentMedicationResponse>.ErrorResult($"Lỗi gửi thêm thuốc: {ex.Message}");
+            _logger.LogError(ex, "Error adding more medication: {MedicationId}", request.StudentMedicationId);
+            return BaseResponse<StudentMedicationResponse>.ErrorResult($"Lỗi thêm thuốc: {ex.Message}");
         }
     }
 
@@ -581,6 +643,7 @@ public class StudentMedicationService : IStudentMedicationService
                 .Include(sm => sm.Student)
                 .Include(sm => sm.Parent)
                 .Include(sm => sm.ApprovedBy)
+                .Include(sm => sm.StockHistory)
                 .FirstOrDefaultAsync(sm => sm.Id == medicationId && !sm.IsDeleted);
 
             if (medication == null)
@@ -604,25 +667,65 @@ public class StudentMedicationService : IStudentMedicationService
             medication.LastUpdatedBy = schoolNurseRoleName;
             medication.LastUpdatedDate = DateTime.Now;
 
-            if (request.IsApproved && medication.StartDate <= DateTime.Today && medication.EndDate >= DateTime.Today)
+            if (request.IsApproved)
             {
-                medication.Status = StudentMedicationStatus.Active;
+                await CalculateAndUpdateMedicationDosesAsync(medication);
 
-                _logger.LogInformation(
-                    "Medication {MedicationId} set to ACTIVE status for background service processing",
-                    medicationId);
+                var currentDateTime = DateTime.Now;
+                var currentDate = currentDateTime.Date;
+
+                if (medication.StartDate.HasValue && medication.EndDate.HasValue)
+                {
+                    var medicationStartDate = medication.StartDate.Value.Date;
+                    var medicationEndDate = medication.EndDate.Value.Date;
+
+                    // Trường hợp 1: Thuốc đã bắt đầu và chưa kết thúc -> Active ngay
+                    if (medicationStartDate <= currentDate && medicationEndDate >= currentDate)
+                    {
+                        medication.Status = StudentMedicationStatus.Active;
+
+                        _logger.LogInformation(
+                            "Medication {MedicationId} set to ACTIVE immediately - within valid date range",
+                            medicationId);
+                    }
+                    // Trường hợp 2: Thuốc bắt đầu từ ngày mai trở đi -> Approved, đợi Background Service
+                    else if (medicationStartDate > currentDate)
+                    {
+                        medication.Status = StudentMedicationStatus.Approved;
+
+                        _logger.LogInformation(
+                            "Medication {MedicationId} set to APPROVED - will be activated by background service on {StartDate}",
+                            medicationId, medication.StartDate.Value.ToString("yyyy-MM-dd"));
+                    }
+                    // Trường hợp 3: Thuốc đã quá hạn -> Không thể Active
+                    else if (medicationEndDate < currentDate)
+                    {
+                        medication.Status = StudentMedicationStatus.Approved;
+
+                        _logger.LogWarning(
+                            "Medication {MedicationId} approved but already expired (EndDate: {EndDate})",
+                            medicationId, medication.EndDate.Value.ToString("yyyy-MM-dd"));
+                    }
+                }
+                else
+                {
+                    // Nếu thiếu StartDate hoặc EndDate, chỉ set Approved
+                    medication.Status = StudentMedicationStatus.Approved;
+
+                    _logger.LogWarning(
+                        "Medication {MedicationId} approved but missing StartDate or EndDate - StartDate: {StartDate}, EndDate: {EndDate}",
+                        medicationId, medication.StartDate, medication.EndDate);
+                }
             }
 
             await _unitOfWork.SaveChangesAsync();
-
             await CreateApprovalNotificationAsync(medication, request.IsApproved, request.Notes);
-
             await InvalidateAllCachesAsync();
 
             var medicationResponse = _mapper.Map<StudentMedicationResponse>(medication);
 
-            _logger.LogInformation("Medication {MedicationId} {Action} by {NurseId}",
-                medicationId, request.IsApproved ? "approved" : "rejected", currentUserId);
+            _logger.LogInformation("Medication {MedicationId} {Action} by {NurseId} - TotalDoses: {TotalDoses}, RemainingDoses: {RemainingDoses}",
+                medicationId, request.IsApproved ? "approved" : "rejected", currentUserId, medication.TotalDoses, medication.RemainingDoses);
 
             return BaseResponse<StudentMedicationResponse>.SuccessResult(
                 medicationResponse,
@@ -853,9 +956,15 @@ public class StudentMedicationService : IStudentMedicationService
         }
     }
 
-    public async Task<BaseListResponse<MedicationAdministrationResponse>> GetAdministrationHistoryAsync(
-        Guid medicationId, int pageIndex, int pageSize, DateTime? fromDate = null, DateTime? toDate = null,
-        CancellationToken cancellationToken = default)
+    public async Task<BaseListResponse<MedicationAdministrationResponse>> GetAdministrationHistoryAsync
+    (
+        Guid medicationId,
+        int pageIndex,
+        int pageSize,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default
+    )
     {
         try
         {
@@ -934,12 +1043,17 @@ public class StudentMedicationService : IStudentMedicationService
             }
 
             var cacheKey = _cacheService.GenerateCacheKey(
-                MEDICATION_LIST_PREFIX, "my_children", currentUserId.ToString(),
-                pageIndex.ToString(), pageSize.ToString(), status?.ToString() ?? "");
+                MEDICATION_LIST_PREFIX,
+                "my_children",
+                currentUserId.ToString(),
+                pageIndex.ToString(),
+                pageSize.ToString(),
+                status?.ToString() ?? "");
 
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<ParentMedicationResponse>>(cacheKey);
             if (cachedResult != null)
             {
+                _logger.LogDebug("Cache hit for parent medications");
                 return cachedResult;
             }
 
@@ -947,7 +1061,7 @@ public class StudentMedicationService : IStudentMedicationService
                 .Include(sm => sm.Student)
                 .Include(sm => sm.Parent)
                 .Include(sm => sm.ApprovedBy)
-                .Include(sm => sm.Administrations)
+                .Include(sm => sm.Administrations.Where(a => !a.IsDeleted))
                 .Where(sm => sm.ParentId == currentUserId && !sm.IsDeleted);
 
             if (status.HasValue)
@@ -978,6 +1092,324 @@ public class StudentMedicationService : IStudentMedicationService
         {
             _logger.LogError(ex, "Error getting my children medications");
             return BaseListResponse<ParentMedicationResponse>.ErrorResult("Lỗi lấy danh sách thuốc con em.");
+        }
+    }
+
+    #endregion
+
+    #region Parent Medication Stock Methods
+
+    public async Task<BaseListResponse<MedicationStockResponse>> GetMyMedicationStockHistoryAsync
+    (
+        int pageIndex,
+        int pageSize,
+        Guid? studentId = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                return BaseListResponse<MedicationStockResponse>.ErrorResult(
+                    "Không thể xác định người dùng hiện tại.");
+            }
+
+            var cacheKey = _cacheService.GenerateCacheKey(
+                MEDICATION_STOCK_PREFIX,
+                "my_history",
+                currentUserId.ToString(),
+                pageIndex.ToString(),
+                pageSize.ToString(),
+                studentId?.ToString() ?? "",
+                fromDate?.ToString("yyyy-MM-dd") ?? "",
+                toDate?.ToString("yyyy-MM-dd") ?? "");
+
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicationStockResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                _logger.LogDebug("Cache hit for my medication stock history");
+                return cachedResult;
+            }
+
+            var query = _unitOfWork.GetRepositoryByEntity<MedicationStock>()
+                .GetQueryable()
+                .Include(ms => ms.StudentMedication).ThenInclude(sm => sm.Student)
+                .Include(ms => ms.StudentMedication).ThenInclude(sm => sm.Parent)
+                .Where(ms => ms.StudentMedication.ParentId == currentUserId &&
+                             !ms.IsDeleted &&
+                             !ms.StudentMedication.IsDeleted);
+
+            query = ApplyMedicationStockFilters(query, studentId, null, null, fromDate, toDate, null, null);
+
+            query = query.OrderByDescending(ms => ms.DateAdded);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var stockRecords = await query
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var responses = _mapper.Map<List<MedicationStockResponse>>(stockRecords);
+
+            var result = BaseListResponse<MedicationStockResponse>.SuccessResult(
+                responses, totalCount, pageSize, pageIndex,
+                "Lấy lịch sử gửi thuốc của bạn thành công.");
+
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, STOCK_CACHE_SET);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting my medication stock history for parent");
+            return BaseListResponse<MedicationStockResponse>.ErrorResult("Lỗi lấy lịch sử gửi thuốc của bạn.");
+        }
+    }
+
+    public async Task<BaseListResponse<MedicationStockResponse>> GetMedicationStockHistoryAsync
+    (
+        Guid studentMedicationId,
+        int pageIndex,
+        int pageSize,
+        CancellationToken cancellationToken = default
+    )
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                return BaseListResponse<MedicationStockResponse>.ErrorResult(
+                    "Không thể xác định người dùng hiện tại.");
+            }
+
+            var medication = await _unitOfWork.GetRepositoryByEntity<StudentMedication>()
+                .GetQueryable()
+                .FirstOrDefaultAsync(sm => sm.Id == studentMedicationId &&
+                                           sm.ParentId == currentUserId &&
+                                           !sm.IsDeleted);
+
+            if (medication == null)
+            {
+                return BaseListResponse<MedicationStockResponse>.ErrorResult(
+                    "Không tìm thấy thuốc hoặc bạn không có quyền xem.");
+            }
+
+            var cacheKey = _cacheService.GenerateCacheKey(
+                MEDICATION_STOCK_PREFIX,
+                "history",
+                studentMedicationId.ToString(),
+                pageIndex.ToString(),
+                pageSize.ToString());
+
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicationStockResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                _logger.LogDebug("Cache hit for medication stock history");
+                return cachedResult;
+            }
+
+            var query = _unitOfWork.GetRepositoryByEntity<MedicationStock>()
+                .GetQueryable()
+                .Include(ms => ms.StudentMedication).ThenInclude(sm => sm.Student)
+                .Include(ms => ms.StudentMedication).ThenInclude(sm => sm.Parent)
+                .Where(ms => ms.StudentMedicationId == studentMedicationId && !ms.IsDeleted)
+                .OrderByDescending(ms => ms.DateAdded);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var stockRecords = await query
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var responses = _mapper.Map<List<MedicationStockResponse>>(stockRecords);
+
+            var result = BaseListResponse<MedicationStockResponse>.SuccessResult(
+                responses, totalCount, pageSize, pageIndex,
+                "Lấy lịch sử gửi thuốc thành công.");
+
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, STOCK_CACHE_SET);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting medication stock history: {MedicationId}", studentMedicationId);
+            return BaseListResponse<MedicationStockResponse>.ErrorResult("Lỗi lấy lịch sử gửi thuốc.");
+        }
+    }
+
+    #endregion
+
+    #region School Nurse MedicationStock Methods
+
+    public async Task<BaseListResponse<MedicationStockResponse>> GetAllMedicationStockHistoryAsync
+    (
+        int pageIndex,
+        int pageSize,
+        Guid? studentId = null,
+        Guid? parentId = null,
+        Guid? medicationId = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        bool? isExpired = null,
+        bool? lowStock = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                return BaseListResponse<MedicationStockResponse>.ErrorResult(
+                    "Không thể xác định người dùng hiện tại.");
+            }
+
+            var currentUser = await ValidateSchoolNursePermissions(currentUserId);
+            if (currentUser == null)
+            {
+                return BaseListResponse<MedicationStockResponse>.ErrorResult(
+                    "Chỉ School Nurse mới có quyền xem tất cả lịch sử gửi thuốc.");
+            }
+
+            var cacheKey = _cacheService.GenerateCacheKey(
+                MEDICATION_STOCK_PREFIX,
+                "all_history",
+                pageIndex.ToString(),
+                pageSize.ToString(),
+                studentId?.ToString() ?? "",
+                parentId?.ToString() ?? "",
+                medicationId?.ToString() ?? "",
+                fromDate?.ToString("yyyy-MM-dd") ?? "",
+                toDate?.ToString("yyyy-MM-dd") ?? "",
+                isExpired?.ToString() ?? "",
+                lowStock?.ToString() ?? "");
+
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicationStockResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                _logger.LogDebug("Cache hit for all medication stock history");
+                return cachedResult;
+            }
+
+            var query = _unitOfWork.GetRepositoryByEntity<MedicationStock>()
+                .GetQueryable()
+                .Include(ms => ms.StudentMedication).ThenInclude(sm => sm.Student)
+                .Include(ms => ms.StudentMedication).ThenInclude(sm => sm.Parent)
+                .Where(ms => !ms.IsDeleted && !ms.StudentMedication.IsDeleted);
+
+            query = ApplyMedicationStockFilters(query, studentId, parentId, medicationId, fromDate, toDate, isExpired,
+                lowStock);
+
+            query = query.OrderByDescending(ms => ms.DateAdded);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var stockRecords = await query
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var responses = _mapper.Map<List<MedicationStockResponse>>(stockRecords);
+
+            var result = BaseListResponse<MedicationStockResponse>.SuccessResult(
+                responses, totalCount, pageSize, pageIndex,
+                "Lấy tất cả lịch sử gửi thuốc thành công.");
+
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, STOCK_CACHE_SET);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all medication stock history for nurse");
+            return BaseListResponse<MedicationStockResponse>.ErrorResult("Lỗi lấy lịch sử gửi thuốc.");
+        }
+    }
+
+    public async Task<BaseListResponse<MedicationStockResponse>> GetMedicationStockByIdForNurseAsync
+    (
+        Guid studentMedicationId,
+        int pageIndex,
+        int pageSize,
+        CancellationToken cancellationToken = default
+    )
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                return BaseListResponse<MedicationStockResponse>.ErrorResult(
+                    "Không thể xác định người dùng hiện tại.");
+            }
+
+            var currentUser = await ValidateSchoolNursePermissions(currentUserId);
+            if (currentUser == null)
+            {
+                return BaseListResponse<MedicationStockResponse>.ErrorResult(
+                    "Chỉ School Nurse mới có quyền xem lịch sử gửi thuốc này.");
+            }
+
+            var medication = await _unitOfWork.GetRepositoryByEntity<StudentMedication>()
+                .GetQueryable()
+                .FirstOrDefaultAsync(sm => sm.Id == studentMedicationId && !sm.IsDeleted);
+
+            if (medication == null)
+            {
+                return BaseListResponse<MedicationStockResponse>.ErrorResult("Không tìm thấy thuốc.");
+            }
+
+            var cacheKey = _cacheService.GenerateCacheKey(
+                MEDICATION_STOCK_PREFIX,
+                "nurse_history",
+                studentMedicationId.ToString(),
+                pageIndex.ToString(),
+                pageSize.ToString());
+
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicationStockResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                _logger.LogDebug("Cache hit for nurse medication stock history");
+                return cachedResult;
+            }
+
+            var query = _unitOfWork.GetRepositoryByEntity<MedicationStock>()
+                .GetQueryable()
+                .Include(ms => ms.StudentMedication).ThenInclude(sm => sm.Student)
+                .Include(ms => ms.StudentMedication).ThenInclude(sm => sm.Parent)
+                .Where(ms => ms.StudentMedicationId == studentMedicationId && !ms.IsDeleted)
+                .OrderByDescending(ms => ms.DateAdded);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var stockRecords = await query
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var responses = _mapper.Map<List<MedicationStockResponse>>(stockRecords);
+
+            var result = BaseListResponse<MedicationStockResponse>.SuccessResult(
+                responses, totalCount, pageSize, pageIndex,
+                "Lấy lịch sử gửi thuốc thành công.");
+
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(15));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, STOCK_CACHE_SET);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting medication stock history for nurse: {MedicationId}",
+                studentMedicationId);
+            return BaseListResponse<MedicationStockResponse>.ErrorResult("Lỗi lấy lịch sử gửi thuốc.");
         }
     }
 
@@ -1060,21 +1492,37 @@ public class StudentMedicationService : IStudentMedicationService
 
     private async Task CreateInitialStockRecordAsync(StudentMedication medication)
     {
-        var stockRecord = new MedicationStock
+        try
         {
-            Id = Guid.NewGuid(),
-            StudentMedicationId = medication.Id,
-            QuantityAdded = medication.QuantitySent,
-            QuantityUnit = medication.QuantityUnit,
-            ExpiryDate = medication.ExpiryDate,
-            DateAdded = DateTime.Now,
-            Notes = "Lần gửi thuốc đầu tiên",
-            IsInitialStock = true,
-            CreatedBy = "PARENT",
-            CreatedDate = DateTime.Now
-        };
+            var stockRepo = _unitOfWork.GetRepositoryByEntity<MedicationStock>();
+            var initialStock = new MedicationStock
+            {
+                Id = Guid.NewGuid(),
+                StudentMedicationId = medication.Id,
+                QuantityAdded = medication.QuantitySent,
+                QuantityUnit = medication.QuantityUnit,
+                ExpiryDate = medication.ExpiryDate,
+                DateAdded = DateTime.Now,
+                Notes = "Thuốc ban đầu từ phụ huynh",
+                IsInitialStock = true,
+                CreatedBy = medication.CreatedBy,
+                CreatedDate = DateTime.Now
+            };
 
-        await _unitOfWork.GetRepositoryByEntity<MedicationStock>().AddAsync(stockRecord);
+            await stockRepo.AddAsync(initialStock);
+            
+            // Tính toán TotalDoses ngay khi tạo stock record đầu tiên
+            var totalDoses = CalculateTotalDosesFromDosage(medication.Dosage, medication.QuantitySent);
+            medication.TotalDoses = totalDoses;
+            medication.RemainingDoses = totalDoses;
+            
+            _logger.LogInformation("Created initial stock record for medication {MedicationId}: QuantitySent={QuantitySent}, TotalDoses={TotalDoses}",
+                medication.Id, medication.QuantitySent, totalDoses);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating initial stock record for medication {MedicationId}", medication.Id);
+        }
     }
 
     private async Task UpdateStockRecordAsync(StudentMedication medication, int newQuantity)
@@ -1106,7 +1554,7 @@ public class StudentMedicationService : IStudentMedicationService
         };
     }
 
-    private IQueryable<StudentMedication> ApplyFilters(
+    private IQueryable<StudentMedication> ApplyStudentMedicationFilters(
         IQueryable<StudentMedication> query,
         string searchTerm,
         Guid? studentId,
@@ -1158,7 +1606,8 @@ public class StudentMedicationService : IStudentMedicationService
         return query;
     }
 
-    private IQueryable<StudentMedication> ApplyOrdering(IQueryable<StudentMedication> query, string orderBy)
+    private IQueryable<StudentMedication> ApplyStudentMedicationOrdering(IQueryable<StudentMedication> query,
+        string orderBy)
     {
         return orderBy?.ToLower() switch
         {
@@ -1172,8 +1621,51 @@ public class StudentMedicationService : IStudentMedicationService
             "submittedat_desc" => query.OrderByDescending(sm => sm.SubmittedAt),
             "expirydate" => query.OrderBy(sm => sm.ExpiryDate),
             "expirydate_desc" => query.OrderByDescending(sm => sm.ExpiryDate),
+            "priority" => query.OrderBy(sm => sm.Priority),
+            "priority_desc" => query.OrderByDescending(sm => sm.Priority),
             _ => query.OrderByDescending(sm => sm.SubmittedAt ?? sm.CreatedDate)
         };
+    }
+
+    private IQueryable<MedicationStock> ApplyMedicationStockFilters(
+        IQueryable<MedicationStock> query,
+        Guid? studentId,
+        Guid? parentId,
+        Guid? medicationId,
+        DateTime? fromDate,
+        DateTime? toDate,
+        bool? isExpired,
+        bool? lowStock)
+    {
+        if (studentId.HasValue)
+            query = query.Where(ms => ms.StudentMedication.StudentId == studentId.Value);
+
+        if (parentId.HasValue)
+            query = query.Where(ms => ms.StudentMedication.ParentId == parentId.Value);
+
+        if (medicationId.HasValue)
+            query = query.Where(ms => ms.StudentMedicationId == medicationId.Value);
+
+        if (fromDate.HasValue)
+            query = query.Where(ms => ms.DateAdded >= fromDate.Value);
+
+        if (toDate.HasValue)
+            query = query.Where(ms => ms.DateAdded <= toDate.Value.AddDays(1));
+
+        if (isExpired.HasValue)
+        {
+            if (isExpired.Value)
+                query = query.Where(ms => ms.ExpiryDate < DateTime.Today);
+            else
+                query = query.Where(ms => ms.ExpiryDate >= DateTime.Today);
+        }
+
+        if (lowStock.HasValue && lowStock.Value)
+        {
+            query = query.Where(ms => ms.StudentMedication.RemainingDoses <= ms.StudentMedication.MinStockThreshold);
+        }
+
+        return query;
     }
 
     private async Task InvalidateAllCachesAsync()
@@ -1181,14 +1673,90 @@ public class StudentMedicationService : IStudentMedicationService
         try
         {
             await Task.WhenAll(
-                _cacheService.RemoveByPrefixAsync(MEDICATION_CACHE_PREFIX),
-                _cacheService.RemoveByPrefixAsync(MEDICATION_LIST_PREFIX),
+                _cacheService.InvalidateTrackingSetAsync(MEDICATION_CACHE_SET),
+                _cacheService.InvalidateTrackingSetAsync(STOCK_CACHE_SET),
                 _cacheService.RemoveByPrefixAsync(STATISTICS_PREFIX)
             );
+
+            _logger.LogDebug("Invalidated all medication-related caches");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error invalidating caches");
+        }
+    }
+
+    private async Task<bool> ValidateUserAccessToMedicationAsync(ApplicationUser currentUser,
+        StudentMedication medication)
+    {
+        try
+        {
+            var userRoles = currentUser.UserRoles.Select(ur => ur.Role.Name.ToUpper()).ToList();
+
+            if (userRoles.Any(role => new[] { "SCHOOLNURSE" }.Contains(role)))
+            {
+                return true;
+            }
+
+            // PARENT chỉ có thể xem thuốc của con em mình
+            if (userRoles.Contains("PARENT"))
+            {
+                return medication.ParentId == currentUser.Id;
+            }
+
+            // STUDENT chỉ có thể xem thuốc của chính mình
+            if (userRoles.Contains("STUDENT"))
+            {
+                return medication.StudentId == currentUser.Id;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating user access to medication");
+            return false;
+        }
+    }
+
+    private async Task<bool> ValidateAccessPermissionAsync(Guid currentUserId, Guid medicationId)
+    {
+        try
+        {
+            var currentUser = await GetCurrentUserWithRoles();
+            if (currentUser == null) return false;
+
+            var userRoles = currentUser.UserRoles.Select(ur => ur.Role.Name.ToUpper()).ToList();
+
+            if (userRoles.Any(role => new[] { "SCHOOLNURSE" }.Contains(role)))
+            {
+                return true;
+            }
+
+            var medication = await _unitOfWork.GetRepositoryByEntity<StudentMedication>()
+                .GetQueryable()
+                .Where(sm => sm.Id == medicationId && !sm.IsDeleted)
+                .Select(sm => new { sm.ParentId, sm.StudentId })
+                .FirstOrDefaultAsync();
+
+            if (medication == null) return false;
+
+            if (userRoles.Contains("PARENT"))
+            {
+                return medication.ParentId == currentUserId;
+            }
+
+            if (userRoles.Contains("STUDENT"))
+            {
+                return medication.StudentId == currentUserId;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating access permission");
+            return false;
         }
     }
 
@@ -1233,8 +1801,7 @@ public class StudentMedicationService : IStudentMedicationService
     {
         medication.Id = Guid.NewGuid();
         medication.ParentId = currentUserId;
-        medication.TotalDoses = 0;
-        medication.RemainingDoses = 0;
+        // TotalDoses và RemainingDoses sẽ được tính toán sau khi tạo stock record
         medication.MinStockThreshold = 3;
         medication.LowStockAlertSent = false;
         medication.SkipOnAbsence = true;
@@ -1443,4 +2010,112 @@ public class StudentMedicationService : IStudentMedicationService
     }
 
     #endregion
+
+    private async Task CalculateAndUpdateMedicationDosesAsync(StudentMedication medication)
+    {
+        try
+        {
+            // Tính tổng số lượng thuốc đã gửi từ StockHistory
+            var totalQuantitySent = medication.StockHistory?
+                .Where(s => !s.IsDeleted)
+                .Sum(s => s.QuantityAdded) ?? 0;
+
+            if (totalQuantitySent == 0)
+            {
+                // Nếu chưa có stock history, sử dụng QuantitySent từ medication
+                totalQuantitySent = medication.QuantitySent;
+            }
+
+            // Tính toán TotalDoses dựa trên dosage và quantity
+            var totalDoses = CalculateTotalDosesFromDosage(medication.Dosage, totalQuantitySent);
+            
+            // Cập nhật TotalDoses và RemainingDoses
+            medication.TotalDoses = totalDoses;
+            medication.RemainingDoses = totalDoses;
+            
+            _logger.LogInformation("Calculated doses for medication {MedicationId}: QuantitySent={QuantitySent}, Dosage={Dosage}, TotalDoses={TotalDoses}",
+                medication.Id, totalQuantitySent, medication.Dosage, totalDoses);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating medication doses for {MedicationId}", medication.Id);
+            // Fallback: set default values
+            medication.TotalDoses = medication.QuantitySent;
+            medication.RemainingDoses = medication.QuantitySent;
+        }
+    }
+
+    private int CalculateTotalDosesFromDosage(string dosage, int quantity)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(dosage) || quantity <= 0)
+                return quantity;
+
+            // Parse dosage string to extract numeric value
+            var dosageLower = dosage.ToLower().Trim();
+            
+            // Handle common dosage patterns
+            if (dosageLower.Contains("1 viên") || dosageLower.Contains("1 tablet") || dosageLower.Contains("1 pill"))
+                return quantity;
+            
+            if (dosageLower.Contains("2 viên") || dosageLower.Contains("2 tablet") || dosageLower.Contains("2 pill"))
+                return quantity / 2;
+            
+            if (dosageLower.Contains("1/2 viên") || dosageLower.Contains("0.5 viên") || dosageLower.Contains("half"))
+                return quantity * 2;
+            
+            if (dosageLower.Contains("1.5 viên") || dosageLower.Contains("1.5 tablet"))
+                return (int)(quantity / 1.5);
+            
+            // Extract numeric value using regex
+            var numericMatch = System.Text.RegularExpressions.Regex.Match(dosage, @"(\d+(?:\.\d+)?)");
+            if (numericMatch.Success && double.TryParse(numericMatch.Value, out var dosageValue))
+            {
+                if (dosageValue > 0)
+                    return (int)(quantity / dosageValue);
+            }
+            
+            // Default: assume 1 unit per dose
+            return quantity;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error parsing dosage '{Dosage}', using default calculation", dosage);
+            return quantity;
+        }
+    }
+
+    private async Task RecalculateMedicationDosesAsync(StudentMedication medication)
+    {
+        try
+        {
+            // Tính tổng số lượng thuốc đã gửi từ StockHistory
+            var totalQuantitySent = medication.StockHistory?
+                .Where(s => !s.IsDeleted)
+                .Sum(s => s.QuantityAdded) ?? 0;
+
+            if (totalQuantitySent == 0)
+            {
+                totalQuantitySent = medication.QuantitySent;
+            }
+
+            // Tính toán TotalDoses mới
+            var newTotalDoses = CalculateTotalDosesFromDosage(medication.Dosage, totalQuantitySent);
+            
+            // Tính số liều đã sử dụng
+            var usedDoses = medication.TotalDoses - medication.RemainingDoses;
+            
+            // Cập nhật TotalDoses và RemainingDoses
+            medication.TotalDoses = newTotalDoses;
+            medication.RemainingDoses = Math.Max(0, newTotalDoses - usedDoses);
+            
+            _logger.LogInformation("Recalculated doses for medication {MedicationId}: New TotalDoses={TotalDoses}, New RemainingDoses={RemainingDoses}, UsedDoses={UsedDoses}",
+                medication.Id, newTotalDoses, medication.RemainingDoses, usedDoses);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error recalculating medication doses for {MedicationId}", medication.Id);
+        }
+    }
 }

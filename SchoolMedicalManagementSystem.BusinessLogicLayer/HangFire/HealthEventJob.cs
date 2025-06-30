@@ -1,127 +1,62 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Hangfire;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
 
-namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
+namespace SchoolMedicalManagementSystem.BusinessLogicLayer.HangFire;
 
-public class HealthEventBackgroundService : BackgroundService
+public class HealthEventJob : IHealthEventJob
 {
-    private readonly ILogger<HealthEventBackgroundService> _logger;
     private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<HealthEventJob> _logger;
 
-    private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(30);
     private readonly TimeSpan _escalationThreshold = TimeSpan.FromMinutes(5);
     private readonly TimeSpan _reminderThreshold = TimeSpan.FromMinutes(10);
     private readonly TimeSpan _cleanupThreshold = TimeSpan.FromHours(1);
-
     private readonly TimeSpan _escalationDuplicateCheck = TimeSpan.FromMinutes(15);
     private readonly TimeSpan _reminderDuplicateCheck = TimeSpan.FromMinutes(30);
 
-    private int _consecutiveErrors = 0;
-    private readonly int _maxConsecutiveErrors = 5;
-
-    public HealthEventBackgroundService(
-        ILogger<HealthEventBackgroundService> logger,
-        IServiceProvider serviceProvider)
+    public HealthEventJob(
+        IServiceProvider serviceProvider,
+        ILogger<HealthEventJob> logger)
     {
-        _logger = logger;
         _serviceProvider = serviceProvider;
+        _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        _logger.LogInformation("Health Event Background Service started");
-
-        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                await ProcessHealthEventsAsync(stoppingToken);
-                _consecutiveErrors = 0;
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                _logger.LogInformation("Health Event Background Service is stopping due to cancellation");
-                break;
-            }
-            catch (Exception ex)
-            {
-                _consecutiveErrors++;
-
-                if (_consecutiveErrors <= _maxConsecutiveErrors)
-                {
-                    _logger.LogWarning(ex, "Error #{Count} in Health Event Background Service: {Message}",
-                        _consecutiveErrors, ex.Message);
-                }
-                else
-                {
-                    _logger.LogError(ex, "Too many consecutive errors ({Count}) in Health Event Background Service. " +
-                                         "Will continue but may have issues.", _consecutiveErrors);
-                }
-
-                var delay = TimeSpan.FromSeconds(Math.Min(60, 5 * Math.Pow(2, Math.Min(_consecutiveErrors - 1, 4))));
-                await Task.Delay(delay, stoppingToken);
-            }
-
-            if (!stoppingToken.IsCancellationRequested)
-            {
-                await Task.Delay(_checkInterval, stoppingToken);
-            }
-        }
-
-        _logger.LogInformation("Health Event Background Service stopped");
-    }
-
-    private async Task ProcessHealthEventsAsync(CancellationToken cancellationToken)
-    {
-        if (!await IsDatabaseAvailableAsync(cancellationToken))
-        {
-            _logger.LogDebug("Database not available, skipping health event processing");
-            return;
-        }
-
-        await EscalatePendingEventsAsync(cancellationToken);
-        await SendReminderNotificationsAsync(cancellationToken);
-        await CleanupOldCompletedEventsAsync(cancellationToken);
-    }
-
-    private async Task<bool> IsDatabaseAvailableAsync(CancellationToken cancellationToken)
+    [AutomaticRetry(Attempts = 3, DelaysInSeconds = new int[] { 30, 60, 120 })]
+    public async Task ProcessAllHealthEventsAsync()
     {
         try
         {
-            using var scope = _serviceProvider.CreateScope();
-            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            if (!await IsDatabaseAvailableAsync())
+            {
+                _logger.LogDebug("Database not available, skipping health event processing");
+                return;
+            }
 
-            await unitOfWork.GetRepositoryByEntity<HealthEvent>()
-                .GetQueryable()
-                .Take(1)
-                .AnyAsync(cancellationToken);
-
-            return true;
+            await EscalatePendingEventsAsync();
+            await SendReminderNotificationsAsync();
+            await CleanupOldCompletedEventsAsync();
         }
         catch (Exception ex)
         {
-            _logger.LogDebug("Database connectivity check failed: {Message}", ex.Message);
-            return false;
+            _logger.LogError(ex, "Error in ProcessAllHealthEventsAsync");
+            throw;
         }
     }
 
-    /// <summary>
-    /// Escalate pending events to managers after threshold time
-    /// </summary>
-    private async Task EscalatePendingEventsAsync(CancellationToken cancellationToken)
+    [AutomaticRetry(Attempts = 2)]
+    public async Task EscalatePendingEventsAsync()
     {
+        using var scope = _serviceProvider.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
         try
         {
-            using var scope = _serviceProvider.CreateScope();
-            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-
             var cutoffTime = DateTime.Now.Subtract(_escalationThreshold);
 
             var pendingEvents = await unitOfWork.GetRepositoryByEntity<HealthEvent>()
@@ -133,7 +68,7 @@ public class HealthEventBackgroundService : BackgroundService
                              he.CreatedDate.Value <= cutoffTime &&
                              !he.IsDeleted)
                 .Take(10)
-                .ToListAsync(cancellationToken);
+                .ToListAsync();
 
             if (pendingEvents.Any())
             {
@@ -145,7 +80,7 @@ public class HealthEventBackgroundService : BackgroundService
                     .ThenInclude(ur => ur.Role)
                     .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "MANAGER") &&
                                 u.IsActive && !u.IsDeleted)
-                    .ToListAsync(cancellationToken);
+                    .ToListAsync();
 
                 if (!managers.Any())
                 {
@@ -173,7 +108,7 @@ public class HealthEventBackgroundService : BackgroundService
                     }
                 }
 
-                await unitOfWork.SaveChangesAsync(cancellationToken);
+                await unitOfWork.SaveChangesAsync();
                 _logger.LogInformation("Escalation processing completed");
             }
         }
@@ -184,16 +119,14 @@ public class HealthEventBackgroundService : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Send reminder notifications for long-running events
-    /// </summary>
-    private async Task SendReminderNotificationsAsync(CancellationToken cancellationToken)
+    [AutomaticRetry(Attempts = 2)]
+    public async Task SendReminderNotificationsAsync()
     {
+        using var scope = _serviceProvider.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
         try
         {
-            using var scope = _serviceProvider.CreateScope();
-            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-
             var reminderCutoff = DateTime.Now.Subtract(_reminderThreshold);
 
             var longRunningEvents = await unitOfWork.GetRepositoryByEntity<HealthEvent>()
@@ -205,7 +138,7 @@ public class HealthEventBackgroundService : BackgroundService
                              he.AssignedAt.Value <= reminderCutoff &&
                              !he.IsDeleted)
                 .Take(10)
-                .ToListAsync(cancellationToken);
+                .ToListAsync();
 
             if (longRunningEvents.Any())
             {
@@ -231,7 +164,7 @@ public class HealthEventBackgroundService : BackgroundService
                     }
                 }
 
-                await unitOfWork.SaveChangesAsync(cancellationToken);
+                await unitOfWork.SaveChangesAsync();
                 _logger.LogInformation("Reminder processing completed");
             }
         }
@@ -242,16 +175,14 @@ public class HealthEventBackgroundService : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Clean up old completed event notifications
-    /// </summary>
-    private async Task CleanupOldCompletedEventsAsync(CancellationToken cancellationToken)
+    [AutomaticRetry(Attempts = 1)]
+    public async Task CleanupOldCompletedEventsAsync()
     {
+        using var scope = _serviceProvider.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
         try
         {
-            using var scope = _serviceProvider.CreateScope();
-            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-
             var cleanupCutoff = DateTime.Now.Subtract(_cleanupThreshold);
 
             var oldNotifications = await unitOfWork.GetRepositoryByEntity<Notification>()
@@ -262,11 +193,11 @@ public class HealthEventBackgroundService : BackgroundService
                             n.HealthEvent.CompletedAt.Value <= cleanupCutoff &&
                             !n.IsDeleted)
                 .Take(50)
-                .ToListAsync(cancellationToken);
+                .ToListAsync();
 
             if (oldNotifications.Any())
             {
-                _logger.LogInformation("Cleaning up {Count} old notifications", oldNotifications.Count);
+                _logger.LogInformation("Cleaning up {Count} old health event notifications", oldNotifications.Count);
 
                 foreach (var notification in oldNotifications)
                 {
@@ -275,14 +206,35 @@ public class HealthEventBackgroundService : BackgroundService
                     notification.LastUpdatedBy = "SYSTEM";
                 }
 
-                await unitOfWork.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Cleanup completed");
+                await unitOfWork.SaveChangesAsync();
+                _logger.LogInformation("Health event cleanup completed");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error cleaning up old completed events");
             throw;
+        }
+    }
+    
+    private async Task<bool> IsDatabaseAvailableAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+            await unitOfWork.GetRepositoryByEntity<HealthEvent>()
+                .GetQueryable()
+                .Take(1)
+                .AnyAsync();
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug("Database connectivity check failed: {Message}", ex.Message);
+            return false;
         }
     }
 

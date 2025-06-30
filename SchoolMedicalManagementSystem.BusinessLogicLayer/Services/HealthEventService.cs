@@ -730,6 +730,8 @@ public class HealthEventService : IHealthEventService
             healthEvent.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+            await NotifyOtherNursesAboutTakeOwnershipAsync(healthEvent, currentUser);
+            
             await InvalidateAllCachesAsync();
 
             var eventResponse = MapToHealthEventResponse(healthEvent);
@@ -893,6 +895,12 @@ public class HealthEventService : IHealthEventService
             {
                 return BaseResponse<HealthEventResponse>.ErrorResult("Không thể xác định người dùng hiện tại.");
             }
+            
+            var currentUser = await ValidateCurrentUserPermissions(currentUserId);
+            if (currentUser == null)
+            {
+                return BaseResponse<HealthEventResponse>.ErrorResult("Bạn không có quyền hoàn thành sự kiện y tế.");
+            }
 
             var eventRepo = _unitOfWork.GetRepositoryByEntity<HealthEvent>();
             var healthEvent = await eventRepo.GetQueryable()
@@ -917,7 +925,6 @@ public class HealthEventService : IHealthEventService
                 return BaseResponse<HealthEventResponse>.ErrorResult("Sự kiện đã được hoàn thành.");
             }
 
-
             healthEvent.ActionTaken = request.ActionTaken;
             healthEvent.Outcome = request.Outcome;
             healthEvent.Status = HealthEventStatus.Completed;
@@ -926,6 +933,8 @@ public class HealthEventService : IHealthEventService
             healthEvent.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+            await NotifyOtherNursesAboutCompletionAsync(healthEvent, currentUser);
+            
             await InvalidateAllCachesAsync();
 
             var eventResponse = MapToHealthEventResponse(healthEvent);
@@ -1468,7 +1477,7 @@ public class HealthEventService : IHealthEventService
             await notificationRepo.AddAsync(notification);
 
             await _unitOfWork.SaveChangesAsync();
-            
+
             _logger.LogInformation(
                 "Created update notification for parent {ParentId}, student {StudentId}, event {EventId}",
                 student.ParentId.Value, student.Id, healthEvent.Id);
@@ -1516,7 +1525,7 @@ public class HealthEventService : IHealthEventService
             await notificationRepo.AddAsync(notification);
 
             await _unitOfWork.SaveChangesAsync();
-            
+
             _logger.LogInformation(
                 "Created emergency notification for parent {ParentId}, student {StudentId}, event {EventId}",
                 student.ParentId.Value, student.Id, healthEvent.Id);
@@ -1572,7 +1581,7 @@ public class HealthEventService : IHealthEventService
             await notificationRepo.AddAsync(notification);
 
             await _unitOfWork.SaveChangesAsync();
-            
+
             _logger.LogInformation(
                 "Created health event notification for parent {ParentId}, student {StudentId}, event {EventId}",
                 student.ParentId.Value, student.Id, healthEvent.Id);
@@ -1613,13 +1622,166 @@ public class HealthEventService : IHealthEventService
             await notificationRepo.AddAsync(notification);
 
             await _unitOfWork.SaveChangesAsync();
-            
+
             _logger.LogInformation("Created assignment notification for nurse {NurseId}, event {EventId}",
                 assignedNurse.Id, healthEvent.Id);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating assignment notification for event {EventId}", healthEvent.Id);
+        }
+    }
+
+    /// <summary>
+    /// Thông báo cho các SchoolNurse khác về việc ai đó đã nhận sự kiện
+    /// </summary>
+    private async Task NotifyOtherNursesAboutTakeOwnershipAsync(HealthEvent healthEvent, ApplicationUser handlingNurse)
+    {
+        try
+        {
+            var nursesRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var otherNurses = await nursesRepo.GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE")
+                            && u.IsActive
+                            && !u.IsDeleted
+                            && u.Id != handlingNurse.Id) // Loại trừ người đã nhận sự kiện
+                .ToListAsync();
+
+            if (!otherNurses.Any())
+            {
+                _logger.LogDebug("No other nurses to notify about take ownership for event {EventId}", healthEvent.Id);
+                return;
+            }
+
+            var notificationRepo = _unitOfWork.GetRepositoryByEntity<Notification>();
+            var notifications = new List<Notification>();
+
+            var emergencyText = healthEvent.IsEmergency ? "KHẨN CẤP " : "";
+            var titlePrefix = healthEvent.IsEmergency
+                ? "Đồng nghiệp đã nhận sự kiện khẩn cấp"
+                : "Đồng nghiệp đã nhận sự kiện";
+
+            foreach (var nurse in otherNurses)
+            {
+                var notification = new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    Title = $"{titlePrefix} - {healthEvent.Student?.FullName}",
+                    Content =
+                        $"Đồng nghiệp {handlingNurse.FullName} đã nhận xử lý sự kiện y tế {emergencyText}:{Environment.NewLine}{Environment.NewLine}" +
+                        $"Học sinh: {healthEvent.Student?.FullName} ({healthEvent.Student?.StudentCode}){Environment.NewLine}" +
+                        $"Loại sự kiện: {GetEventTypeDisplayName(healthEvent.EventType)}{Environment.NewLine}" +
+                        $"Vị trí: {healthEvent.Location}{Environment.NewLine}" +
+                        $"Thời gian: {healthEvent.OccurredAt:dd/MM/yyyy HH:mm}{Environment.NewLine}" +
+                        $"Mô tả: {healthEvent.Description}{Environment.NewLine}" +
+                        $"Mức độ: {(healthEvent.IsEmergency ? "KHẨN CẤP" : "Bình thường")}{Environment.NewLine}" +
+                        $"Nhận bởi: {handlingNurse.FullName}{Environment.NewLine}" +
+                        $"Nhận lúc: {healthEvent.AssignedAt:dd/MM/yyyy HH:mm}{Environment.NewLine}{Environment.NewLine}" +
+                        "Sẵn sàng hỗ trợ nếu cần thiết.",
+                    NotificationType = NotificationType.HealthEvent,
+                    SenderId = handlingNurse.Id,
+                    RecipientId = nurse.Id,
+                    HealthEventId = healthEvent.Id,
+                    RequiresConfirmation = false,
+                    IsRead = false,
+                    CreatedDate = DateTime.Now,
+                    EndDate = DateTime.Now.AddHours(healthEvent.IsEmergency
+                        ? 8
+                        : 4)
+                };
+
+                notifications.Add(notification);
+            }
+
+            await notificationRepo.AddRangeAsync(notifications);
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation("Notified {Count} other nurses about take ownership of event {EventId} by {NurseId}",
+                otherNurses.Count, healthEvent.Id, handlingNurse.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error notifying other nurses about take ownership of event {EventId}",
+                healthEvent.Id);
+        }
+    }
+
+    /// <summary>
+    /// Thông báo cho các SchoolNurse khác về việc hoàn thành sự kiện
+    /// </summary>
+    private async Task NotifyOtherNursesAboutCompletionAsync(HealthEvent healthEvent, ApplicationUser completingNurse)
+    {
+        try
+        {
+            var nursesRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var otherNurses = await nursesRepo.GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE")
+                            && u.IsActive
+                            && !u.IsDeleted
+                            && u.Id != completingNurse.Id) // Loại trừ người đã hoàn thành sự kiện
+                .ToListAsync();
+
+            if (!otherNurses.Any())
+            {
+                _logger.LogDebug("No other nurses to notify about completion for event {EventId}", healthEvent.Id);
+                return;
+            }
+
+            var notificationRepo = _unitOfWork.GetRepositoryByEntity<Notification>();
+            var notifications = new List<Notification>();
+
+            var emergencyText = healthEvent.IsEmergency ? "khẩn cấp " : "";
+            var titlePrefix = healthEvent.IsEmergency ? "Sự kiện khẩn cấp đã hoàn thành" : "Sự kiện y tế đã hoàn thành";
+
+            foreach (var nurse in otherNurses)
+            {
+                var notification = new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    Title = $"{titlePrefix} - {healthEvent.Student?.FullName}",
+                    Content =
+                        $"Đồng nghiệp {completingNurse.FullName} đã hoàn thành xử lý sự kiện y tế {emergencyText}:{Environment.NewLine}{Environment.NewLine}" +
+                        $"Học sinh: {healthEvent.Student?.FullName} ({healthEvent.Student?.StudentCode}){Environment.NewLine}" +
+                        $"Loại sự kiện: {GetEventTypeDisplayName(healthEvent.EventType)}{Environment.NewLine}" +
+                        $"Vị trí: {healthEvent.Location}{Environment.NewLine}" +
+                        $"Thời gian xảy ra: {healthEvent.OccurredAt:dd/MM/yyyy HH:mm}{Environment.NewLine}" +
+                        $"Mô tả: {healthEvent.Description}{Environment.NewLine}" +
+                        $"Mức độ: {(healthEvent.IsEmergency ? "KHẨN CẤP" : "Bình thường")}{Environment.NewLine}" +
+                        $"Xử lý bởi: {completingNurse.FullName}{Environment.NewLine}" +
+                        $"Hoàn thành lúc: {healthEvent.CompletedAt:dd/MM/yyyy HH:mm}{Environment.NewLine}" +
+                        (!string.IsNullOrEmpty(healthEvent.ActionTaken)
+                            ? $"Hành động đã thực hiện: {healthEvent.ActionTaken}{Environment.NewLine}"
+                            : "") +
+                        (!string.IsNullOrEmpty(healthEvent.Outcome)
+                            ? $"Kết quả: {healthEvent.Outcome}{Environment.NewLine}"
+                            : "") +
+                        $"{Environment.NewLine}Sự kiện đã được xử lý thành công.",
+                    NotificationType = NotificationType.HealthEvent,
+                    SenderId = completingNurse.Id,
+                    RecipientId = nurse.Id,
+                    HealthEventId = healthEvent.Id,
+                    RequiresConfirmation = false,
+                    IsRead = false,
+                    CreatedDate = DateTime.Now,
+                    EndDate = DateTime.Now.AddHours(healthEvent.IsEmergency ? 12 : 6)
+                };
+
+                notifications.Add(notification);
+            }
+
+            await notificationRepo.AddRangeAsync(notifications);
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation("Notified {Count} other nurses about completion of event {EventId} by {NurseId}",
+                otherNurses.Count, healthEvent.Id, completingNurse.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error notifying other nurses about completion of event {EventId}", healthEvent.Id);
         }
     }
 
@@ -1671,7 +1833,7 @@ public class HealthEventService : IHealthEventService
             await notificationRepo.AddRangeAsync(notifications);
 
             await _unitOfWork.SaveChangesAsync();
-            
+
             _logger.LogInformation("Notified {Count} available nurses about emergency {EventId}",
                 availableNurses.Count, healthEvent.Id);
         }

@@ -45,11 +45,9 @@ public class MedicationScheduleMappingProfile : Profile
             .ForMember(dest => dest.MedicationPurpose, opt => opt.MapFrom(src =>
                 src.StudentMedication != null ? src.StudentMedication.Purpose : ""))
             .ForMember(dest => dest.TimeOfDay, opt => opt.MapFrom(src =>
-                src.StudentMedication != null ? src.StudentMedication.TimeOfDay : MedicationTimeOfDay.AfterBreakfast))
+                GetTimeOfDayFromScheduledTime(src.ScheduledTime)))
             .ForMember(dest => dest.TimeOfDayDisplayName, opt => opt.MapFrom(src =>
-                GetTimeOfDayDisplayName(src.StudentMedication != null
-                    ? src.StudentMedication.TimeOfDay
-                    : MedicationTimeOfDay.AfterBreakfast)))
+                GetTimeOfDayDisplayName(GetTimeOfDayFromScheduledTime(src.ScheduledTime))))
             .ForMember(dest => dest.MedicationStartDate, opt => opt.MapFrom(src =>
                 src.StudentMedication != null ? src.StudentMedication.StartDate : DateTime.MinValue))
             .ForMember(dest => dest.MedicationEndDate, opt => opt.MapFrom(src =>
@@ -108,14 +106,14 @@ public class MedicationScheduleMappingProfile : Profile
     {
         return timeOfDay switch
         {
-            MedicationTimeOfDay.BeforeBreakfast => "Trước bữa sáng",
-            MedicationTimeOfDay.AfterBreakfast => "Sau bữa sáng",
-            MedicationTimeOfDay.BeforeLunch => "Trước bữa trưa",
-            MedicationTimeOfDay.AfterLunch => "Sau bữa trưa",
-            MedicationTimeOfDay.BeforeDinner => "Trước bữa tối",
-            MedicationTimeOfDay.AfterDinner => "Sau bữa tối",
-            MedicationTimeOfDay.BeforeBed => "Trước khi ngủ",
-            MedicationTimeOfDay.SpecificTime => "Giờ cụ thể",
+            MedicationTimeOfDay.Morning => "Buổi sáng sớm (7:00)",
+            MedicationTimeOfDay.AfterBreakfast => "Sau bữa sáng (8:30)",
+            MedicationTimeOfDay.MidMorning => "Giữa buổi sáng (10:00)",
+            MedicationTimeOfDay.BeforeLunch => "Trước bữa trưa (11:30)",
+            MedicationTimeOfDay.AfterLunch => "Sau bữa trưa (13:00)",
+            MedicationTimeOfDay.MidAfternoon => "Giữa buổi chiều (14:30)",
+            MedicationTimeOfDay.LateAfternoon => "Cuối buổi chiều (16:00)",
+            MedicationTimeOfDay.BeforeDismissal => "Trước khi tan học (16:30)",
             _ => timeOfDay.ToString()
         };
     }
@@ -134,6 +132,25 @@ public class MedicationScheduleMappingProfile : Profile
             AdministeredById = administration.AdministeredById,
             AdministeredByName = administration.AdministeredBy?.FullName ?? ""
         };
+    }
+
+    private static MedicationTimeOfDay GetTimeOfDayFromScheduledTime(TimeSpan scheduledTime)
+    {
+        if (scheduledTime >= TimeSpan.FromHours(7) && scheduledTime < TimeSpan.FromHours(8.5))
+            return MedicationTimeOfDay.Morning;
+        if (scheduledTime >= TimeSpan.FromHours(8.5) && scheduledTime < TimeSpan.FromHours(10))
+            return MedicationTimeOfDay.AfterBreakfast;
+        if (scheduledTime >= TimeSpan.FromHours(10) && scheduledTime < TimeSpan.FromHours(11.5))
+            return MedicationTimeOfDay.MidMorning;
+        if (scheduledTime >= TimeSpan.FromHours(11.5) && scheduledTime < TimeSpan.FromHours(13))
+            return MedicationTimeOfDay.BeforeLunch;
+        if (scheduledTime >= TimeSpan.FromHours(13) && scheduledTime < TimeSpan.FromHours(14.5))
+            return MedicationTimeOfDay.AfterLunch;
+        if (scheduledTime >= TimeSpan.FromHours(14.5) && scheduledTime < TimeSpan.FromHours(16))
+            return MedicationTimeOfDay.MidAfternoon;
+        if (scheduledTime >= TimeSpan.FromHours(16) && scheduledTime < TimeSpan.FromHours(16.5))
+            return MedicationTimeOfDay.LateAfternoon;
+        return MedicationTimeOfDay.BeforeDismissal;
     }
 
     #endregion

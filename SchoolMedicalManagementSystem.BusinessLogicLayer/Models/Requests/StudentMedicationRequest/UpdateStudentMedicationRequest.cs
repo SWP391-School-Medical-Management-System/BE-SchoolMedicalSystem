@@ -23,5 +23,6 @@ public class UpdateStudentMedicationRequest
     public string? SpecialNotes { get; set; }
     public string? EmergencyContactInstructions { get; set; }
     public MedicationPriority? Priority { get; set; }
-    public MedicationTimeOfDay? TimeOfDay { get; set; }
+    public List<MedicationTimeOfDay> TimesOfDay { get; set; } = new();
+    public List<TimeSpan> SpecificTimes { get; set; } = new();
 }
