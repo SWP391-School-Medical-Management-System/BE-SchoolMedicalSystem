@@ -56,31 +56,46 @@ public class UserMappingProfile : Profile
 
         CreateMap<ApplicationUser, StudentResponse>()
             .ForMember(dest => dest.HasMedicalRecord, opt => opt.MapFrom(src => src.MedicalRecord != null))
-            .ForMember(dest => dest.Classes, opt => opt.Ignore())
-            .ForMember(dest => dest.ClassCount, opt => opt.Ignore())
+            .ForMember(dest => dest.Classes, opt => opt.MapFrom(src => src.StudentClasses
+                .Where(sc => !sc.IsDeleted)
+                .Select(sc => new StudentClassInfo
+                {
+                    StudentClassId = sc.Id,
+                    ClassId = sc.ClassId,
+                    ClassName = sc.SchoolClass.Name,
+                    Grade = sc.SchoolClass.Grade,
+                    AcademicYear = sc.SchoolClass.AcademicYear,
+                    EnrollmentDate = sc.EnrollmentDate,
+                    IsActive = !sc.IsDeleted,
+                    CreatedDate = sc.CreatedDate
+                }).ToList()))
+            .ForMember(dest => dest.ClassCount, opt => opt.MapFrom(src => src.StudentClasses.Count(sc => !sc.IsDeleted)))
+            .ForMember(dest => dest.CurrentClassName, opt => opt.MapFrom(src => src.StudentClasses
+                .Where(sc => !sc.IsDeleted)
+                .OrderByDescending(sc => sc.EnrollmentDate)
+                .Select(sc => sc.SchoolClass.Name)
+                .FirstOrDefault()))
+            .ForMember(dest => dest.CurrentGrade, opt => opt.MapFrom(src => src.StudentClasses
+                .Where(sc => !sc.IsDeleted)
+                .OrderByDescending(sc => sc.EnrollmentDate)
+                .Select(sc => sc.SchoolClass.Grade)
+                .FirstOrDefault()))
+            .ForMember(dest => dest.CurrentAcademicYear, opt => opt.MapFrom(src => src.StudentClasses
+                .Where(sc => !sc.IsDeleted)
+                .OrderByDescending(sc => sc.EnrollmentDate)
+                .Select(sc => sc.SchoolClass.AcademicYear)
+                .FirstOrDefault()))
             .ForMember(dest => dest.HasParent, opt => opt.MapFrom(src => src.ParentId.HasValue))
             .ForMember(dest => dest.ParentId, opt => opt.MapFrom(src => src.ParentId))
-            .ForMember(dest => dest.ParentName,
-                opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : null))
-            .ForMember(dest => dest.ParentPhone,
-                opt => opt.MapFrom(src => src.Parent != null ? src.Parent.PhoneNumber : null))
-            .ForMember(dest => dest.ParentEmail,
-                opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Email : null))
-            .ForMember(dest => dest.ParentRelationship,
-                opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Relationship : null))
-            .ForMember(dest => dest.BloodType,
-                opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.BloodType : null))
-            .ForMember(dest => dest.Height,
-                opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.Height : (double?)null))
-            .ForMember(dest => dest.Weight,
-                opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.Weight : (double?)null))
-            .ForMember(dest => dest.EmergencyContact,
-                opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContact : null))
-            .ForMember(dest => dest.EmergencyContactPhone,
-                opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContactPhone : null))
-            .ForMember(dest => dest.CurrentClassName, opt => opt.Ignore())
-            .ForMember(dest => dest.CurrentGrade, opt => opt.Ignore())
-            .ForMember(dest => dest.CurrentAcademicYear, opt => opt.Ignore());
+            .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : null))
+            .ForMember(dest => dest.ParentPhone, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.PhoneNumber : null))
+            .ForMember(dest => dest.ParentEmail, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Email : null))
+            .ForMember(dest => dest.ParentRelationship, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Relationship : null))
+            .ForMember(dest => dest.BloodType, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.BloodType : null))
+            .ForMember(dest => dest.Height, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.Height : (double?)null))
+            .ForMember(dest => dest.Weight, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.Weight : (double?)null))
+            .ForMember(dest => dest.EmergencyContact, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContact : null))
+            .ForMember(dest => dest.EmergencyContactPhone, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContactPhone : null));
 
         CreateMap<ApplicationUser, ParentResponse>()
             .ForMember(dest => dest.ChildrenCount,

@@ -1022,6 +1022,78 @@ public class UserService : IUserService
         }
     }
 
+    public async Task<BaseListResponse<StudentResponse>> GetStudentsByParentIdAsync(
+    Guid parentId,
+    int pageIndex = 1,
+    int pageSize = 10,
+    string searchTerm = null,
+    string orderBy = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var cacheKey = _cacheService.GenerateCacheKey(
+                "parent_students",
+                parentId.ToString(),
+                pageIndex.ToString(),
+                pageSize.ToString(),
+                searchTerm ?? "",
+                orderBy ?? ""
+            );
+
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<StudentResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                _logger.LogDebug("Students list for parent found in cache: {ParentId}", parentId);
+                return cachedResult;
+            }
+
+            var query = _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                .ThenInclude(sc => sc.SchoolClass)
+                .Include(u => u.Parent)
+                .Include(u => u.MedicalRecord)
+                .Where(u => !u.IsDeleted && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && u.ParentId == parentId)
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                searchTerm = searchTerm.ToLower();
+                query = query.Where(u =>
+                    u.FullName.ToLower().Contains(searchTerm) ||
+                    u.StudentCode.ToLower().Contains(searchTerm));
+            }
+
+            query = ApplyStudentOrdering(query, orderBy);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var students = await query
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var responses = students.Select(MapToStudentResponse).ToList();
+
+            var result = BaseListResponse<StudentResponse>.SuccessResult(
+                responses,
+                totalCount,
+                pageSize,
+                pageIndex,
+                "Lấy danh sách học sinh của phụ huynh thành công.");
+
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, "parent_students_cache_keys");
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving students for parent: {ParentId}", parentId);
+            return BaseListResponse<StudentResponse>.ErrorResult("Lỗi lấy danh sách học sinh của phụ huynh.");
+        }
+    }
     public async Task<BaseResponse<StudentResponse>> CreateStudentAsync(CreateStudentRequest model)
     {
         try

@@ -442,6 +442,35 @@ public class UserController : ControllerBase
         }
     }
 
+    [HttpGet("parents/{parentId}/students")]
+    [Authorize(Roles = "MANAGER")]
+    public async Task<ActionResult<BaseListResponse<StudentResponse>>> GetStudentsByParentId(
+    Guid parentId,
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] string searchTerm = "",
+    [FromQuery] string orderBy = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(BaseListResponse<StudentResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var response = await _userService.GetStudentsByParentIdAsync(parentId, pageIndex, pageSize, searchTerm, orderBy, cancellationToken);
+
+            if (!response.Success)
+                return NotFound(response);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving students by parent ID: {ParentId}", parentId);
+            return StatusCode(500, BaseListResponse<StudentResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
     [HttpPost("students")]
     [Authorize(Roles = "MANAGER")]
     public async Task<ActionResult<BaseResponse<StudentResponse>>> CreateStudent([FromBody] CreateStudentRequest model)
