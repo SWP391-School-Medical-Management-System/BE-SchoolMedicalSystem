@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SchoolMedicalManagementSystem.BusinessLogicLayer.Utilities;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,5 +18,12 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Vacc
         public string Status { get; set; }
         public string SessionName { get; set; }
         public string Notes { get; set; }
+        public List<ClassInfo> Classes { get; set; }
+    }
+
+    public class ClassInfo
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; }
     }
 }

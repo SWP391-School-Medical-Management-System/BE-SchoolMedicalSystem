@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.VaccineRecordResponse;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 {
@@ -30,6 +31,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         private readonly IValidator<CreateWholeVaccinationSessionRequest> _createWholeSessionValidator;
         private readonly IValidator<ParentApproveRequest> _parentApproveValidator;
         private readonly IValidator<AssignNurseToSessionRequest> _assignNurseValidator;
+        private readonly IValidator<MarkStudentVaccinatedRequest> _markStudentVaccinatedValidator;
         private readonly IEmailService _emailService;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
@@ -47,6 +49,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             IValidator<CreateWholeVaccinationSessionRequest> createWholeSessionValidator,
             IValidator<ParentApproveRequest> parentApproveValidator,
             IValidator<AssignNurseToSessionRequest> assignNurseValidator,
+            IValidator<MarkStudentVaccinatedRequest> markStudentVaccinatedValidator,
             IEmailService emailService,
             IHttpContextAccessor httpContextAccessor)
         {
@@ -59,6 +62,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             _createWholeSessionValidator = createWholeSessionValidator;
             _parentApproveValidator = parentApproveValidator;
             _assignNurseValidator = assignNurseValidator;
+            _markStudentVaccinatedValidator = markStudentVaccinatedValidator;
             _emailService = emailService;
             _httpContextAccessor = httpContextAccessor;
         }
@@ -71,66 +75,80 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             string searchTerm,
             string orderBy,
             CancellationToken cancellationToken = default)
+        {
+            try
             {
-                try
+                var cacheKey = _cacheService.GenerateCacheKey(
+                    SESSION_LIST_PREFIX,
+                    pageIndex.ToString(),
+                    pageSize.ToString(),
+                    searchTerm ?? "",
+                    orderBy ?? ""
+                );
+
+                var cachedResult = await _cacheService.GetAsync<BaseListResponse<VaccinationSessionResponse>>(cacheKey);
+                if (cachedResult != null)
                 {
-                    var cacheKey = _cacheService.GenerateCacheKey(
-                        SESSION_LIST_PREFIX,
-                        pageIndex.ToString(),
-                        pageSize.ToString(),
-                        searchTerm ?? "",
-                        orderBy ?? ""
-                    );
-
-                    var cachedResult = await _cacheService.GetAsync<BaseListResponse<VaccinationSessionResponse>>(cacheKey);
-                    if (cachedResult != null)
-                    {
-                        _logger.LogDebug("Vaccination sessions list found in cache.");
-                        return cachedResult;
-                    }
-
-                    var query = _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
-                        .Include(vs => vs.VaccineType)
-                        .Where(vs => !vs.IsDeleted)
-                        .AsQueryable();
-
-                    if (!string.IsNullOrEmpty(searchTerm))
-                    {
-                        searchTerm = searchTerm.ToLower();
-                        query = query.Where(vs =>
-                            vs.Location.ToLower().Contains(searchTerm) ||
-                            vs.SessionName.ToLower().Contains(searchTerm) ||
-                            vs.VaccineType.Name.ToLower().Contains(searchTerm));
-                    }
-
-                    query = ApplySessionOrdering(query, orderBy);
-
-                    var totalCount = await query.CountAsync(cancellationToken);
-                    var sessions = await query
-                        .Skip((pageIndex - 1) * pageSize)
-                        .Take(pageSize)
-                        .ToListAsync(cancellationToken);
-
-                    var responses = sessions.Select(MapToSessionResponse).ToList();
-
-                    var result = BaseListResponse<VaccinationSessionResponse>.SuccessResult(
-                        responses,
-                        totalCount,
-                        pageSize,
-                        pageIndex,
-                        "Lấy danh sách buổi tiêm thành công.");
-
-                    await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
-                    await _cacheService.AddToTrackingSetAsync(cacheKey, SESSION_CACHE_SET);
-
-                    return result;
+                    _logger.LogDebug("Vaccination sessions list found in cache.");
+                    return cachedResult;
                 }
-                catch (Exception ex)
+
+                var query = _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
+                    .Include(vs => vs.VaccineType)
+                    .Include(vs => vs.Classes)
+                    .ThenInclude(vsc => vsc.SchoolClass)
+                    .Where(vs => !vs.IsDeleted)
+                    .AsQueryable();
+
+                if (!string.IsNullOrEmpty(searchTerm))
                 {
-                    _logger.LogError(ex, "Error retrieving vaccination sessions.");
-                    return BaseListResponse<VaccinationSessionResponse>.ErrorResult("Lỗi lấy danh sách buổi tiêm.");
+                    searchTerm = searchTerm.ToLower();
+                    query = query.Where(vs =>
+                        vs.Location.ToLower().Contains(searchTerm) ||
+                        vs.SessionName.ToLower().Contains(searchTerm) ||
+                        vs.VaccineType.Name.ToLower().Contains(searchTerm));
                 }
+
+                query = ApplySessionOrdering(query, orderBy);
+
+                var totalCount = await query.CountAsync(cancellationToken);
+                var sessions = await query
+                    .Skip((pageIndex - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync(cancellationToken);
+
+                foreach (var session in sessions)
+                {
+                    _logger.LogDebug("Session {SessionId} has {ClassCount} classes", session.Id, session.Classes?.Count ?? 0);
+                    if (session.Classes != null)
+                    {
+                        foreach (var classEntry in session.Classes)
+                        {
+                            _logger.LogDebug("Class {ClassId} in session {SessionId}: Name = {ClassName}", classEntry.ClassId, session.Id, classEntry.SchoolClass?.Name ?? "Null");
+                        }
+                    }
+                }
+
+                var responses = sessions.Select(session => _mapper.Map<VaccinationSessionResponse>(session)).ToList();
+
+                var result = BaseListResponse<VaccinationSessionResponse>.SuccessResult(
+                    responses,
+                    totalCount,
+                    pageSize,
+                    pageIndex,
+                    "Lấy danh sách buổi tiêm thành công.");
+
+                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+                await _cacheService.AddToTrackingSetAsync(cacheKey, SESSION_CACHE_SET);
+
+                return result;
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving vaccination sessions.");
+                return BaseListResponse<VaccinationSessionResponse>.ErrorResult("Lỗi lấy danh sách buổi tiêm.");
+            }
+        }
 
         public async Task<BaseListResponse<VaccinationSessionResponse>> GetSessionsByStudentIdAsync(
             Guid studentId,
@@ -1215,122 +1233,333 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             }
 
         public async Task<BaseResponse<bool>> MarkStudentVaccinatedAsync(
-            Guid sessionId,
-            Guid studentId,
-            CancellationToken cancellationToken = default)
+            Guid sessionId, MarkStudentVaccinatedRequest request, CancellationToken cancellationToken = default)
+        {
+            try
             {
-                try
+                _logger.LogInformation("Bắt đầu đánh dấu tiêm chủng cho học sinh {StudentId} trong buổi {SessionId}", request.StudentId, sessionId);
+
+                var validationResult = await _markStudentVaccinatedValidator.ValidateAsync(request, cancellationToken);
+                if (!validationResult.IsValid)
                 {
-                    var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
-                        .Include(vs => vs.Classes)
-                        .ThenInclude(vsc => vsc.SchoolClass)
-                        .Include(vs => vs.Consents)
-                        .FirstOrDefaultAsync(vs => vs.Id == sessionId && !vs.IsDeleted, cancellationToken);
-
-                    if (session == null || session.Status != "Scheduled")
-                    {
-                        return new BaseResponse<bool>
-                        {
-                            Success = false,
-                            Message = "Buổi tiêm không tồn tại hoặc không trong trạng thái Scheduled."
-                        };
-                    }
-
-                    var consent = session.Consents.FirstOrDefault(c => c.StudentId == studentId && c.Status == "Confirmed" && !c.IsDeleted);
-                    if (consent == null)
-                    {
-                        return new BaseResponse<bool>
-                        {
-                            Success = false,
-                            Message = "Không tìm thấy yêu cầu đồng ý hợp lệ cho học sinh."
-                        };
-                    }
-
-                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                        .FirstOrDefaultAsync(u => u.Id == studentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"), cancellationToken);
-                    if (student == null)
-                    {
-                        return new BaseResponse<bool>
-                        {
-                            Success = false,
-                            Message = "Học sinh không tồn tại."
-                        };
-                    }
-
-                    var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
-                        .Include(mr => mr.Student) // Đảm bảo tải dữ liệu liên kết nếu cần
-                        .FirstOrDefaultAsync(mr => mr.UserId == studentId && !mr.IsDeleted, cancellationToken); // Sửa điều kiện từ mr.Id thành mr.UserId
-                    if (medicalRecord == null)
-                    {
-                        return new BaseResponse<bool>
-                        {
-                            Success = false,
-                            Message = "Không tìm thấy hồ sơ y tế cho học sinh."
-                        };
-                    }
-
-                    // Tạo hoặc cập nhật VaccinationRecord
-                    var vaccinationRecord = await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().GetQueryable()
-                        .FirstOrDefaultAsync(vr => vr.MedicalRecordId == medicalRecord.Id &&
-                                                vr.VaccinationTypeId == session.VaccineTypeId &&
-                                                !vr.IsDeleted, cancellationToken);
-
-                    if (vaccinationRecord == null)
-                    {
-                        vaccinationRecord = new VaccinationRecord
-                        {
-                            Id = Guid.NewGuid(),
-                            UserId = studentId,
-                            MedicalRecordId = medicalRecord.Id,
-                            VaccinationTypeId = session.VaccineTypeId,
-                            DoseNumber = 1, // Giả định mũi đầu tiên, có thể điều chỉnh logic nếu cần
-                            AdministeredDate = DateTime.UtcNow,
-                            AdministeredBy = _httpContextAccessor.HttpContext?.User?.Identity?.Name ?? "SCHOOLNURSE",
-                            BatchNumber = "BATCH-" + DateTime.UtcNow.ToString("yyyyMMdd"), // Ví dụ số lô
-                            Notes = "Được tiêm trong buổi " + session.SessionName,
-                            SessionId = sessionId,
-                            VaccinationStatus = "Completed",
-                            Symptoms = string.Empty,
-                            CreatedDate = DateTime.UtcNow,
-                            IsDeleted = false
-                        };
-                        await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().AddAsync(vaccinationRecord);
-                    }
-                    else
-                    {
-                        vaccinationRecord.DoseNumber += 1; // Tăng số mũi nếu đã có
-                        vaccinationRecord.AdministeredDate = DateTime.UtcNow;
-                        vaccinationRecord.AdministeredBy = _httpContextAccessor.HttpContext?.User?.Identity?.Name ?? "SCHOOLNURSE";
-                        vaccinationRecord.BatchNumber = "BATCH-" + DateTime.UtcNow.ToString("yyyyMMdd");
-                        vaccinationRecord.SessionId = sessionId;
-                        vaccinationRecord.VaccinationStatus = "Completed";
-                        await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().UpdateAsync(vaccinationRecord);
-                    }
-
-                    await _unitOfWork.SaveChangesAsync(cancellationToken);
-                    await InvalidateAllCachesAsync();
-
-                    _logger.LogInformation("Đánh dấu học sinh {StudentId} đã được tiêm trong buổi {SessionId}", studentId, sessionId);
-                    return new BaseResponse<bool>
-                    {
-                        Success = true,
-                        Data = true,
-                        Message = "Đánh dấu tiêm chủng thành công."
-                    };
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Lỗi khi đánh dấu tiêm chủng cho học sinh {StudentId} trong buổi {SessionId}", studentId, sessionId);
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Validation failed: {Errors}", errors);
                     return new BaseResponse<bool>
                     {
                         Success = false,
-                        Data = false,
-                        Message = $"Lỗi đánh dấu tiêm chủng: {ex.Message}"
+                        Message = errors
                     };
                 }
-            }
 
-        
+                var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
+                    .Include(vs => vs.Classes)
+                    .ThenInclude(vsc => vsc.SchoolClass)
+                    .Include(vs => vs.Consents)
+                    .FirstOrDefaultAsync(vs => vs.Id == sessionId && !vs.IsDeleted, cancellationToken);
+
+                if (session == null)
+                {
+                    _logger.LogWarning("Buổi tiêm {SessionId} không tồn tại hoặc đã bị xóa.", sessionId);
+                    return new BaseResponse<bool>
+                    {
+                        Success = false,
+                        Message = "Buổi tiêm không tồn tại hoặc đã bị xóa."
+                    };
+                }
+
+                if (session.Status != "Scheduled")
+                {
+                    _logger.LogWarning("Buổi tiêm {SessionId} không ở trạng thái Scheduled.", sessionId);
+                    return new BaseResponse<bool>
+                    {
+                        Success = false,
+                        Message = "Buổi tiêm không trong trạng thái Scheduled."
+                    };
+                }
+
+                var consent = session.Consents.FirstOrDefault(c => c.StudentId == request.StudentId && c.Status == "Confirmed" && !c.IsDeleted);
+                if (consent == null)
+                {
+                    _logger.LogWarning("Không tìm thấy yêu cầu đồng ý hợp lệ cho học sinh {StudentId} trong buổi {SessionId}.", request.StudentId, sessionId);
+                    return new BaseResponse<bool>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy yêu cầu đồng ý hợp lệ cho học sinh."
+                    };
+                }
+
+                var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                    .FirstOrDefaultAsync(u => u.Id == request.StudentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"), cancellationToken);
+                if (student == null)
+                {
+                    _logger.LogWarning("Học sinh {StudentId} không tồn tại hoặc không có vai trò STUDENT.", request.StudentId);
+                    return new BaseResponse<bool>
+                    {
+                        Success = false,
+                        Message = "Học sinh không tồn tại."
+                    };
+                }
+
+                var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
+                    .FirstOrDefaultAsync(mr => mr.UserId == request.StudentId && !mr.IsDeleted, cancellationToken);
+                if (medicalRecord == null)
+                {
+                    _logger.LogWarning("Không tìm thấy hồ sơ y tế cho học sinh {StudentId}.", request.StudentId);
+                    return new BaseResponse<bool>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy hồ sơ y tế cho học sinh."
+                    };
+                }
+
+                var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                Guid? nurseId = Guid.TryParse(userIdClaim, out var parsedId) ? parsedId : (Guid?)null;
+                var adminName = _httpContextAccessor.HttpContext?.User?.Identity?.Name ?? "SCHOOLNURSE";
+
+                var vaccinationRecord = await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().GetQueryable()
+                    .FirstOrDefaultAsync(vr => vr.MedicalRecordId == medicalRecord.Id &&
+                                            vr.VaccinationTypeId == session.VaccineTypeId &&
+                                            !vr.IsDeleted, cancellationToken);
+
+                if (vaccinationRecord == null)
+                {
+                    _logger.LogInformation("Tạo mới bản ghi tiêm chủng cho học sinh {StudentId}.", request.StudentId);
+                    vaccinationRecord = new VaccinationRecord
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = request.StudentId,
+                        MedicalRecordId = medicalRecord.Id,
+                        VaccinationTypeId = session.VaccineTypeId,
+                        DoseNumber = 1,
+                        AdministeredDate = DateTime.UtcNow,
+                        AdministeredByUserId = nurseId,
+                        AdministeredBy = adminName, // Đảm bảo luôn có giá trị
+                        BatchNumber = "BATCH-" + DateTime.UtcNow.ToString("yyyyMMdd"),
+                        NoteAfterSession = request.NoteAfterSession ?? string.Empty,
+                        SessionId = sessionId,
+                        VaccinationStatus = "Completed",
+                        Symptoms = request.Symptoms ?? string.Empty,
+                        Notes = string.Empty,
+                        CreatedDate = DateTime.UtcNow,
+                        IsDeleted = false
+                    };
+                    await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().AddAsync(vaccinationRecord);
+                }
+                else
+                {
+                    _logger.LogInformation("Cập nhật bản ghi tiêm chủng cho học sinh {StudentId}.", request.StudentId);
+                    vaccinationRecord.DoseNumber += 1;
+                    vaccinationRecord.AdministeredDate = DateTime.UtcNow;
+                    vaccinationRecord.AdministeredByUserId = nurseId;
+                    vaccinationRecord.AdministeredBy = adminName; // Đảm bảo luôn có giá trị
+                    vaccinationRecord.BatchNumber = "BATCH-" + DateTime.UtcNow.ToString("yyyyMMdd");
+                    vaccinationRecord.SessionId = sessionId;
+                    vaccinationRecord.VaccinationStatus = "Completed";
+                    vaccinationRecord.Symptoms = request.Symptoms ?? string.Empty;
+                    vaccinationRecord.NoteAfterSession = request.NoteAfterSession ?? string.Empty;
+                    vaccinationRecord.Notes = vaccinationRecord.Notes ?? string.Empty;
+                    await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().UpdateAsync(vaccinationRecord);
+                }
+
+                _logger.LogInformation("Lưu thay đổi vào cơ sở dữ liệu cho học sinh {StudentId}.", request.StudentId);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await InvalidateAllCachesAsync();
+
+                _logger.LogInformation("Đánh dấu học sinh {StudentId} đã được tiêm trong buổi {SessionId} với triệu chứng: {Symptoms}, ghi chú sau khi tiêm: {NoteAfterSession}",
+                    request.StudentId, sessionId, request.Symptoms, request.NoteAfterSession);
+                return new BaseResponse<bool>
+                {
+                    Success = true,
+                    Data = true,
+                    Message = "Đánh dấu tiêm chủng thành công."
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi đánh dấu tiêm chủng cho học sinh {StudentId} trong buổi {SessionId}. Inner exception: {InnerException}",
+                    request.StudentId, sessionId, ex.InnerException?.Message);
+                return new BaseResponse<bool>
+                {
+                    Success = false,
+                    Data = false,
+                    Message = $"Lỗi đánh dấu tiêm chủng: {ex.Message}. Inner exception: {ex.InnerException?.Message}"
+                };
+            }
+        }
+
+        public async Task<BaseResponse<ParentConsentStatusResponse>> GetParentConsentStatusAsync(
+            Guid sessionId, Guid studentId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var cacheKey = _cacheService.GenerateCacheKey("parent_consent_status", sessionId.ToString(), studentId.ToString());
+                var cachedResult = await _cacheService.GetAsync<BaseResponse<ParentConsentStatusResponse>>(cacheKey);
+                if (cachedResult != null)
+                {
+                    _logger.LogDebug("Parent consent status found in cache for sessionId: {SessionId}, studentId: {StudentId}", sessionId, studentId);
+                    return cachedResult;
+                }
+
+                var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
+                    .FirstOrDefaultAsync(vs => vs.Id == sessionId && !vs.IsDeleted, cancellationToken);
+
+                if (session == null)
+                {
+                    return BaseResponse<ParentConsentStatusResponse>.ErrorResult("Buổi tiêm không tồn tại.");
+                }
+
+                var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                if (!Guid.TryParse(userIdClaim, out var userId))
+                {
+                    return BaseResponse<ParentConsentStatusResponse>.ErrorResult("Không thể xác định ID người dùng.");
+                }
+
+                var user = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted, cancellationToken);
+
+                if (user == null)
+                {
+                    return BaseResponse<ParentConsentStatusResponse>.ErrorResult("Người dùng không tồn tại.");
+                }
+
+                var isParent = user.UserRoles.Any(ur => ur.Role.Name == "PARENT");
+                if (isParent)
+                {
+                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == studentId && u.ParentId == userId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                    if (student == null)
+                    {
+                        return BaseResponse<ParentConsentStatusResponse>.ErrorResult("Học sinh không liên quan đến phụ huynh này hoặc không tồn tại.");
+                    }
+                }
+                else if (!user.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE" || ur.Role.Name == "MANAGER"))
+                {
+                    return BaseResponse<ParentConsentStatusResponse>.ErrorResult("Không có quyền truy cập.");
+                }
+
+                var studentCheck = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                    .FirstOrDefaultAsync(u => u.Id == studentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                if (studentCheck == null)
+                {
+                    return BaseResponse<ParentConsentStatusResponse>.ErrorResult("Học sinh không tồn tại.");
+                }
+
+                var consent = await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().GetQueryable()
+                    .Include(c => c.Student)
+                    .Include(c => c.Parent)
+                    .FirstOrDefaultAsync(c => c.SessionId == sessionId && c.StudentId == studentId && !c.IsDeleted, cancellationToken);
+
+                if (consent == null)
+                {
+                    return BaseResponse<ParentConsentStatusResponse>.ErrorResult("Không tìm thấy yêu cầu đồng ý cho học sinh trong buổi tiêm này.");
+                }
+
+                var response = _mapper.Map<ParentConsentStatusResponse>(consent);
+
+                var result = BaseResponse<ParentConsentStatusResponse>.SuccessResult(
+                    response, "Lấy trạng thái đồng ý của phụ huynh thành công.");
+
+                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+                await _cacheService.AddToTrackingSetAsync(cacheKey, "parent_consent_status_cache_keys");
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving parent consent status for sessionId: {SessionId}, studentId: {StudentId}", sessionId, studentId);
+                return BaseResponse<ParentConsentStatusResponse>.ErrorResult($"Lỗi lấy trạng thái đồng ý: {ex.Message}");
+            }
+        }
+
+        public async Task<BaseResponse<StudentVaccinationResultResponse>> GetStudentVaccinationResultAsync(
+                    Guid sessionId, Guid studentId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var cacheKey = _cacheService.GenerateCacheKey("student_vaccination_result", sessionId.ToString(), studentId.ToString());
+                var cachedResult = await _cacheService.GetAsync<BaseResponse<StudentVaccinationResultResponse>>(cacheKey);
+                if (cachedResult != null)
+                {
+                    _logger.LogDebug("Student vaccination result found in cache for sessionId: {SessionId}, studentId: {StudentId}", sessionId, studentId);
+                    return cachedResult;
+                }
+
+                var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
+                    .Include(vs => vs.VaccineType)
+                    .FirstOrDefaultAsync(vs => vs.Id == sessionId && !vs.IsDeleted, cancellationToken);
+
+                if (session == null)
+                {
+                    return BaseResponse<StudentVaccinationResultResponse>.ErrorResult("Buổi tiêm không tồn tại.");
+                }
+
+                var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                if (!Guid.TryParse(userIdClaim, out var userId))
+                {
+                    return BaseResponse<StudentVaccinationResultResponse>.ErrorResult("Không thể xác định ID người dùng.");
+                }
+
+                var user = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted, cancellationToken);
+
+                if (user == null)
+                {
+                    return BaseResponse<StudentVaccinationResultResponse>.ErrorResult("Người dùng không tồn tại.");
+                }
+
+                var isParent = user.UserRoles.Any(ur => ur.Role.Name == "PARENT");
+                if (isParent)
+                {
+                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == studentId && u.ParentId == userId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                    if (student == null)
+                    {
+                        return BaseResponse<StudentVaccinationResultResponse>.ErrorResult("Học sinh không liên quan đến phụ huynh này hoặc không tồn tại.");
+                    }
+                }
+                else if (!user.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE" || ur.Role.Name == "MANAGER"))
+                {
+                    return BaseResponse<StudentVaccinationResultResponse>.ErrorResult("Không có quyền truy cập.");
+                }
+
+                var studentCheck = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                    .FirstOrDefaultAsync(u => u.Id == studentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                if (studentCheck == null)
+                {
+                    return BaseResponse<StudentVaccinationResultResponse>.ErrorResult("Học sinh không tồn tại.");
+                }
+
+                var vaccinationRecord = await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().GetQueryable()
+                    .Include(vr => vr.Student)
+                    .Include(vr => vr.VaccinationType)
+                    .Include(vr => vr.AdministeredByUser)
+                    .FirstOrDefaultAsync(vr => vr.SessionId == sessionId && vr.UserId == studentId && !vr.IsDeleted, cancellationToken);
+
+                if (vaccinationRecord == null)
+                {
+                    return BaseResponse<StudentVaccinationResultResponse>.ErrorResult("Không tìm thấy bản ghi tiêm chủng cho học sinh trong buổi tiêm này.");
+                }
+
+                var response = _mapper.Map<StudentVaccinationResultResponse>(vaccinationRecord);
+
+                var result = BaseResponse<StudentVaccinationResultResponse>.SuccessResult(
+                    response, "Lấy kết quả tiêm chủng của học sinh thành công.");
+
+                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+                await _cacheService.AddToTrackingSetAsync(cacheKey, "student_vaccination_result_cache_keys");
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving student vaccination result for sessionId: {SessionId}, studentId: {StudentId}", sessionId, studentId);
+                return BaseResponse<StudentVaccinationResultResponse>.ErrorResult($"Lỗi lấy kết quả tiêm chủng: {ex.Message}");
+            }
+        }
         #endregion
 
         #region Helper Methods
@@ -1449,8 +1678,10 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             {
                 _logger.LogDebug("Starting cache invalidation for vaccination sessions");
                 await Task.WhenAll(
-                    _cacheService.RemoveByPrefixAsync(SESSION_CACHE_PREFIX),
-                    _cacheService.RemoveByPrefixAsync(SESSION_LIST_PREFIX)
+                    _cacheService.RemoveByPrefixAsync("vaccination_session"),
+                    _cacheService.RemoveByPrefixAsync("vaccination_sessions_list"),
+                    _cacheService.RemoveByPrefixAsync("student_vaccination_result"),
+                    _cacheService.RemoveByPrefixAsync("parent_consent_status")
                 );
                 await Task.Delay(100);
                 _logger.LogDebug("Completed cache invalidation for vaccination sessions");
