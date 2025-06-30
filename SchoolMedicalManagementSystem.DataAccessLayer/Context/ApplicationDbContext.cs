@@ -499,11 +499,18 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<StudentMedication>().Property(sm => sm.Status)
             .HasConversion(new EnumToStringConverter<StudentMedicationStatus>());
 
-        modelBuilder.Entity<StudentMedication>().Property(sm => sm.TimeOfDay)
-            .HasConversion(new EnumToStringConverter<MedicationTimeOfDay>());
-
         modelBuilder.Entity<StudentMedication>().Property(ms => ms.Priority)
             .HasConversion(new EnumToStringConverter<MedicationPriority>());
+
+        // Configure JSON fields for StudentMedication
+        modelBuilder.Entity<StudentMedication>().Property(sm => sm.TimesOfDay)
+            .HasColumnType("nvarchar(max)");
+        
+        modelBuilder.Entity<StudentMedication>().Property(sm => sm.SpecificTimes)
+            .HasColumnType("nvarchar(max)");
+        
+        modelBuilder.Entity<StudentMedication>().Property(sm => sm.SkipDates)
+            .HasColumnType("nvarchar(max)");
 
         // Report enums
         modelBuilder.Entity<Report>().Property(r => r.ReportType)

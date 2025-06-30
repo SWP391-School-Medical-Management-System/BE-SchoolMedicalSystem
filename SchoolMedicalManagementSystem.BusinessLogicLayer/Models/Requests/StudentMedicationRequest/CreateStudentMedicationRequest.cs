@@ -24,5 +24,6 @@ public class CreateStudentMedicationRequest
     public string? SpecialNotes { get; set; }
     public string? EmergencyContactInstructions { get; set; }
     public MedicationPriority Priority { get; set; } = MedicationPriority.Normal;
-    public MedicationTimeOfDay TimeOfDay { get; set; } = MedicationTimeOfDay.AfterBreakfast;
+    public List<MedicationTimeOfDay> TimesOfDay { get; set; } = new();  // [Morning, AfterLunch, LateAfternoon]
+    public List<TimeSpan> SpecificTimes { get; set; } = new();          // [07:00, 13:00, 16:00]
 }

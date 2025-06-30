@@ -23,8 +23,8 @@ public class PendingApprovalResponse
     
     public MedicationPriority Priority { get; set; }
     public string PriorityDisplayName { get; set; }
-    public MedicationTimeOfDay TimeOfDay { get; set; }
-    public string TimeOfDayDisplayName { get; set; }
+    public string TimesOfDay { get; set; }
+    public string TimesOfDayDisplayName { get; set; }
     
     public DateTime? SubmittedAt { get; set; }
     

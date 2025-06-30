@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using CloudinaryDotNet;
+using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,6 +10,7 @@ using Microsoft.OpenApi.Models;
 using SchoolMedicalManagementSystem.API.Middlewares;
 using SchoolMedicalManagementSystem.API.OperationFilters;
 using SchoolMedicalManagementSystem.BusinessLogicLayer;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.HangFire;
 using SchoolMedicalManagementSystem.DataAccessLayer;
 using SchoolMedicalManagementSystem.DataAccessLayer.Context;
 using StackExchange.Redis;
@@ -63,7 +65,60 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
     }
 });
 
-// Add services with better error handling for Background Service
+// Database configuration with proper connection string selection
+var env = builder.Environment.EnvironmentName;
+var connectionString = builder.Configuration.GetConnectionString("production");
+
+if (env.Equals("Development", StringComparison.OrdinalIgnoreCase))
+{
+    var localConnectionString = builder.Configuration.GetConnectionString("local");
+    if (!string.IsNullOrEmpty(localConnectionString))
+    {
+        connectionString = localConnectionString;
+    }
+}
+
+if (string.IsNullOrEmpty(connectionString))
+{
+    throw new InvalidOperationException($"No connection string found for environment '{env}'");
+}
+
+Console.WriteLine($"Using database connection for environment: {env}");
+
+if (connectionString.Contains("localhost") &&
+    (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" ||
+     !env.Equals("Development", StringComparison.OrdinalIgnoreCase)))
+{
+    connectionString = connectionString.Replace("localhost", "sqlserver");
+    Console.WriteLine("Replaced localhost with sqlserver for container environment");
+}
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    options.UseSqlServer(connectionString, sqlServerOptions =>
+    {
+        sqlServerOptions.EnableRetryOnFailure(
+            maxRetryCount: 10,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null);
+        sqlServerOptions.CommandTimeout(60);
+    });
+});
+
+// HangFire Configuration
+var useHangfire = builder.Configuration.GetValue<bool>("UseHangfire", true);
+
+if (useHangfire)
+{
+    Console.WriteLine("Configuring Hangfire for background processing...");
+    builder.Services.AddCustomHangfire(builder.Configuration, connectionString);
+}
+else
+{
+    Console.WriteLine(" Hangfire is disabled - no background processing");
+}
+
+// Add services
 try
 {
     builder.Services.AddDataAccessLayer(builder.Configuration);
@@ -142,50 +197,7 @@ builder.Services.AddSwaggerGen(options =>
     options.OperationFilter<GenericResponseTypeOperationFilter>();
 });
 
-// Database configuration with proper connection string selection
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-{
-    var env = builder.Environment.EnvironmentName;
-
-    // Always use production connection string for containers and production
-    var connectionString = builder.Configuration.GetConnectionString("production");
-
-    // Only use local connection if explicitly in Development and local exists
-    if (env.Equals("Development", StringComparison.OrdinalIgnoreCase))
-    {
-        var localConnectionString = builder.Configuration.GetConnectionString("local");
-        if (!string.IsNullOrEmpty(localConnectionString))
-        {
-            connectionString = localConnectionString;
-        }
-    }
-
-    if (string.IsNullOrEmpty(connectionString))
-    {
-        throw new InvalidOperationException($"No connection string found for environment '{env}'");
-    }
-
-    Console.WriteLine($"Using database connection for environment: {env}");
-
-    // Replace localhost with sqlserver for Docker environments
-    if (connectionString.Contains("localhost") &&
-        (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" ||
-         !env.Equals("Development", StringComparison.OrdinalIgnoreCase)))
-    {
-        connectionString = connectionString.Replace("localhost", "sqlserver");
-        Console.WriteLine("Replaced localhost with sqlserver for container environment");
-    }
-
-    options.UseSqlServer(connectionString, sqlServerOptions =>
-    {
-        sqlServerOptions.EnableRetryOnFailure(
-            maxRetryCount: 10,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null);
-        sqlServerOptions.CommandTimeout(60);
-    });
-});
-
+// Add Cors
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("corspolicy", policy =>
@@ -230,6 +242,32 @@ var app = builder.Build();
 // Simple database initialization
 await QuickDatabaseCheckAsync(app);
 
+// HangFire Dashboard Configuration
+if (useHangfire)
+{
+    var dashboardOptions = HangfireDashboardOptionsExtensions.GetDashboardOptions(builder.Configuration);
+    app.UseHangfireDashboard("/hangfire", dashboardOptions);
+    
+    Console.WriteLine("Initializing Hangfire recurring jobs...");
+    try
+    {
+        HangfireJobScheduler.ScheduleJobsBasedOnEnvironment(app.Environment.EnvironmentName);
+        Console.WriteLine("Hangfire jobs scheduled successfully!");
+        
+        if (app.Environment.IsDevelopment())
+        {
+            HangfireJobScheduler.ScheduleOneTimeJobs();
+            Console.WriteLine("One-time jobs scheduled for immediate execution!");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Failed to schedule Hangfire jobs: {ex.Message}");
+    }
+    
+    Console.WriteLine($"Hangfire Dashboard: /hangfire");
+}
+
 // Configure the HTTP request pipeline
 app.UseExceptionHandlingMiddleware();
 app.UseRouting();
@@ -252,6 +290,10 @@ app.UseAuthorization();
 app.MapControllers();
 
 Console.WriteLine("School Medical System API is starting...");
+if (useHangfire)
+{
+    Console.WriteLine($"Hangfire Dashboard available at: /hangfire");
+}
 
 app.Run();
 

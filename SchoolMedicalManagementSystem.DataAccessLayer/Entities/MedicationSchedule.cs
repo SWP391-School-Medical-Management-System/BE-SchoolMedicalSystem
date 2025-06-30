@@ -11,6 +11,7 @@ public class MedicationSchedule : BaseEntity
     public DateTime ScheduledDate { get; set; }      // Ngày cần uống thuốc
     public TimeSpan ScheduledTime { get; set; }      // Giờ cần uống thuốc
     public string ScheduledDosage { get; set; }      // Liều lượng theo lịch
+    public int DoseNumber { get; set; } = 1;         // Lần uống thứ mấy trong ngày (1, 2, 3)
     
     // Thông tin thực hiện
     public MedicationScheduleStatus Status { get; set; } = MedicationScheduleStatus.Pending;
