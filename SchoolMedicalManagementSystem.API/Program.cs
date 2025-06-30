@@ -204,7 +204,7 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "http://localhost:3000", // frontend dev
+                "http://localhost:5173", // frontend dev
                 "https://school-medical-system.vercel.app", // prod vercel
                 "http://schoolmedicalsystem.ddns.net", // No-IP domain HTTP
                 "https://schoolmedicalsystem.ddns.net" // No-IP domain HTTPS default port
