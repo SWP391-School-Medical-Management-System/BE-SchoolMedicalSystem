@@ -48,6 +48,12 @@ public class CreateStudentMedicationValidator : AbstractValidator<CreateStudentM
             .WithMessage("Ngày bắt đầu không được để trống.")
             .GreaterThanOrEqualTo(DateTime.Today)
             .WithMessage("Ngày bắt đầu không được nhỏ hơn ngày hiện tại.");
+        
+        RuleFor(x => x.PrescriptionNumber)
+            .Length(1, 50).When(x => !string.IsNullOrEmpty(x.PrescriptionNumber))
+            .WithMessage("Số đơn thuốc phải từ 1 đến 50 ký tự.")
+            .Must(BeValidPrescriptionNumber).When(x => !string.IsNullOrEmpty(x.PrescriptionNumber))
+            .WithMessage("Số đơn thuốc chỉ được chứa chữ, số và ký tự đặc biệt cơ bản.");
 
         RuleFor(x => x.EndDate)
             .NotEmpty()
@@ -71,7 +77,6 @@ public class CreateStudentMedicationValidator : AbstractValidator<CreateStudentM
             .Must(BeValidPurpose)
             .WithMessage("Mục đích sử dụng phải có nội dung có nghĩa.");
 
-        // Thông tin bác sĩ (không bắt buộc nhưng nếu có thì phải hợp lệ)
         RuleFor(x => x.DoctorName)
             .Length(2, 100)
             .When(x => !string.IsNullOrEmpty(x.DoctorName))
@@ -87,7 +92,6 @@ public class CreateStudentMedicationValidator : AbstractValidator<CreateStudentM
             .When(x => x.PrescriptionDate.HasValue)
             .WithMessage("Ngày kê đơn không được lớn hơn ngày hiện tại.");
 
-        // Thông tin số lượng thuốc (BẮT BUỘC)
         RuleFor(x => x.QuantitySent)
             .GreaterThan(0)
             .WithMessage("Số lượng thuốc gửi phải lớn hơn 0.")
@@ -120,16 +124,29 @@ public class CreateStudentMedicationValidator : AbstractValidator<CreateStudentM
             .IsInEnum()
             .WithMessage("Mức độ ưu tiên không hợp lệ.");
 
-        RuleFor(x => x.TimeOfDay)
-            .IsInEnum()
-            .WithMessage("Thời điểm uống thuốc không hợp lệ.");
+        RuleFor(x => x.TimesOfDay)
+            .NotNull().WithMessage("Phải chọn ít nhất một thời điểm trong ngày.")
+            .Must(list => list.Count > 0).WithMessage("Phải chọn ít nhất một thời điểm trong ngày.");
+
+        RuleFor(x => x.SpecificTimes)
+            .NotNull().WithMessage("Danh sách thời gian cụ thể không được để trống.")
+            .Must(list => list.Count > 0).WithMessage("Phải cung cấp ít nhất một thời gian cụ thể.")
+            .Must(BeValidSpecificTimes).WithMessage("Thời gian cụ thể phải trong khoảng 7:00 - 16:30 và không trùng lặp.");
 
         RuleFor(x => x)
             .Must(HaveReasonableTreatmentDuration)
             .WithMessage("Thời gian điều trị phải ít nhất 1 ngày và không quá 1 năm.")
             .WithName("TreatmentDuration");
     }
+    
+    private bool BeValidPrescriptionNumber(string prescriptionNumber)
+    {
+        if (string.IsNullOrWhiteSpace(prescriptionNumber))
+            return true;
 
+        var prescriptionPattern = @"^[a-zA-Z0-9\-_/.\s]+$";
+        return System.Text.RegularExpressions.Regex.IsMatch(prescriptionNumber, prescriptionPattern);
+    }
     private bool BeValidMedicationName(string medicationName)
     {
         if (string.IsNullOrWhiteSpace(medicationName))
@@ -225,5 +242,27 @@ public class CreateStudentMedicationValidator : AbstractValidator<CreateStudentM
     {
         var duration = request.EndDate - request.StartDate;
         return duration.TotalDays >= 1 && duration.TotalDays <= 365;
+    }
+
+    private bool BeValidSpecificTimes(List<TimeSpan> times)
+    {
+        if (times == null || times.Count == 0)
+            return false;
+
+        var validTimes = new HashSet<TimeSpan>();
+        var schoolStartTime = new TimeSpan(7, 0, 0);  // 7:00 AM
+        var schoolEndTime = new TimeSpan(16, 30, 0);  // 4:30 PM
+
+        foreach (var time in times)
+        {
+            // Kiểm tra thời gian trong khoảng giờ học
+            if (time < schoolStartTime || time > schoolEndTime)
+                return false;
+
+            // Kiểm tra trùng lặp
+            if (!validTimes.Add(time))
+                return false;
+        }
+        return true;
     }
 }

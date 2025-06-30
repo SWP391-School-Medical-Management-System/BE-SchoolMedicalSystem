@@ -1,5 +1,6 @@
 ﻿using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.StudentMedicationRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicationStockResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationAdministrationResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationResponse;
 using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
@@ -29,6 +30,12 @@ public interface IStudentMedicationService
 
     Task<BaseResponse<StudentMedicationResponse>> UpdateStudentMedicationAsync(Guid medicationId,
         UpdateStudentMedicationRequest model);
+
+    Task<BaseResponse<StudentMedicationResponse>> AddMoreMedicationAsync(
+        AddMoreMedicationRequest request);
+
+    Task<BaseResponse<StudentMedicationResponse>> UpdateMedicationManagementAsync(
+        Guid medicationId, UpdateMedicationManagementRequest request);
 
     Task<BaseResponse<bool>> DeleteStudentMedicationAsync(Guid medicationId);
 
@@ -60,6 +67,52 @@ public interface IStudentMedicationService
     );
 
     Task<BaseListResponse<MedicationAdministrationResponse>> GetAdministrationHistoryAsync(Guid medicationId,
-        int pageIndex, int pageSize, DateTime? fromDate = null, DateTime? toDate = null,
-        CancellationToken cancellationToken = default);
+        int pageIndex,
+        int pageSize,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default
+    );
+
+    // Parent Medication Stock Methods
+    Task<BaseListResponse<MedicationStockResponse>> GetMyMedicationStockHistoryAsync
+    (
+        int pageIndex,
+        int pageSize,
+        Guid? studentId = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<BaseListResponse<MedicationStockResponse>> GetMedicationStockHistoryAsync
+    (
+        Guid studentMedicationId,
+        int pageIndex,
+        int pageSize,
+        CancellationToken cancellationToken = default
+    );
+
+    // School Nurse MedicationStock Methods
+    Task<BaseListResponse<MedicationStockResponse>> GetAllMedicationStockHistoryAsync
+    (
+        int pageIndex,
+        int pageSize,
+        Guid? studentId = null,
+        Guid? parentId = null,
+        Guid? medicationId = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        bool? isExpired = null,
+        bool? lowStock = null,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<BaseListResponse<MedicationStockResponse>> GetMedicationStockByIdForNurseAsync
+    (
+        Guid studentMedicationId,
+        int pageIndex,
+        int pageSize,
+        CancellationToken cancellationToken = default
+    );
 }

@@ -2,13 +2,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OfficeOpenXml;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.BackgroundServices;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.HangFire;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts.IAuthService;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services.AuthService;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Services.EmailService;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.MedicalCondition;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.User;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer;
@@ -35,8 +34,11 @@ public static class DependencyInjection
         services.AddScoped<IMedicalItemService, MedicalItemService>();
         services.AddScoped<IHealthEventService, HealthEventService>();
         services.AddScoped<IStudentMedicationService, StudentMedicationService>();
+        services.AddScoped<IVaccinationRecordService, VaccinationRecordService>();
+        services.AddScoped<IVaccinationService, VaccinationService>();
         services.AddScoped<IMedicationScheduleService, MedicationScheduleService>();
         services.AddScoped<IBlogPostService, BlogPostService>();
+        services.AddScoped<IVaccinationSessionService, VaccinationSessionService>();
 
         // Cloudinary
         services.AddScoped<CloudinaryService>();
@@ -52,12 +54,12 @@ public static class DependencyInjection
         // HttpContextAccessor
         services.AddHttpContextAccessor();
 
-        // Background Service
-        services.AddHostedService<HealthEventBackgroundService>();
-        services.AddHostedService<MedicationReminderService>();
-        services.AddHostedService<MedicationScheduleGeneratorService>();
-        services.AddHostedService<MedicationDataCleanupService>();
-
+        // HangFire Job
+        services.AddScoped<IMedicationScheduleJob, MedicationScheduleJob>();
+        services.AddScoped<IMedicationReminderJob, MedicationReminderJob>();
+        services.AddScoped<IMedicationCleanupJob, MedicationCleanupJob>();
+        services.AddScoped<IHealthEventJob, HealthEventJob>();
+        
         // Add Http Context Accessor
         services.AddDistributedMemoryCache();
 

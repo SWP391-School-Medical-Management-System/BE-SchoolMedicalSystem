@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Helpers;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.StudentMedicationRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicationStockResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationAdministrationResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
@@ -28,7 +29,7 @@ public class StudentMedicationController : ControllerBase
     #region Basic CRUD Operations
 
     [HttpGet]
-    [Authorize(Roles = "SCHOOLNURSE,ADMIN,MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseListResponse<StudentMedicationListResponse>>> GetStudentMedications(
         [FromQuery] int pageIndex = 1,
         [FromQuery] int pageSize = 10,
@@ -69,6 +70,7 @@ public class StudentMedicationController : ControllerBase
     /// Lấy chi tiết thuốc (tất cả role có thể xem nhưng có permission check)
     /// </summary>
     [HttpGet("{id}")]
+    [Authorize(Roles = "SCHOOLNURSE,PARENT,STUDENT")]
     [Authorize]
     public async Task<ActionResult<BaseResponse<StudentMedicationDetailResponse>>> GetStudentMedicationById(Guid id)
     {
@@ -85,6 +87,38 @@ public class StudentMedicationController : ControllerBase
         {
             _logger.LogError(ex, "Error getting student medication by ID: {Id}", id);
             return StatusCode(500, BaseResponse<StudentMedicationDetailResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    /// <summary>
+    /// Lấy lịch sử stock thuốc của một medication cụ thể (Parent view)
+    /// </summary>
+    [HttpGet("{id}/stocks")]
+    [Authorize(Roles = "PARENT")]
+    public async Task<ActionResult<BaseListResponse<MedicationStockResponse>>> GetMedicationStocks(
+        Guid id,
+        [FromQuery] int pageIndex = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<MedicationStockResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var result = await _studentMedicationService.GetMedicationStockHistoryAsync(
+                id, pageIndex, pageSize, cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting medication stocks for: {Id}", id);
+            return StatusCode(500, BaseListResponse<MedicationStockResponse>.ErrorResult("Lỗi hệ thống."));
         }
     }
 
@@ -119,9 +153,6 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Cập nhật yêu cầu thuốc (chỉ PARENT, chỉ khi PendingApproval)
-    /// </summary>
     [HttpPut("{id}")]
     [Authorize(Roles = "PARENT")]
     public async Task<ActionResult<BaseResponse<StudentMedicationResponse>>> UpdateStudentMedication(
@@ -151,6 +182,63 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
+    [HttpPost("stocks")]
+    [Authorize(Roles = "PARENT")]
+    public async Task<ActionResult<BaseResponse<StudentMedicationResponse>>> AddMoreMedication(
+        [FromBody] AddMoreMedicationRequest request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _studentMedicationService.AddMoreMedicationAsync(request);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding more medication for: {MedicationId}", request?.StudentMedicationId);
+            return StatusCode(500, BaseResponse<StudentMedicationResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpPatch("{id}/management")]
+    [Authorize(Roles = "SCHOOLNURSE")]
+    public async Task<ActionResult<BaseResponse<StudentMedicationResponse>>> UpdateMedicationManagement(
+        Guid id,
+        [FromBody] UpdateMedicationManagementRequest request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _studentMedicationService.UpdateMedicationManagementAsync(id, request);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating medication management: {Id}", id);
+            return StatusCode(500, BaseResponse<StudentMedicationResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
     [HttpDelete("{id}")]
     [Authorize(Roles = "PARENT")]
     public async Task<ActionResult<BaseResponse<bool>>> DeleteStudentMedication(Guid id)
@@ -175,16 +263,13 @@ public class StudentMedicationController : ControllerBase
 
     #endregion
 
-    #region Approval Workflow
+    #region Approval Workflow Endpoints
 
     [HttpGet("pending-approvals")]
     [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseListResponse<PendingApprovalResponse>>> GetPendingApprovals(
         [FromQuery] int pageIndex = 1,
         [FromQuery] int pageSize = 10,
-        [FromQuery] string? searchTerm = null,
-        [FromQuery] string? orderBy = null,
-        [FromQuery] bool? urgentOnly = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -274,7 +359,7 @@ public class StudentMedicationController : ControllerBase
 
     #endregion
 
-    #region Status Management
+    #region Status Management Endpoints
 
     [HttpPatch("{id}/status")]
     [Authorize(Roles = "SCHOOLNURSE")]
@@ -314,10 +399,7 @@ public class StudentMedicationController : ControllerBase
     public async Task<ActionResult<BaseListResponse<ParentMedicationResponse>>> GetMyChildrenMedications(
         [FromQuery] int pageIndex = 1,
         [FromQuery] int pageSize = 10,
-        [FromQuery] string? searchTerm = null,
-        [FromQuery] string? orderBy = null,
         [FromQuery] StudentMedicationStatus? status = null,
-        [FromQuery] bool? expiringSoon = null,
         CancellationToken cancellationToken = default)
     {
         try

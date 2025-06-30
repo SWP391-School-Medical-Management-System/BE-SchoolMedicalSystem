@@ -1,54 +1,27 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
-using Microsoft.EntityFrameworkCore;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 
-namespace SchoolMedicalManagementSystem.BusinessLogicLayer.BackgroundServices;
+namespace SchoolMedicalManagementSystem.BusinessLogicLayer.HangFire;
 
-/// <summary>
-/// Background Service tự động tạo lịch trình uống thuốc khi StudentMedication được approve
-/// </summary>
-public class MedicationScheduleGeneratorService : BackgroundService
+public class MedicationScheduleJob : IMedicationScheduleJob
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<MedicationScheduleGeneratorService> _logger;
-    private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(30);
+    private readonly ILogger<MedicationScheduleJob> _logger;
 
-    public MedicationScheduleGeneratorService(
+    public MedicationScheduleJob(
         IServiceProvider serviceProvider,
-        ILogger<MedicationScheduleGeneratorService> logger)
+        ILogger<MedicationScheduleJob> logger)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        _logger.LogInformation("MedicationScheduleGeneratorService started with 30-second interval");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                await ProcessTodayMedicationsAsync();
-                await ProcessTomorrowMedicationsAsync();
-                await ProcessNewlyApprovedMedicationsAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in schedule generation");
-            }
-
-            await Task.Delay(_checkInterval, stoppingToken);
-        }
-    }
-
-    // Xử lý medication cần schedule cho hôm nay
-    private async Task ProcessTodayMedicationsAsync()
+    public async Task ProcessTodayMedicationsAsync()
     {
         using var scope = _serviceProvider.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -57,7 +30,7 @@ public class MedicationScheduleGeneratorService : BackgroundService
         try
         {
             var today = DateTime.Today;
-            
+
             var medicationsNeedSchedule = await unitOfWork.GetRepositoryByEntity<StudentMedication>()
                 .GetQueryable()
                 .Include(sm => sm.Schedules)
@@ -72,7 +45,7 @@ public class MedicationScheduleGeneratorService : BackgroundService
 
             if (!medicationsNeedSchedule.Any()) return;
 
-            _logger.LogInformation("Found {Count} medications needing today's schedule generation", 
+            _logger.LogInformation("Found {Count} medications needing today's schedule generation",
                 medicationsNeedSchedule.Count);
 
             foreach (var medication in medicationsNeedSchedule)
@@ -106,7 +79,7 @@ public class MedicationScheduleGeneratorService : BackgroundService
     }
 
     // Xử lý medication cần schedule cho ngày mai (chỉ chạy sau 18h)
-    private async Task ProcessTomorrowMedicationsAsync()
+    public async Task ProcessTomorrowMedicationsAsync()
     {
         // Chỉ tạo schedule cho ngày mai sau 18h
         if (DateTime.Now.Hour < 18) return;
@@ -133,7 +106,6 @@ public class MedicationScheduleGeneratorService : BackgroundService
 
             foreach (var medication in medicationsNeedTomorrowSchedule)
             {
-                // Kiểm tra đơn giản có nên tạo schedule cho ngày mai không
                 if (ShouldCreateScheduleForDate(medication, tomorrow))
                 {
                     var result = await scheduleService.GenerateSchedulesForMedicationAsync(
@@ -141,7 +113,7 @@ public class MedicationScheduleGeneratorService : BackgroundService
 
                     if (result.Success)
                     {
-                        _logger.LogInformation("Generated tomorrow schedule for {MedicationName}", 
+                        _logger.LogInformation("Generated tomorrow schedule for {MedicationName}",
                             medication.MedicationName);
                     }
                 }
@@ -154,7 +126,7 @@ public class MedicationScheduleGeneratorService : BackgroundService
     }
 
     // Xử lý medication vừa được approve (trong 10 phút gần đây)
-    private async Task ProcessNewlyApprovedMedicationsAsync()
+    public async Task ProcessNewlyApprovedMedicationsAsync()
     {
         using var scope = _serviceProvider.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -164,7 +136,7 @@ public class MedicationScheduleGeneratorService : BackgroundService
         {
             var today = DateTime.Today;
             var tenMinutesAgo = DateTime.Now.AddMinutes(-10);
-            
+
             var recentlyApproved = await unitOfWork.GetRepositoryByEntity<StudentMedication>()
                 .GetQueryable()
                 .Include(sm => sm.Schedules)
@@ -187,13 +159,14 @@ public class MedicationScheduleGeneratorService : BackgroundService
 
                     if (result.Success)
                     {
-                        _logger.LogInformation("Generated full schedule for newly approved medication {MedicationName} - {Count} schedules",
+                        _logger.LogInformation(
+                            "Generated full schedule for newly approved medication {MedicationName} - {Count} schedules",
                             medication.MedicationName, result.Data.SuccessCount);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error generating schedule for newly approved medication {MedicationId}", 
+                    _logger.LogError(ex, "Error generating schedule for newly approved medication {MedicationId}",
                         medication.Id);
                 }
             }
@@ -204,9 +177,61 @@ public class MedicationScheduleGeneratorService : BackgroundService
         }
     }
 
+    public async Task ProcessApprovedToActiveTransitionAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        try
+        {
+            var today = DateTime.Today;
+
+            var medicationsToActivate = await unitOfWork.GetRepositoryByEntity<StudentMedication>()
+                .GetQueryable()
+                .Where(sm => sm.Status == StudentMedicationStatus.Approved &&
+                             sm.StartDate.HasValue && sm.EndDate.HasValue &&
+                             sm.StartDate.Value.Date <= today &&
+                             sm.EndDate.Value.Date >= today &&
+                             !sm.IsDeleted)
+                .Take(50)
+                .ToListAsync();
+
+            if (!medicationsToActivate.Any()) return;
+
+            _logger.LogInformation("Found {Count} approved medications ready to activate",
+                medicationsToActivate.Count);
+
+            foreach (var medication in medicationsToActivate)
+            {
+                try
+                {
+                    medication.Status = StudentMedicationStatus.Active;
+                    medication.LastUpdatedBy = "SYSTEM";
+                    medication.LastUpdatedDate = DateTime.Now;
+
+                    _logger.LogInformation(
+                        "Activated medication {MedicationId} for student {StudentId} - {MedicationName}",
+                        medication.Id, medication.StudentId, medication.MedicationName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error activating medication {MedicationId}", medication.Id);
+                }
+            }
+
+            await unitOfWork.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in ProcessApprovedToActiveTransitionAsync");
+        }
+    }
+
+    #region Helper Methods
+
     private bool ShouldCreateScheduleForDate(StudentMedication medication, DateTime date)
     {
-        if (medication.SkipWeekends && 
+        if (medication.SkipWeekends &&
             (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday))
             return false;
 
@@ -221,10 +246,13 @@ public class MedicationScheduleGeneratorService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error parsing SkipDates for medication {MedicationId}, ignoring", medication.Id);
+                _logger.LogWarning(ex, "Error parsing SkipDates for medication {MedicationId}, ignoring",
+                    medication.Id);
             }
         }
 
         return true;
     }
+
+    #endregion
 }
