@@ -52,6 +52,14 @@ public interface IUserService
         CancellationToken cancellationToken = default);
 
     Task<BaseResponse<StudentResponse>> GetStudentByIdAsync(Guid studentId);
+    Task<BaseListResponse<StudentResponse>> GetStudentsByParentIdAsync(
+    Guid parentId,
+    int pageIndex = 1,
+    int pageSize = 10,
+    string searchTerm = null,
+    string orderBy = null,
+    CancellationToken cancellationToken = default);
+
     Task<BaseResponse<StudentResponse>> CreateStudentAsync(CreateStudentRequest model);
     Task<BaseResponse<StudentResponse>> UpdateStudentAsync(Guid studentId, UpdateStudentRequest model);
     Task<BaseResponse<bool>> DeleteStudentAsync(Guid studentId);
