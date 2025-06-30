@@ -10,4 +10,6 @@ public class SchoolClass : BaseEntity
     public int AcademicYear { get; set; } // Năm học, ví dụ: 2024
 
     public virtual ICollection<StudentClass> StudentClasses { get; set; }
+    public virtual ICollection<VaccinationSessionClass> VaccinationSessionClasses { get; set; }
+    public virtual ICollection<VaccinationAssignment> VaccinationAssignments { get; set; }
 }

@@ -79,6 +79,10 @@ public class ApplicationDbContext : DbContext
     // Vaccinations
     public DbSet<VaccinationType> VaccinationTypes { get; set; }
     public DbSet<VaccinationRecord> VaccinationRecords { get; set; }
+    public DbSet<VaccinationSession> VaccinationSessions { get; set; }
+    public DbSet<VaccinationSessionClass> VaccinationSessionClasses { get; set; }
+    public DbSet<VaccinationConsent> VaccinationConsents { get; set; }
+    public DbSet<VaccinationAssignment> VaccinationAssignments { get; set; }
 
     // Communications
     public DbSet<Notification> Notifications { get; set; }
@@ -450,6 +454,111 @@ public class ApplicationDbContext : DbContext
 
         #endregion
 
+        #region VaccinationSession Relationships
+
+        // Sửa lại quan hệ với VaccineType: Thêm thuộc tính Sessions trong VaccinationType
+        modelBuilder.Entity<VaccinationSession>()
+            .HasOne(vs => vs.VaccineType)
+            .WithMany(vt => vt.Sessions) // Thay Records bằng Sessions (cần thêm thuộc tính này trong VaccinationType)
+            .HasForeignKey(vs => vs.VaccineTypeId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<VaccinationSession>()
+            .HasOne(vs => vs.CreatedBy)
+            .WithMany(u => u.CreatedVaccinationSessions)
+            .HasForeignKey(vs => vs.CreatedById)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<VaccinationSession>()
+            .HasOne(vs => vs.ApprovedBy)
+            .WithMany(u => u.ApprovedVaccinationSessions)
+            .HasForeignKey(vs => vs.ApprovedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<VaccinationSession>()
+            .HasMany(vs => vs.Classes)
+            .WithOne(vsc => vsc.Session)
+            .HasForeignKey(vsc => vsc.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<VaccinationSession>()
+            .HasMany(vs => vs.Consents)
+            .WithOne(vc => vc.Session)
+            .HasForeignKey(vc => vc.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<VaccinationSession>()
+            .HasMany(vs => vs.Assignments)
+            .WithOne(va => va.Session)
+            .HasForeignKey(va => va.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        #endregion
+
+        #region VaccinationSessionClass Relationships
+
+        modelBuilder.Entity<VaccinationSessionClass>()
+            .HasKey(vsc => vsc.Id);
+
+        modelBuilder.Entity<VaccinationSessionClass>()
+            .HasOne(vsc => vsc.Session)
+            .WithMany(vs => vs.Classes)
+            .HasForeignKey(vsc => vsc.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<VaccinationSessionClass>()
+            .HasOne(vsc => vsc.SchoolClass)
+            .WithMany(sc => sc.VaccinationSessionClasses)
+            .HasForeignKey(vsc => vsc.ClassId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        #endregion
+
+        #region VaccinationConsent Relationships
+
+        modelBuilder.Entity<VaccinationConsent>()
+            .HasOne(vc => vc.Session)
+            .WithMany(vs => vs.Consents)
+            .HasForeignKey(vc => vc.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<VaccinationConsent>()
+            .HasOne(vc => vc.Student)
+            .WithMany(u => u.VaccinationConsents)
+            .HasForeignKey(vc => vc.StudentId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<VaccinationConsent>()
+            .HasOne(vc => vc.Parent)
+            .WithMany(u => u.ParentVaccinationConsents)
+            .HasForeignKey(vc => vc.ParentId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        #endregion
+
+        #region VaccinationAssignment Relationships
+
+        modelBuilder.Entity<VaccinationAssignment>()
+            .HasKey(va => va.Id);
+
+        modelBuilder.Entity<VaccinationAssignment>()
+            .HasOne(va => va.Session)
+            .WithMany(vs => vs.Assignments)
+            .HasForeignKey(va => va.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<VaccinationAssignment>()
+            .HasOne(va => va.SchoolClass)
+            .WithMany(sc => sc.VaccinationAssignments)
+            .HasForeignKey(va => va.ClassId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<VaccinationAssignment>()
+            .HasOne(va => va.Nurse)
+            .WithMany(u => u.VaccinationAssignments)
+            .HasForeignKey(va => va.NurseId)
+            .OnDelete(DeleteBehavior.NoAction);
+
         #region MedicationSchedule Relationships
 
         modelBuilder.Entity<MedicationSchedule>()
@@ -691,6 +800,29 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Appointment>().HasIndex(a => a.AppointmentDate);
         modelBuilder.Entity<Appointment>().HasIndex(a => a.Status);
 
+
+        // VaccinationSession indexes
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.VaccineTypeId);
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.CreatedById);
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.ApprovedById);
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.Status);
+        modelBuilder.Entity<VaccinationSession>().HasIndex(vs => vs.StartTime);
+
+        // VaccinationSessionClass indexes
+        modelBuilder.Entity<VaccinationSessionClass>().HasIndex(vsc => vsc.SessionId);
+        modelBuilder.Entity<VaccinationSessionClass>().HasIndex(vsc => vsc.ClassId);
+
+        // VaccinationConsent indexes
+        modelBuilder.Entity<VaccinationConsent>().HasIndex(vc => vc.SessionId);
+        modelBuilder.Entity<VaccinationConsent>().HasIndex(vc => vc.StudentId);
+        modelBuilder.Entity<VaccinationConsent>().HasIndex(vc => vc.ParentId);
+        modelBuilder.Entity<VaccinationConsent>().HasIndex(vc => vc.Status);
+
+        // VaccinationAssignment indexes
+        modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.SessionId);
+        modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.ClassId);
+        modelBuilder.Entity<VaccinationAssignment>().HasIndex(va => va.NurseId);
+
         // MedicationSchedule indexes
         modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => ms.StudentMedicationId);
         modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => ms.ScheduledDate);
@@ -700,6 +832,8 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => new { ms.ScheduledDate, ms.Status });
         modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => new { ms.StudentMedicationId, ms.ScheduledDate });
     }
+
+    #endregion
 
     #endregion
 
@@ -802,4 +936,5 @@ public class ApplicationDbContext : DbContext
     }
 
     #endregion
+
 }

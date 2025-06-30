@@ -8,4 +8,5 @@ public interface IEmailService
     Task SendChildAddedNotificationAsync(string parentEmail, string childName, string parentName,
         string studentCode = "", string className = "", string relationship = "", int totalChildren = 1,
         string parentPhone = "");
+    Task SendEmailAsync(string to, string subject, string htmlBody);
 }

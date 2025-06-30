@@ -40,4 +40,9 @@ public interface IBaseUnitOfWork : IDisposable
         Func<Task> operation,
         CancellationToken cancellationToken = default
     );
+
+    Task<T> ExecuteInTransactionAsync<T>(
+        Func<Task<T>> operation,
+        CancellationToken cancellationToken = default
+    );
 }

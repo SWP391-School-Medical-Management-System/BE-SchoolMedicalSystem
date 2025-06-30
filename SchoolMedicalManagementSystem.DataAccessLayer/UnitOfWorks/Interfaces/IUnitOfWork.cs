@@ -17,4 +17,7 @@ public interface IUnitOfWork : IBaseUnitOfWork
     public IStudentMedicationRepository StudentMedicationRepository { get; }
     public IBlogPostRepository BlogPostRepository { get; }
     public IBlogCommentRepository BlogCommentRepository { get; }
+    public IVaccinationRecordRepository VaccinationRecordRepository { get; }
+    public IVaccinationTypeRepository VaccinationTypeRepository { get; }
+    public IVaccinationSessionRepository VaccinationSessionRepository { get; }
 }

@@ -246,7 +246,8 @@ public class MedicalItemService : IMedicalItemService
         }
     }
 
-    public async Task<BaseResponse<MedicalItemResponse>> UpdateMedicalItemAsync(Guid itemId,
+    public async Task<BaseResponse<MedicalItemResponse>> UpdateMedicalItemAsync(
+        Guid itemId,
         UpdateMedicalItemRequest model)
     {
         try
@@ -272,31 +273,14 @@ public class MedicalItemService : IMedicalItemService
             var currentUserId = GetCurrentUserId();
             var userRoles = await GetCurrentUserRolesAsync();
 
-            if (medicalItem.ApprovalStatus == MedicalItemApprovalStatus.Approved)
+            if (!userRoles.Contains("SCHOOLNURSE"))
             {
-                if (!userRoles.Contains("MANAGER"))
-                {
-                    return BaseResponse<MedicalItemResponse>.ErrorResult(
-                        "Chỉ Manager mới có thể cập nhật thuốc/vật tư đã được phê duyệt. " +
-                        "Để thay đổi số lượng tồn kho, vui lòng sử dụng chức năng cập nhật tồn kho.");
-                }
+                return BaseResponse<MedicalItemResponse>.ErrorResult(
+                    "Chỉ Y tá trường học mới có quyền cập nhật thuốc/vật tư y tế.");
             }
-            else if (medicalItem.ApprovalStatus == MedicalItemApprovalStatus.Pending)
-            {
-                if (medicalItem.RequestedById != currentUserId)
-                {
-                    return BaseResponse<MedicalItemResponse>.ErrorResult(
-                        "Chỉ có thể cập nhật thuốc/vật tư do mình tạo khi đang chờ phê duyệt.");
-                }
-            }
-            else if (medicalItem.ApprovalStatus == MedicalItemApprovalStatus.Rejected)
-            {
-                if (medicalItem.RequestedById != currentUserId)
-                {
-                    return BaseResponse<MedicalItemResponse>.ErrorResult(
-                        "Chỉ có thể cập nhật thuốc/vật tư bị từ chối do mình tạo.");
-                }
 
+            if (medicalItem.ApprovalStatus == MedicalItemApprovalStatus.Rejected)
+            {
                 medicalItem.ApprovalStatus = MedicalItemApprovalStatus.Pending;
                 medicalItem.RequestedAt = DateTime.Now;
                 medicalItem.ApprovedById = null;
