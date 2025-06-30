@@ -1,13 +1,7 @@
 ﻿using AutoMapper;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.VaccineRecordRequest;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.VaccineRequest;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.VaccineRecordResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicalRecordResponse;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
 {
@@ -17,6 +11,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
         {
             CreateVaccinationRecordMappings();
         }
+
         private void CreateVaccinationRecordMappings()
         {
             CreateMap<CreateVaccinationRecordRequest, VaccinationRecord>()
@@ -54,9 +49,12 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForAllMembers(opt => opt.Condition((src, dest, member) => member != null));
 
             CreateMap<VaccinationRecord, VaccinationRecordResponse>()
-                .ForMember(dest => dest.VaccinationTypeName, opt => opt.MapFrom(src => src.VaccinationType.Name))
-                .ForMember(dest => dest.VaccinationStatus, opt => opt.MapFrom(src => src.VaccinationStatus));
-
+                .ForMember(dest => dest.VaccinationTypeName, opt => opt.MapFrom(src => src.VaccinationType != null ? src.VaccinationType.Name : "Không xác định"))
+                .ForMember(dest => dest.VaccinationStatus, opt => opt.MapFrom(src => src.VaccinationStatus))
+                .ForMember(dest => dest.Symptoms, opt => opt.MapFrom(src => src.Symptoms ?? string.Empty))
+                .ForMember(dest => dest.Notes, opt => opt.MapFrom(src => src.Notes ?? string.Empty))
+                .ForMember(dest => dest.NoteAfterSession, opt => opt.MapFrom(src => src.NoteAfterSession ?? string.Empty))
+                .ForMember(dest => dest.AdministeredBy, opt => opt.MapFrom(src => src.AdministeredByUser != null ? src.AdministeredByUser.FullName : src.AdministeredBy ?? "Không xác định"));
         }
     }
 }

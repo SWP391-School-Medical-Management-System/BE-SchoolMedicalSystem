@@ -346,6 +346,12 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(r => r.UserId)
             .OnDelete(DeleteBehavior.NoAction);
 
+        modelBuilder.Entity<VaccinationRecord>()
+            .HasOne(r => r.AdministeredByUser)
+            .WithMany()
+            .HasForeignKey(r => r.AdministeredByUserId)
+            .OnDelete(DeleteBehavior.NoAction);
+
         #endregion
 
         #region Appointment Relationships
