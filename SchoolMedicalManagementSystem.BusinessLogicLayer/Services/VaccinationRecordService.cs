@@ -68,6 +68,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 var query = _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().GetQueryable()
                     .Include(vr => vr.VaccinationType)
+                    .Include(vr => vr.AdministeredByUser)
                     .Where(vr => vr.MedicalRecordId == medicalRecordId && !vr.IsDeleted)
                     .AsQueryable();
 
@@ -89,6 +90,10 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .ToListAsync(cancellationToken);
 
                 var responses = vaccinationRecords.Select(MapToVaccinationRecordResponse).ToList();
+                foreach (var response in responses)
+                {
+                    _logger.LogDebug("Vaccination record {Id}: AdministeredBy = {AdministeredBy}", response.Id, response.AdministeredBy);
+                }
 
                 var result = BaseListResponse<VaccinationRecordResponse>.SuccessResult(
                     responses,
@@ -330,33 +335,35 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
         #region Helper Methods
 
-        private VaccinationRecordResponse MapToVaccinationRecordResponse(VaccinationRecord vaccinationRecord)
+        private VaccinationRecordResponse MapToVaccinationRecordResponse(VaccinationRecord record)
         {
             return new VaccinationRecordResponse
             {
-                Id = vaccinationRecord.Id,
-                VaccinationTypeName = vaccinationRecord.VaccinationType.Name,
-                DoseNumber = vaccinationRecord.DoseNumber,
-                AdministeredDate = (DateTime)vaccinationRecord.AdministeredDate,
-                AdministeredBy = vaccinationRecord.AdministeredBy,
-                BatchNumber = vaccinationRecord.BatchNumber,
-                Symptoms = vaccinationRecord.Symptoms,
-                VaccinationStatus = vaccinationRecord.VaccinationStatus,
-                Notes = vaccinationRecord.Notes
+                Id = record.Id,
+                VaccinationTypeName = record.VaccinationType?.Name ?? "Không xác định",
+                DoseNumber = record.DoseNumber,
+                AdministeredDate = record.AdministeredDate ?? DateTime.MinValue,
+                AdministeredBy = record.AdministeredByUser?.FullName ?? record.AdministeredBy ?? "Không xác định",
+                BatchNumber = record.BatchNumber ?? string.Empty,
+                Notes = record.Notes ?? string.Empty,
+                NoteAfterSession = record.NoteAfterSession ?? string.Empty,
+                VaccinationStatus = record.VaccinationStatus ?? string.Empty,
+                Symptoms = record.Symptoms ?? string.Empty
             };
         }
 
         private IQueryable<VaccinationRecord> ApplyVaccinationRecordOrdering(IQueryable<VaccinationRecord> query, string orderBy)
         {
-            return orderBy?.ToLower() switch
+            if (string.IsNullOrEmpty(orderBy))
+                return query.OrderBy(vr => vr.AdministeredDate);
+
+            return orderBy.ToLower() switch
             {
-                "vaccinationtype" => query.OrderBy(vr => vr.VaccinationType.Name),
-                "vaccinationtype_desc" => query.OrderByDescending(vr => vr.VaccinationType.Name),
-                "dosnumber" => query.OrderBy(vr => vr.DoseNumber),
-                "dosnumber_desc" => query.OrderByDescending(vr => vr.DoseNumber),
-                "administereddate" => query.OrderBy(vr => vr.AdministeredDate),
-                "administereddate_desc" => query.OrderByDescending(vr => vr.AdministeredDate),
-                _ => query.OrderByDescending(vr => vr.AdministeredDate)
+                "dateasc" => query.OrderBy(vr => vr.AdministeredDate),
+                "datedesc" => query.OrderByDescending(vr => vr.AdministeredDate),
+                "typeasc" => query.OrderBy(vr => vr.VaccinationType.Name),
+                "typedesc" => query.OrderByDescending(vr => vr.VaccinationType.Name),
+                _ => query.OrderBy(vr => vr.AdministeredDate)
             };
         }
 

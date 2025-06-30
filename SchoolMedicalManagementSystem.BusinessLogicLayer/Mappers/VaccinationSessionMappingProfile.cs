@@ -61,12 +61,36 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
 
             // Ánh xạ từ VaccinationSession sang VaccinationSessionResponse
             CreateMap<VaccinationSession, VaccinationSessionResponse>()
-                .ForMember(dest => dest.VaccineTypeName, opt => opt.MapFrom(src => src.VaccineType.Name));
+                .ForMember(dest => dest.VaccineTypeName, opt => opt.MapFrom(src => src.VaccineType.Name))
+                .ForMember(dest => dest.Classes, opt => opt.MapFrom(src => src.Classes.Select(c => new ClassInfo { Id = c.ClassId, Name = c.SchoolClass.Name }).ToList()));
 
             // Ánh xạ từ VaccinationSession sang CreateWholeVaccinationSessionResponse
             CreateMap<VaccinationSession, CreateWholeVaccinationSessionResponse>()
                 .ForMember(dest => dest.VaccineTypeName, opt => opt.MapFrom(src => src.VaccineType.Name))
                 .ForMember(dest => dest.ClassIds, opt => opt.MapFrom(src => src.Classes.Select(c => c.ClassId).ToList()));
+
+            // Ánh xạ từ VaccinationConsent sang ParentConsentStatusResponse
+            CreateMap<VaccinationConsent, ParentConsentStatusResponse>()
+                .ForMember(dest => dest.StudentId, opt => opt.MapFrom(src => src.StudentId))
+                .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : "Không xác định"))
+                .ForMember(dest => dest.ParentId, opt => opt.MapFrom(src => src.ParentId == Guid.Empty ? Guid.Empty : src.ParentId))
+                .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : "Không xác định"))
+                .ForMember(dest => dest.ConsentStatus, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.ResponseDate, opt => opt.MapFrom(src => src.ResponseDate));
+
+            // Ánh xạ từ VaccinationRecord sang StudentVaccinationResultResponse
+            CreateMap<VaccinationRecord, StudentVaccinationResultResponse>()
+                .ForMember(dest => dest.StudentId, opt => opt.MapFrom(src => src.UserId))
+                .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : "Không xác định"))
+                .ForMember(dest => dest.VaccinationRecordId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.VaccinationTypeId, opt => opt.MapFrom(src => src.VaccinationTypeId))
+                .ForMember(dest => dest.VaccinationTypeName, opt => opt.MapFrom(src => src.VaccinationType != null ? src.VaccinationType.Name : "Không xác định"))
+                .ForMember(dest => dest.DoseNumber, opt => opt.MapFrom(src => src.DoseNumber))
+                .ForMember(dest => dest.AdministeredDate, opt => opt.MapFrom(src => src.AdministeredDate))
+                .ForMember(dest => dest.AdministeredBy, opt => opt.MapFrom(src => src.AdministeredByUser != null ? src.AdministeredByUser.FullName : src.AdministeredBy ?? "Không xác định"))
+                .ForMember(dest => dest.Notes, opt => opt.MapFrom(src => src.Notes))
+                .ForMember(dest => dest.VaccinationStatus, opt => opt.MapFrom(src => src.VaccinationStatus))
+                .ForMember(dest => dest.Symptoms, opt => opt.MapFrom(src => src.Symptoms));
         }
     }
 }
