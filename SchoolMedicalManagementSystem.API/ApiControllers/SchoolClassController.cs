@@ -19,7 +19,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<ActionResult<BaseListResponse<SchoolClassSummaryResponse>>> GetSchoolClasses(
         [FromQuery] int pageIndex = 1,
         [FromQuery] int pageSize = 10,
@@ -50,7 +50,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<ActionResult<BaseResponse<SchoolClassResponse>>> GetSchoolClassById(Guid id)
     {
         try
@@ -68,7 +68,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<ActionResult<BaseResponse<SchoolClassResponse>>> CreateSchoolClass(
         [FromBody] CreateSchoolClassRequest model)
     {
@@ -90,7 +90,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<ActionResult<BaseResponse<SchoolClassResponse>>> UpdateSchoolClass(
         Guid id, [FromBody] UpdateSchoolClassRequest model)
     {
@@ -112,7 +112,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<ActionResult<BaseResponse<bool>>> DeleteSchoolClass(Guid id)
     {
         try
@@ -133,7 +133,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpPost("{id}/students/batch")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<ActionResult<BaseResponse<StudentsBatchResponse>>> AddStudentsToClass(
         Guid id, [FromBody] AddStudentsToClassRequest model)
     {
@@ -152,7 +152,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpDelete("{classId}/students/{studentId}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<ActionResult<BaseResponse<bool>>> RemoveStudentFromClass(Guid classId, Guid studentId)
     {
         try
@@ -170,7 +170,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpGet("template")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<IActionResult> DownloadTemplate()
     {
         try
@@ -190,7 +190,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpPost("import")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     [RequestSizeLimit(10_000_000)]
     public async Task<ActionResult<BaseResponse<SchoolClassImportResponse>>> ImportFromExcel(
         [FromForm] ImportSchoolClassExcelRequest request)
@@ -218,7 +218,7 @@ public class SchoolClassController : ControllerBase
     /// <param name="excelFile"></param>
     /// <returns></returns>
     [HttpPost("import/preview")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     [RequestSizeLimit(10_000_000)]
     public async Task<ActionResult<BaseResponse<List<SchoolClassImportDetailResponse>>>> PreviewImport(
         IFormFile excelFile)
@@ -269,7 +269,7 @@ public class SchoolClassController : ControllerBase
     }
 
     [HttpGet("export")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "SCHOOLNURSE, MANAGER")]
     public async Task<IActionResult> ExportToExcel(
         [FromQuery] int? grade = null,
         [FromQuery] int? academicYear = null)
