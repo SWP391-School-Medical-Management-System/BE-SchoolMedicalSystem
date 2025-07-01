@@ -13,5 +13,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Vacc
         public string Description { get; set; }
         public int RecommendedAge { get; set; }
         public int DoseCount { get; set; }
+        public DateTime ExpiredDate { get; set; }
     }
 }

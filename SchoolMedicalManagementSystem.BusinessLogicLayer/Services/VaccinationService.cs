@@ -103,6 +103,58 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             }
         }
 
+        public async Task<BaseResponse<VaccinationTypeResponse>> GetVaccineTypeDetailAsync(
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var cacheKey = _cacheService.GenerateCacheKey(
+                    VACCINE_TYPE_CACHE_PREFIX,
+                    id.ToString()
+                );
+
+                var cachedResult = await _cacheService.GetAsync<BaseResponse<VaccinationTypeResponse>>(cacheKey);
+                if (cachedResult != null)
+                {
+                    _logger.LogDebug("Vaccine type detail found in cache for id: {Id}", id);
+                    return cachedResult;
+                }
+
+                var repo = _unitOfWork.GetRepositoryByEntity<VaccinationType>();
+                var vaccinationType = await repo.GetQueryable()
+                    .FirstOrDefaultAsync(vt => vt.Id == id && !vt.IsDeleted, cancellationToken);
+
+                if (vaccinationType == null)
+                {
+                    return new BaseResponse<VaccinationTypeResponse>
+                    {
+                        Success = false,
+                        Message = "Không tìm thấy loại vaccine."
+                    };
+                }
+
+                var response = MapToVaccinationTypeResponse(vaccinationType);
+
+                var result = new BaseResponse<VaccinationTypeResponse>
+                {
+                    Success = true,
+                    Data = response,
+                    Message = "Lấy chi tiết loại vaccine thành công."
+                };
+
+                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+                await _cacheService.AddToTrackingSetAsync(cacheKey, VACCINE_TYPE_CACHE_SET);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving vaccine type detail for id: {Id}", id);
+                return BaseResponse<VaccinationTypeResponse>.ErrorResult("Lỗi lấy chi tiết loại vaccine.");
+            }
+        }
+
         public async Task<BaseResponse<VaccinationTypeResponse>> CreateVaccinationTypeAsync(CreateVaccinationTypeRequest model)
         {
             try
@@ -261,7 +313,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 Name = vaccinationType.Name,
                 Description = vaccinationType.Description,
                 RecommendedAge = vaccinationType.RecommendedAge,
-                DoseCount = vaccinationType.DoseCount
+                DoseCount = vaccinationType.DoseCount,
+                ExpiredDate = vaccinationType.ExpiredDate,
             };
         }
 

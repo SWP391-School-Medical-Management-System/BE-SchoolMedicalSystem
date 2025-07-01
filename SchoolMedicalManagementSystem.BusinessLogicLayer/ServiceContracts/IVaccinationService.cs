@@ -16,6 +16,10 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
               string orderBy,
               CancellationToken cancellationToken = default);
 
+        Task<BaseResponse<VaccinationTypeResponse>> GetVaccineTypeDetailAsync(
+            Guid id,
+            CancellationToken cancellationToken = default);
+
         Task<BaseResponse<VaccinationTypeResponse>> CreateVaccinationTypeAsync(CreateVaccinationTypeRequest model);
 
         Task<BaseResponse<VaccinationTypeResponse>> UpdateVaccinationTypeAsync(Guid id, UpdateVaccinationTypeRequest model);

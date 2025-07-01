@@ -199,75 +199,78 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         public async Task<BaseResponse<VaccinationSessionDetailResponse>> GetSessionDetailAsync(
             Guid sessionId,
             CancellationToken cancellationToken = default)
+        {
+            try
             {
-                try
+                var cacheKey = _cacheService.GenerateCacheKey(
+                    "session_detail",
+                    sessionId.ToString()
+                );
+
+                var cachedResult = await _cacheService.GetAsync<BaseResponse<VaccinationSessionDetailResponse>>(cacheKey);
+                if (cachedResult != null)
                 {
-                    var cacheKey = _cacheService.GenerateCacheKey(
-                        "session_detail",
-                        sessionId.ToString()
-                    );
-
-                    var cachedResult = await _cacheService.GetAsync<BaseResponse<VaccinationSessionDetailResponse>>(cacheKey);
-                    if (cachedResult != null)
-                    {
-                        _logger.LogDebug("Session detail found in cache for sessionId: {SessionId}", sessionId);
-                        return cachedResult;
-                    }
-
-                    var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
-                        .Include(vs => vs.Classes)
-                        .Include(vs => vs.VaccineType)
-                        .FirstOrDefaultAsync(vs => vs.Id == sessionId && !vs.IsDeleted, cancellationToken);
-
-                    if (session == null)
-                    {
-                        return new BaseResponse<VaccinationSessionDetailResponse>
-                        {
-                            Success = false,
-                            Message = "Buổi tiêm không tồn tại."
-                        };
-                    }
-
-                    var consents = await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().GetQueryable()
-                        .Where(c => c.SessionId == sessionId && !c.IsDeleted)
-                        .ToListAsync(cancellationToken);
-
-                    var response = new VaccinationSessionDetailResponse
-                    {
-                        Id = session.Id,
-                        VaccineTypeId = session.VaccineTypeId,
-                        VaccineTypeName = session.VaccineTypeName,
-                        Location = session.Location,
-                        StartTime = session.StartTime,
-                        EndTime = session.EndTime,
-                        Status = session.Status,
-                        SessionName = session.SessionName,
-                        Notes = session.Notes,
-                        ClassIds = session.Classes.Select(c => c.ClassId).ToList(),
-                        TotalConsents = consents.Count,
-                        ConfirmedConsents = consents.Count(c => c.Status == "Confirmed"),
-                        PendingConsents = consents.Count(c => c.Status == "Pending"),
-                        DeclinedConsents = consents.Count(c => c.Status == "Declined")
-                    };
-
-                    var result = new BaseResponse<VaccinationSessionDetailResponse>
-                    {
-                        Success = true,
-                        Data = response,
-                        Message = "Lấy chi tiết buổi tiêm thành công."
-                    };
-
-                    await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
-                    await _cacheService.AddToTrackingSetAsync(cacheKey, "session_detail_cache_keys");
-
-                    return result;
+                    _logger.LogDebug("Session detail found in cache for sessionId: {SessionId}", sessionId);
+                    return cachedResult;
                 }
-                catch (Exception ex)
+
+                var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
+                    .Include(vs => vs.Classes)
+                    .Include(vs => vs.VaccineType)
+                    .FirstOrDefaultAsync(vs => vs.Id == sessionId && !vs.IsDeleted, cancellationToken);
+
+                if (session == null)
                 {
-                    _logger.LogError(ex, "Error retrieving session detail for sessionId: {SessionId}", sessionId);
-                    return BaseResponse<VaccinationSessionDetailResponse>.ErrorResult("Lỗi lấy chi tiết buổi tiêm.");
+                    return new BaseResponse<VaccinationSessionDetailResponse>
+                    {
+                        Success = false,
+                        Message = "Buổi tiêm không tồn tại."
+                    };
                 }
+
+                var consents = await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().GetQueryable()
+                    .Where(c => c.SessionId == sessionId && !c.IsDeleted)
+                    .ToListAsync(cancellationToken);
+
+                var response = new VaccinationSessionDetailResponse
+                {
+                    Id = session.Id,
+                    VaccineTypeId = session.VaccineTypeId,
+                    VaccineTypeName = session.VaccineTypeName,
+                    Location = session.Location,
+                    StartTime = session.StartTime,
+                    EndTime = session.EndTime,
+                    Status = session.Status,
+                    SessionName = session.SessionName,
+                    Notes = session.Notes,
+                    ClassIds = session.Classes.Select(c => c.ClassId).ToList(),
+                    TotalConsents = consents.Count,
+                    ConfirmedConsents = consents.Count(c => c.Status == "Confirmed"),
+                    PendingConsents = consents.Count(c => c.Status == "Pending"),
+                    DeclinedConsents = consents.Count(c => c.Status == "Declined"),
+                    SideEffect = session.SideEffect,              // Thêm trường mới
+                    Contraindication = session.Contraindication,  // Thêm trường mới
+                    ResponsibleOrganizationName = session.ResponsibleOrganizationName // Thêm trường mới
+                };
+
+                var result = new BaseResponse<VaccinationSessionDetailResponse>
+                {
+                    Success = true,
+                    Data = response,
+                    Message = "Lấy chi tiết buổi tiêm thành công."
+                };
+
+                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+                await _cacheService.AddToTrackingSetAsync(cacheKey, "session_detail_cache_keys");
+
+                return result;
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving session detail for sessionId: {SessionId}", sessionId);
+                return BaseResponse<VaccinationSessionDetailResponse>.ErrorResult("Lỗi lấy chi tiết buổi tiêm.");
+            }
+        }
 
         public async Task<BaseListResponse<ClassStudentConsentStatusResponse>> GetAllClassStudentConsentStatusAsync(
             Guid sessionId,

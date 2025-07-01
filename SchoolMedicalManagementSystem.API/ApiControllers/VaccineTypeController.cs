@@ -47,6 +47,29 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             }
         }
 
+        [HttpGet("{id}")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<VaccinationTypeResponse>>> GetVaccineTypeDetail(
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _vaccinationService.GetVaccineTypeDetailAsync(id, cancellationToken);
+
+                if (!result.Success)
+                {
+                    return NotFound(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, BaseResponse<VaccinationTypeResponse>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
         [HttpPost]
         [Authorize(Roles = "SCHOOLNURSE")]
         public async Task<ActionResult<BaseResponse<VaccinationTypeResponse>>> CreateVaccinationType(
