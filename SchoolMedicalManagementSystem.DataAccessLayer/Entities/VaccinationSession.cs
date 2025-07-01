@@ -26,6 +26,7 @@ public class VaccinationSession : BaseEntity
     public string Notes { get; set; }              // Ghi chú, tùy chọn
 
 
+
     public virtual VaccinationType VaccineType { get; set; }      // Quan hệ với loại vaccine
     public virtual ApplicationUser CreatedBy { get; set; }        // Quan hệ với School Nurse
     public virtual ApplicationUser ApprovedBy { get; set; }       // Quan hệ với Manager
