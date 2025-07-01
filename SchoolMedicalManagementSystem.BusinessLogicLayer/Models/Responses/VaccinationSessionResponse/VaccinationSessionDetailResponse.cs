@@ -22,5 +22,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Vacc
         public int ConfirmedConsents { get; set; }
         public int PendingConsents { get; set; }
         public int DeclinedConsents { get; set; }
+        public string SideEffect { get; set; }              
+        public string Contraindication { get; set; }
+        public string ResponsibleOrganizationName { get; set; }
     }
 }
