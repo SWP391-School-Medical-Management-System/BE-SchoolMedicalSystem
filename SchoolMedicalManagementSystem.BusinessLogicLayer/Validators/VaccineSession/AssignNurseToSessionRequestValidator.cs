@@ -15,14 +15,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.VaccineSes
             RuleFor(x => x.SessionId)
                 .NotEmpty()
                 .WithMessage("SessionId không được để trống.");
-
-            RuleFor(x => x.ClassId)
-                .NotEmpty()
-                .WithMessage("ClassId không được để trống.");
-
-            RuleFor(x => x.NurseId)
-                .NotEmpty()
-                .WithMessage("NurseId không được để trống.");
         }
     }
 }
