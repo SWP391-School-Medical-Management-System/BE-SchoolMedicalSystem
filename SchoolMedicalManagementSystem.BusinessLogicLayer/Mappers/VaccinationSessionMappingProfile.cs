@@ -91,6 +91,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.Notes, opt => opt.MapFrom(src => src.Notes))
                 .ForMember(dest => dest.VaccinationStatus, opt => opt.MapFrom(src => src.VaccinationStatus))
                 .ForMember(dest => dest.Symptoms, opt => opt.MapFrom(src => src.Symptoms));
+
         }
     }
 }

@@ -443,7 +443,7 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("parents/{parentId}/students")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "MANAGER, PARENT")]
     public async Task<ActionResult<BaseListResponse<StudentResponse>>> GetStudentsByParentId(
     Guid parentId,
     [FromQuery] int pageIndex = 1,
