@@ -165,8 +165,24 @@ public class MedicalItemService : IMedicalItemService
 
             if (cachedResponse != null)
             {
-                _logger.LogDebug("Medical item found in cache: {ItemId}", itemId);
-                return cachedResponse;
+                _logger.LogDebug("Medical item found in cache: {ItemId}, checking freshness", itemId);
+                // Lấy dữ liệu từ DB để so sánh
+                var itemRepos = _unitOfWork.GetRepositoryByEntity<MedicalItem>();
+                var medicalItemFromDb = await itemRepos.GetQueryable()
+                    .Where(mi => mi.Id == itemId && !mi.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (medicalItemFromDb != null && cachedResponse.Data.Quantity != medicalItemFromDb.Quantity)
+                {
+                    _logger.LogWarning("Cache stale for MedicalItem {ItemId}, DB Quantity {DbQty} vs Cache Quantity {CacheQty}",
+                        itemId, medicalItemFromDb.Quantity, cachedResponse.Data.Quantity);
+                    await _cacheService.RemoveAsync(cacheKey); // Xóa cache cũ
+                    cachedResponse = null; // Bỏ qua cache cũ
+                }
+                else
+                {
+                    return cachedResponse; // Sử dụng cache nếu khớp
+                }
             }
 
             var itemRepo = _unitOfWork.GetRepositoryByEntity<MedicalItem>();
@@ -184,8 +200,11 @@ public class MedicalItemService : IMedicalItemService
             var response = BaseResponse<MedicalItemResponse>.SuccessResult(
                 itemResponse, "Lấy thông tin thuốc/vật tư y tế thành công.");
 
-            await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
+            // Lưu cache với dữ liệu mới nhất
+            await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_ITEM_CACHE_SET);
+
+            _logger.LogInformation("Cached updated MedicalItem {ItemId} with Quantity {Quantity}", itemId, medicalItem.Quantity);
 
             return response;
         }
@@ -195,7 +214,6 @@ public class MedicalItemService : IMedicalItemService
             return BaseResponse<MedicalItemResponse>.ErrorResult($"Lỗi lấy thông tin thuốc/vật tư y tế: {ex.Message}");
         }
     }
-
     public async Task<BaseResponse<MedicalItemResponse>> CreateMedicalItemAsync(CreateMedicalItemRequest model)
     {
         try

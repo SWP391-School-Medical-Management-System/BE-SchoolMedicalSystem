@@ -95,6 +95,9 @@ public class ApplicationDbContext : DbContext
     // Reports
     public DbSet<Report> Reports { get; set; }
 
+    //HealthEventMedicalItem
+    public DbSet<HealthEventMedicalItem> HealthEventMedicalItems { get; set; }
+
     #endregion
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -264,6 +267,12 @@ public class ApplicationDbContext : DbContext
             .HasMany(e => e.MedicalItemsUsed)
             .WithOne(u => u.HealthEvent)
             .HasForeignKey(u => u.HealthEventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthEvent>()
+            .HasMany(e => e.HealthEventMedicalItems)
+            .WithOne(hemi => hemi.HealthEvent)
+            .HasForeignKey(hemi => hemi.HealthEventId)
             .OnDelete(DeleteBehavior.Cascade);
 
         #endregion
@@ -498,6 +507,22 @@ public class ApplicationDbContext : DbContext
             .WithOne(va => va.Session)
             .HasForeignKey(va => va.SessionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        #endregion
+
+        #region HealthEventMedicalItem Relationships
+
+        modelBuilder.Entity<HealthEventMedicalItem>()
+            .HasOne(hemi => hemi.HealthEvent)
+            .WithMany(he => he.HealthEventMedicalItems)
+            .HasForeignKey(hemi => hemi.HealthEventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthEventMedicalItem>()
+            .HasOne(hemi => hemi.MedicalItemUsage)
+            .WithOne(miu => miu.HealthEventMedicalItem)
+            .HasForeignKey<HealthEventMedicalItem>(hemi => hemi.MedicalItemUsageId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         #endregion
 

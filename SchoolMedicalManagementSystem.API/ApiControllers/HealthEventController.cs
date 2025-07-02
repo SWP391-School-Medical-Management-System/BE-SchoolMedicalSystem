@@ -97,6 +97,29 @@ public class HealthEventController : ControllerBase
         }
     }
 
+    [HttpPost("with-medical-items")]
+    [Authorize(Roles = "SCHOOLNURSE")]
+    public async Task<ActionResult<BaseResponse<HealthEventResponse>>> CreateHealthEventWithMedicalItems(
+    [FromBody] CreateHealthEventWithMedicalItemsRequest model)
+    {
+        try
+        {
+            if (model == null)
+                return BadRequest(BaseResponse<HealthEventResponse>.ErrorResult("Yêu cầu không hợp lệ."));
+
+            var result = await _healthEventService.CreateHealthEventWithMedicalItemsAsync(model);
+
+            if (!result.Success)
+                return BadRequest(result);
+
+            return CreatedAtAction(nameof(GetHealthEventById), new { id = result.Data.Id }, result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseResponse<HealthEventResponse>.ErrorResult("Lỗi hệ thống: " + ex.Message));
+        }
+    }
+
     [HttpPut("{id}")]
     [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<HealthEventResponse>>> UpdateHealthEvent(

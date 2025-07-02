@@ -425,7 +425,7 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("students/{id}")]
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = "MANAGER, PARENT")]
     public async Task<ActionResult<BaseResponse<StudentResponse>>> GetStudentById(Guid id)
     {
         try

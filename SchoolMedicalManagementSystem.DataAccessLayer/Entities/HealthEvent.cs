@@ -22,11 +22,15 @@ public class HealthEvent : BaseEntity
     public AssignmentMethod AssignmentMethod { get; set; } = AssignmentMethod.Unassigned; // Cách phân công
     public DateTime? AssignedAt { get; set; }     // Thời gian được phân công
     public DateTime? CompletedAt { get; set; }    // Thời gian hoàn thành
-        
+    public string CurrentHealthStatus { get; set; }   // Tình trạng sức khoẻ hiện tại (Nhịp tim, thân nhiệt, huyết áp, nhịp thở)
+    public string? ParentNotice { get; set; }   // Lưu ý về nhà cho phụ huynh
+
+
     // Navigation properties
     public virtual ApplicationUser Student { get; set; }       // Học sinh gặp sự cố
     public virtual ApplicationUser HandledBy { get; set; }     // Y tá xử lý sự cố
     public virtual ICollection<MedicalItemUsage> MedicalItemsUsed { get; set; } // Thuốc và vật tư y tế đã sử dụng
+    public virtual ICollection<HealthEventMedicalItem> HealthEventMedicalItems { get; set; }
     public virtual ICollection<Notification> Notifications { get; set; } // Thông báo về sự kiện
     public virtual MedicalCondition RelatedMedicalCondition { get; set; } // Tình trạng y tế liên quan
     public virtual ICollection<Appointment> Appointments { get; set; }
