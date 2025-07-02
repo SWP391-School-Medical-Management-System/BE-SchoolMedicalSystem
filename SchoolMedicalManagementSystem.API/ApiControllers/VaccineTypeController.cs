@@ -48,7 +48,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpGet("{id}")]
-        [Authorize(Roles = "SCHOOLNURSE")]
+        [Authorize(Roles = "SCHOOLNURSE, PARENT")]
         public async Task<ActionResult<BaseResponse<VaccinationTypeResponse>>> GetVaccineTypeDetail(
             Guid id,
             CancellationToken cancellationToken = default)
