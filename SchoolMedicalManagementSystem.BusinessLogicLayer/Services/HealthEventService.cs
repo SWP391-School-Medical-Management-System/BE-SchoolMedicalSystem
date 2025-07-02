@@ -24,6 +24,7 @@ public class HealthEventService : IHealthEventService
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IValidator<CreateHealthEventRequest> _createHealthEventValidator;
     private readonly IValidator<UpdateHealthEventRequest> _updateHealthEventValidator;
+    private readonly IValidator<CreateHealthEventWithMedicalItemsRequest> _createHealthEventMedicalItem;
 
     private const string HEALTH_EVENT_CACHE_PREFIX = "health_event";
     private const string HEALTH_EVENT_LIST_PREFIX = "health_events_list";
@@ -37,7 +38,8 @@ public class HealthEventService : IHealthEventService
         ILogger<HealthEventService> logger,
         IHttpContextAccessor httpContextAccessor,
         IValidator<CreateHealthEventRequest> createHealthEventValidator,
-        IValidator<UpdateHealthEventRequest> updateHealthEventValidator)
+        IValidator<UpdateHealthEventRequest> updateHealthEventValidator,
+        IValidator<CreateHealthEventWithMedicalItemsRequest> createHealthEventMedicalItem)
     {
         _mapper = mapper;
         _unitOfWork = unitOfWork;
@@ -46,6 +48,7 @@ public class HealthEventService : IHealthEventService
         _httpContextAccessor = httpContextAccessor;
         _createHealthEventValidator = createHealthEventValidator;
         _updateHealthEventValidator = updateHealthEventValidator;
+        _createHealthEventMedicalItem = createHealthEventMedicalItem;
     }
 
     #region Basic CRUD Operations
@@ -142,6 +145,9 @@ public class HealthEventService : IHealthEventService
                 .Include(he => he.Student)
                 .Include(he => he.HandledBy)
                 .Include(he => he.RelatedMedicalCondition)
+                .Include(he => he.HealthEventMedicalItems)
+                .Include(he => he.MedicalItemsUsed)
+                .ThenInclude(miu => miu.HealthEventMedicalItem)
                 .Where(he => he.Id == eventId && !he.IsDeleted)
                 .FirstOrDefaultAsync();
 
@@ -155,6 +161,7 @@ public class HealthEventService : IHealthEventService
             var response = BaseResponse<HealthEventResponse>.SuccessResult(
                 eventResponse, "Lấy thông tin sự kiện y tế thành công.");
 
+            // Lưu cache với dữ liệu mới
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, HEALTH_EVENT_CACHE_SET);
 
@@ -299,6 +306,241 @@ public class HealthEventService : IHealthEventService
             _logger.LogError(ex, "Error creating health event for student {StudentId}", model.UserId);
             return BaseResponse<HealthEventResponse>.ErrorResult($"Lỗi ghi nhận sự kiện y tế: {ex.Message}");
         }
+    }
+
+    public async Task<BaseResponse<HealthEventResponse>> CreateHealthEventWithMedicalItemsAsync(
+    CreateHealthEventWithMedicalItemsRequest model)
+    {
+        try
+        {
+            var validationResult = await _createHealthEventMedicalItem.ValidateAsync(model);
+            if (!validationResult.IsValid)
+            {
+                string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                return BaseResponse<HealthEventResponse>.ErrorResult(errors);
+            }
+
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                _logger.LogError("Unable to get current user ID from claims");
+                return BaseResponse<HealthEventResponse>.ErrorResult("Không thể xác định người dùng hiện tại.");
+            }
+
+            var currentUser = await ValidateCurrentUserPermissions(currentUserId);
+            if (currentUser == null)
+            {
+                return BaseResponse<HealthEventResponse>.ErrorResult("Bạn không có quyền tạo sự kiện y tế.");
+            }
+
+            _logger.LogInformation("Current User: ID={Id}, FullName={FullName}", currentUser?.Id, currentUser?.FullName);
+
+            var studentRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var student = await studentRepo.GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .Include(u => u.StudentClasses)
+                .ThenInclude(sc => sc.SchoolClass)
+                .FirstOrDefaultAsync(u => u.Id == model.UserId && !u.IsDeleted);
+
+            if (student == null)
+            {
+                _logger.LogError("Student not found with ID: {StudentId}", model.UserId);
+                return BaseResponse<HealthEventResponse>.ErrorResult("Không tìm thấy học sinh.");
+            }
+
+            _logger.LogInformation("Student retrieved: ID={Id}, FullName={FullName}", student.Id, student.FullName);
+
+            var isStudent = student.UserRoles.Any(ur => ur.Role.Name.ToUpper() == "STUDENT");
+            if (!isStudent)
+            {
+                _logger.LogError("User {UserId} is not a student", model.UserId);
+                return BaseResponse<HealthEventResponse>.ErrorResult("User được chọn không phải là học sinh.");
+            }
+
+            if (model.RelatedMedicalConditionId.HasValue)
+            {
+                var (isValid, errorMessage) = await ValidateHealthEventMedicalConditionCompatibility(
+                    model.EventType, model.RelatedMedicalConditionId.Value);
+
+                if (!isValid)
+                {
+                    return BaseResponse<HealthEventResponse>.ErrorResult(errorMessage);
+                }
+
+                var isValidCondition = await ValidateMedicalConditionOwnership(
+                    model.RelatedMedicalConditionId.Value, model.UserId);
+
+                if (!isValidCondition)
+                {
+                    _logger.LogError("Medical condition {ConditionId} not found for student {StudentId}",
+                        model.RelatedMedicalConditionId.Value, model.UserId);
+                    return BaseResponse<HealthEventResponse>.ErrorResult(
+                        "Không tìm thấy tình trạng y tế liên quan thuộc về học sinh này.");
+                }
+            }
+
+            var medicalItemRepo = _unitOfWork.GetRepositoryByEntity<MedicalItem>();
+            var medicalItemIds = model.MedicalItemUsages.Select(m => m.MedicalItemId).Distinct().ToList();
+            var medicalItems = await medicalItemRepo.GetQueryable()
+                .Where(mi => medicalItemIds.Contains(mi.Id) && !mi.IsDeleted)
+                .ToListAsync();
+
+            if (medicalItems.Count != medicalItemIds.Count)
+            {
+                return BaseResponse<HealthEventResponse>.ErrorResult("Một hoặc nhiều thuốc/vật tư không tồn tại.");
+            }
+
+            var schoolNurseRoleName = await GetSchoolNurseRoleName();
+            var healthEvent = _mapper.Map<HealthEvent>(model);
+            healthEvent.Id = Guid.NewGuid();
+            healthEvent.CreatedBy = schoolNurseRoleName;
+            healthEvent.CreatedDate = DateTime.Now;
+            healthEvent.Code = await GenerateHealthEventCodeAsync();
+
+            if (model.IsEmergency)
+            {
+                healthEvent.HandledById = currentUserId;
+                _logger.LogInformation("Emergency event {Code} auto-assigned to current nurse {UserId}",
+                    healthEvent.Code, currentUserId);
+            }
+            else
+            {
+                healthEvent.HandledById = null;
+                _logger.LogInformation("Normal event {Code} created for background processing",
+                    healthEvent.Code);
+            }
+
+            var eventRepo = _unitOfWork.GetRepositoryByEntity<HealthEvent>();
+            await eventRepo.AddAsync(healthEvent);
+
+            var medicalItemUsageRepo = _unitOfWork.GetRepositoryByEntity<MedicalItemUsage>();
+            var healthEventMedicalItemRepo = _unitOfWork.GetRepositoryByEntity<HealthEventMedicalItem>();
+            var medicalItemUsages = new List<MedicalItemUsage>();
+            var healthEventMedicalItems = new List<HealthEventMedicalItem>();
+
+            foreach (var usageRequest in model.MedicalItemUsages)
+            {
+                var medicalItem = medicalItems.FirstOrDefault(mi => mi.Id == usageRequest.MedicalItemId);
+                if (medicalItem == null)
+                {
+                    _logger.LogError("MedicalItem not found for ID: {MedicalItemId}", usageRequest.MedicalItemId);
+                    continue;
+                }
+
+                _logger.LogInformation("MedicalItem found: ID={Id}, Name={Name}, IsNull={IsNull}",
+                    medicalItem.Id, medicalItem.Name, medicalItem == null);
+
+                var medicalItemUsage = _mapper.Map<MedicalItemUsage>(usageRequest);
+                medicalItemUsage.Id = Guid.NewGuid();
+                medicalItemUsage.HealthEventId = healthEvent.Id;
+                medicalItemUsage.UsedById = currentUserId;
+                medicalItemUsage.CreatedBy = schoolNurseRoleName;
+                medicalItemUsage.CreatedDate = DateTime.Now;
+                medicalItemUsages.Add(medicalItemUsage);
+
+                var healthEventMedicalItem = new HealthEventMedicalItem
+                {
+                    Id = Guid.NewGuid(),
+                    HealthEventId = healthEvent.Id,
+                    MedicalItemUsageId = medicalItemUsage.Id,
+                    StudentName = student?.FullName ?? $"Unknown Student (ID: {model.UserId})",
+                    StudentClass = student?.StudentClasses.FirstOrDefault()?.SchoolClass.Name ?? "Unknown Class",
+                    NurseName = currentUser?.FullName ?? $"Unknown Nurse (ID: {currentUserId})",
+                    MedicationName = medicalItem.Name ?? "Unknown Medication",
+                    MedicationQuantity = usageRequest.Quantity,
+                    MedicationDosage = usageRequest.Notes ?? "No dosage specified",
+                    SupplyQuantity = null,
+                    CreatedBy = schoolNurseRoleName,
+                    CreatedDate = DateTime.Now,
+                    IsDeleted = false
+                };
+                medicalItemUsage.HealthEventMedicalItem = healthEventMedicalItem; // Gán ngược lại
+                healthEventMedicalItems.Add(healthEventMedicalItem);
+            }
+
+            await medicalItemUsageRepo.AddRangeAsync(medicalItemUsages);
+            await healthEventMedicalItemRepo.AddRangeAsync(healthEventMedicalItems);
+
+            // Cập nhật Quantity của MedicalItem dựa trên số lượng mới sử dụng
+            foreach (var medicalItemId in medicalItemIds)
+            {
+                var currentMedicalItem = await medicalItemRepo.GetById(medicalItemId); // Lấy từ DB để lấy giá trị hiện tại
+                if (currentMedicalItem != null)
+                {
+                    var newUsageQuantity = model.MedicalItemUsages
+                        .Where(miu => miu.MedicalItemId == medicalItemId)
+                        .Sum(miu => miu.Quantity); // Tổng số lượng mới trong request
+                    currentMedicalItem.Quantity -= (int)newUsageQuantity; // Chỉ trừ số lượng mới
+                    if (currentMedicalItem.Quantity < 0)
+                    {
+                        _logger.LogWarning("Quantity of MedicalItem {MedicalItemId} is negative after usage: {NewQuantity}", medicalItemId, currentMedicalItem.Quantity);
+                        currentMedicalItem.Quantity = 0; // Đảm bảo không âm
+                    }
+                    // Xóa cache cho MedicalItem
+                    var medicalItemCacheKey = _cacheService.GenerateCacheKey("MedicalItem", medicalItemId.ToString());
+                    await _cacheService.RemoveAsync(medicalItemCacheKey);
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+            if (healthEvent.IsEmergency)
+            {
+                await CreateEmergencyNotificationAsync(student, healthEvent);
+                await NotifyAvailableNursesAsync(healthEvent);
+            }
+            else
+            {
+                await CreateHealthEventNotificationAsync(student, healthEvent);
+            }
+
+            await InvalidateAllCachesAsync();
+
+            healthEvent = await eventRepo.GetQueryable()
+                .Include(he => he.Student)
+                .Include(he => he.HandledBy)
+                .Include(he => he.RelatedMedicalCondition)
+                .Include(he => he.MedicalItemsUsed)
+                .ThenInclude(miu => miu.HealthEventMedicalItem)
+                .Include(he => he.HealthEventMedicalItems)
+                .FirstOrDefaultAsync(he => he.Id == healthEvent.Id);
+
+            _logger.LogInformation("MedicalItemsUsed count after fetch: {Count}", healthEvent.MedicalItemsUsed?.Count ?? 0);
+            if (healthEvent.MedicalItemsUsed != null)
+            {
+                foreach (var usage in healthEvent.MedicalItemsUsed)
+                {
+                    var medicalItem = usage.HealthEventMedicalItem;
+                    _logger.LogInformation("Fetched MedicalItem: Id={Id}, MedicationName={Name}, Quantity={Qty}, Dosage={Dosage}",
+                        usage.Id, medicalItem?.MedicationName, medicalItem?.MedicationQuantity, medicalItem?.MedicationDosage);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("MedicalItemsUsed is null for HealthEvent {Id}", healthEvent.Id);
+            }
+
+            var eventResponse = MapToHealthEventResponse(healthEvent);
+
+            _logger.LogInformation(
+                "Created health event {EventId} for student {StudentId}, emergency: {IsEmergency}, with {UsageCount} medical item usages",
+                healthEvent.Id, model.UserId, healthEvent.IsEmergency, medicalItemUsages.Count);
+
+            return BaseResponse<HealthEventResponse>.SuccessResult(
+                eventResponse, "Ghi nhận sự kiện y tế và sử dụng thuốc/vật tư thành công.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating health event with medical items for student {StudentId}", model.UserId);
+            return BaseResponse<HealthEventResponse>.ErrorResult($"Lỗi ghi nhận sự kiện y tế: {ex.Message}");
+        }
+    }
+    private bool IsMedication(string itemName)
+    {
+        if (string.IsNullOrWhiteSpace(itemName)) return false;
+        var medicationKeywords = new[] { "thuoc", "medication", "pill", "tablet" }; // Tùy chỉnh danh sách
+        return medicationKeywords.Any(keyword => itemName.ToLower().Contains(keyword));
     }
 
     public async Task<BaseResponse<HealthEventResponse>> UpdateHealthEventAsync(Guid eventId,
@@ -1200,9 +1442,6 @@ public class HealthEventService : IHealthEventService
 
         response.EventTypeDisplayName = GetEventTypeDisplayName(healthEvent.EventType);
         response.EmergencyStatusText = healthEvent.IsEmergency ? "Khẩn cấp" : "Bình thường";
-
-        response.StatusDisplayName = GetStatusDisplayName(healthEvent.Status);
-        response.AssignmentMethodDisplayName = GetAssignmentMethodDisplayName(healthEvent.AssignmentMethod);
 
         response.CanTakeOwnership = healthEvent.Status == HealthEventStatus.Pending &&
                                     healthEvent.HandledById == null;

@@ -24,6 +24,13 @@ public interface IMedicalConditionService
         MedicalConditionType? type = null,
         CancellationToken cancellationToken = default);
 
+    Task<BaseListResponse<MedicalConditionResponse>> GetAllMedicalConditionByStudentIdAsync(
+    Guid studentId,
+    int pageIndex = 1,
+    int pageSize = 10,
+    MedicalConditionType? type = null,
+    CancellationToken cancellationToken = default);
+
     Task<BaseResponse<MedicalConditionResponse>> CreateMedicalConditionAsync(CreateMedicalConditionRequest model);
 
     Task<BaseResponse<MedicalConditionResponse>> UpdateMedicalConditionAsync(Guid conditionId,

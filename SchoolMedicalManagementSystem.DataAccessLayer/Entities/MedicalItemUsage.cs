@@ -15,4 +15,5 @@ public class MedicalItemUsage : BaseEntity
     public virtual MedicalItem MedicalItem { get; set; } // Thuốc/vật tư được sử dụng
     public virtual HealthEvent HealthEvent { get; set; } // Sự kiện y tế
     public virtual ApplicationUser UsedBy { get; set; }  // Y tá sử dụng thuốc/vật tư
+    public virtual HealthEventMedicalItem HealthEventMedicalItem { get; set; }
 }

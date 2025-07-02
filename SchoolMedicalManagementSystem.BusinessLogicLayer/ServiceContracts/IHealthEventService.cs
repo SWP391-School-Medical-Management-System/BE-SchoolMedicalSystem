@@ -15,6 +15,8 @@ public interface IHealthEventService
 
     Task<BaseResponse<HealthEventResponse>> GetHealthEventByIdAsync(Guid eventId);
     Task<BaseResponse<HealthEventResponse>> CreateHealthEventAsync(CreateHealthEventRequest model);
+    Task<BaseResponse<HealthEventResponse>> CreateHealthEventWithMedicalItemsAsync(
+        CreateHealthEventWithMedicalItemsRequest model);
     Task<BaseResponse<HealthEventResponse>> UpdateHealthEventAsync(Guid eventId, UpdateHealthEventRequest model);
     Task<BaseResponse<bool>> DeleteHealthEventAsync(Guid eventId);
     Task<BaseListResponse<HealthEventResponse>> GetHealthEventsByStudentAsync(Guid studentId, int pageIndex, int pageSize, HealthEventType? eventType = null, DateTime? fromDate = null, DateTime? toDate = null, CancellationToken cancellationToken = default);

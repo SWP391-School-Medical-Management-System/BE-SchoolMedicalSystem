@@ -176,6 +176,71 @@ public class MedicalConditionService : IMedicalConditionService
         }
     }
 
+    public async Task<BaseListResponse<MedicalConditionResponse>> GetAllMedicalConditionByStudentIdAsync(
+    Guid studentId,
+    int pageIndex = 1,
+    int pageSize = 10,
+    MedicalConditionType? type = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var cacheKey = _cacheService.GenerateCacheKey(
+                MEDICAL_CONDITION_LIST_PREFIX,
+                "by_student",
+                studentId.ToString(),
+                pageIndex.ToString(),
+                pageSize.ToString(),
+                type?.ToString() ?? ""
+            );
+
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicalConditionResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                _logger.LogDebug("Medical conditions found in cache for student: {StudentId}", studentId);
+                return cachedResult;
+            }
+
+            var query = _unitOfWork.GetRepositoryByEntity<MedicalCondition>().GetQueryable()
+                .Include(mc => mc.MedicalRecord)
+                .ThenInclude(mr => mr.Student)
+                .Where(mc => !mc.IsDeleted && mc.MedicalRecord.Student.Id == studentId)
+                .AsQueryable();
+
+            if (type.HasValue)
+            {
+                query = query.Where(mc => mc.Type == type.Value);
+            }
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var medicalConditions = await query
+                .OrderByDescending(mc => mc.CreatedDate)
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var responses = medicalConditions.Select(MapToMedicalConditionResponse).ToList();
+
+            var result = BaseListResponse<MedicalConditionResponse>.SuccessResult(
+                responses,
+                totalCount,
+                pageSize,
+                pageIndex,
+                "Lấy danh sách tình trạng y tế theo học sinh thành công.");
+
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_CONDITION_CACHE_SET);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting medical conditions for student: {StudentId}", studentId);
+            return BaseListResponse<MedicalConditionResponse>.ErrorResult(
+                "Lỗi lấy danh sách tình trạng y tế theo học sinh.");
+        }
+    }
+
     public async Task<BaseListResponse<MedicalConditionResponse>> GetMedicalConditionsByRecordIdAsync(
         Guid medicalRecordId,
         MedicalConditionType? type = null,

@@ -92,6 +92,35 @@ public class MedicalConditionController : ControllerBase
         }
     }
 
+    [HttpGet("student/{studentId}")]
+    [Authorize(Roles = "SCHOOLNURSE,PARENT")]
+    public async Task<ActionResult<BaseListResponse<MedicalConditionResponse>>> GetAllMedicalConditionByStudentId(
+    Guid studentId,
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] MedicalConditionType? type = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<MedicalConditionResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var response = await _medicalConditionService.GetAllMedicalConditionByStudentIdAsync(
+                studentId, pageIndex, pageSize, type, cancellationToken);
+
+            if (!response.Success)
+                return NotFound(response);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, BaseListResponse<MedicalConditionResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
     [HttpPost]
     [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<MedicalConditionResponse>>> CreateMedicalCondition(
