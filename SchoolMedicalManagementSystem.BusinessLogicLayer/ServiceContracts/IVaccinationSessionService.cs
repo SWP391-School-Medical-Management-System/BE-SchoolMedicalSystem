@@ -86,6 +86,10 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
         Task<BaseResponse<StudentVaccinationResultResponse>> GetStudentVaccinationResultAsync(
             Guid sessionId, Guid studentId, CancellationToken cancellationToken = default);
 
+        Task<BaseResponse<bool>> CompleteSessionAsync(
+            Guid sessionId,
+            CancellationToken cancellationToken = default);
+
         #endregion
     }
 }

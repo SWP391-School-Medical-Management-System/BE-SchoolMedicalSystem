@@ -253,6 +253,24 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             }
         }
 
+        [HttpPut("{sessionId}/complete")]
+        [Authorize(Roles = "MANAGER")]
+        public async Task<ActionResult<BaseResponse<bool>>> CompleteSession(Guid sessionId)
+        {
+            try
+            {
+                var result = await _vaccinationSessionService.CompleteSessionAsync(sessionId);
+                if (!result.Success)
+                    return BadRequest(result);
+
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
         #endregion
 
         #region Student and Consent
