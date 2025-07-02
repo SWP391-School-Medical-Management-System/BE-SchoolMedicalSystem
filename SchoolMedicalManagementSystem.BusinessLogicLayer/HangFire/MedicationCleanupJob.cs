@@ -1,59 +1,30 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+﻿using Hangfire;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
-using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
-using Microsoft.EntityFrameworkCore;
-using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicationScheduleResponse;
 using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
+using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
 
-namespace SchoolMedicalManagementSystem.BusinessLogicLayer.BackgroundServices;
+namespace SchoolMedicalManagementSystem.BusinessLogicLayer.HangFire;
 
-/// <summary>
-/// Background Service for periodic cleanup of old medication-related data
-/// </summary>
-public class MedicationDataCleanupService : BackgroundService
+public class MedicationCleanupJob : IMedicationCleanupJob
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<MedicationDataCleanupService> _logger;
-    private readonly TimeSpan _checkInterval = TimeSpan.FromHours(6);
+    private readonly ILogger<MedicationCleanupJob> _logger;
     private readonly int _defaultRetentionDays = 30;
 
-    public MedicationDataCleanupService(
+    public MedicationCleanupJob(
         IServiceProvider serviceProvider,
-        ILogger<MedicationDataCleanupService> logger)
+        ILogger<MedicationCleanupJob> logger)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        _logger.LogInformation("MedicationDataCleanupService started with 6-hour interval");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                // Chạy cleanup vào lúc ít hoạt động (2:00 AM hoặc 8:00 PM)
-                var currentHour = DateTime.Now.Hour;
-                if (currentHour == 2 || currentHour == 20)
-                {
-                    await CleanupExpiredDataAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in data cleanup process");
-            }
-
-            await Task.Delay(_checkInterval, stoppingToken);
-        }
-    }
-
-    private async Task CleanupExpiredDataAsync()
+    [AutomaticRetry(Attempts = 2)]
+    public async Task CleanupExpiredDataAsync()
     {
         using var scope = _serviceProvider.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -72,37 +43,26 @@ public class MedicationDataCleanupService : BackgroundService
             }
 
             // Cleanup expired medications (30 days after end date)
-            var medicationResult = await CleanupExpiredMedicationsAsync(unitOfWork);
-            if (medicationResult.Success)
-            {
-                _logger.LogInformation("Cleaned up {Count} expired student medications",
-                    medicationResult.Data.RecordsDeleted);
-            }
+            await CleanupExpiredMedicationsAsync();
 
             // Cleanup old notifications (30 days old)
-            var notificationResult = await CleanupOldNotificationsAsync(unitOfWork);
-            if (notificationResult.Success)
-            {
-                _logger.LogInformation("Cleaned up {Count} old notifications",
-                    notificationResult.Data.RecordsDeleted);
-            }
+            await CleanupOldNotificationsAsync();
 
             // Cleanup old administration records
-            var administrationResult = await CleanupOldAdministrationRecordsAsync(unitOfWork);
-            if (administrationResult.Success)
-            {
-                _logger.LogInformation("Cleaned up {Count} old administration records",
-                    administrationResult.Data.RecordsDeleted);
-            }
+            await CleanupOldAdministrationRecordsAsync();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during cleanup process");
+            throw;
         }
     }
 
-    private async Task<BaseResponse<CleanupOperationResponse>> CleanupExpiredMedicationsAsync(IUnitOfWork unitOfWork)
+    public async Task CleanupExpiredMedicationsAsync()
     {
+        using var scope = _serviceProvider.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
         try
         {
             var cutoffDate = DateTime.Today.AddDays(-_defaultRetentionDays);
@@ -120,7 +80,6 @@ public class MedicationDataCleanupService : BackgroundService
 
             foreach (var medication in expiredMedications)
             {
-                // Kiểm tra không còn schedules pending
                 var hasActiveSchedules = await unitOfWork.GetRepositoryByEntity<MedicationSchedule>()
                     .GetQueryable()
                     .AnyAsync(ms => ms.StudentMedicationId == medication.Id &&
@@ -140,25 +99,20 @@ public class MedicationDataCleanupService : BackgroundService
                 await unitOfWork.SaveChangesAsync();
             }
 
-            var response = new CleanupOperationResponse
-            {
-                RecordsProcessed = expiredMedications.Count,
-                RecordsDeleted = deletedCount,
-                CleanupDate = DateTime.Now
-            };
-
-            return BaseResponse<CleanupOperationResponse>.SuccessResult(response,
-                $"Cleaned up {deletedCount} expired medications");
+            _logger.LogInformation("Cleaned up {Count} expired medications", deletedCount);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error cleaning up expired medications");
-            return BaseResponse<CleanupOperationResponse>.ErrorResult($"Error cleaning medications: {ex.Message}");
+            throw;
         }
     }
 
-    private async Task<BaseResponse<CleanupOperationResponse>> CleanupOldNotificationsAsync(IUnitOfWork unitOfWork)
+    public async Task CleanupOldNotificationsAsync()
     {
+        using var scope = _serviceProvider.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
         try
         {
             var cutoffDate = DateTime.Today.AddDays(-_defaultRetentionDays);
@@ -166,7 +120,7 @@ public class MedicationDataCleanupService : BackgroundService
             var oldNotifications = await unitOfWork.GetRepositoryByEntity<Notification>()
                 .GetQueryable()
                 .Where(n => n.CreatedDate < cutoffDate &&
-                            n.IsRead == true && // Chỉ xóa thông báo đã đọc
+                            n.IsRead == true &&
                             n.EndDate < DateTime.Now &&
                             !n.IsDeleted)
                 .Take(500)
@@ -187,27 +141,20 @@ public class MedicationDataCleanupService : BackgroundService
                 await unitOfWork.SaveChangesAsync();
             }
 
-            var response = new CleanupOperationResponse
-            {
-                RecordsProcessed = oldNotifications.Count,
-                RecordsDeleted = deletedCount,
-                CleanupDate = DateTime.Now
-            };
-
-            return BaseResponse<CleanupOperationResponse>.SuccessResult(response,
-                $"Cleaned up {deletedCount} old notifications");
+            _logger.LogInformation("Cleaned up {Count} old notifications", deletedCount);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error cleaning up old notifications");
-            return BaseResponse<CleanupOperationResponse>.ErrorResult($"Error cleaning notifications: {ex.Message}");
+            throw;
         }
     }
 
-    // Cleanup old administration records
-    private async Task<BaseResponse<CleanupOperationResponse>> CleanupOldAdministrationRecordsAsync(
-        IUnitOfWork unitOfWork)
+    public async Task CleanupOldAdministrationRecordsAsync()
     {
+        using var scope = _serviceProvider.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
         try
         {
             var cutoffDate = DateTime.Today.AddDays(-_defaultRetentionDays);
@@ -233,21 +180,12 @@ public class MedicationDataCleanupService : BackgroundService
                 await unitOfWork.SaveChangesAsync();
             }
 
-            var response = new CleanupOperationResponse
-            {
-                RecordsProcessed = oldAdministrations.Count,
-                RecordsDeleted = deletedCount,
-                CleanupDate = DateTime.Now
-            };
-
-            return BaseResponse<CleanupOperationResponse>.SuccessResult(response,
-                $"Cleaned up {deletedCount} old administration records");
+            _logger.LogInformation("Cleaned up {Count} old administration records", deletedCount);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error cleaning up old administration records");
-            return BaseResponse<CleanupOperationResponse>.ErrorResult(
-                $"Error cleaning administration records: {ex.Message}");
+            throw;
         }
     }
 }

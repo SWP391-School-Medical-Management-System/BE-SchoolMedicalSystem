@@ -1,51 +1,43 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
-using Microsoft.EntityFrameworkCore;
 
-namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services;
+namespace SchoolMedicalManagementSystem.BusinessLogicLayer.HangFire;
 
-public class MedicationReminderService : BackgroundService
+public class MedicationReminderJob : IMedicationReminderJob
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<MedicationReminderService> _logger;
-    private readonly TimeSpan _checkInterval = TimeSpan.FromMinutes(1);
+    private readonly ILogger<MedicationReminderJob> _logger;
 
-    public MedicationReminderService(
+    public MedicationReminderJob(
         IServiceProvider serviceProvider,
-        ILogger<MedicationReminderService> logger)
+        ILogger<MedicationReminderJob> logger)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public async Task ProcessAllRemindersAsync()
     {
-        _logger.LogInformation("MedicationReminderService started with 1-minute interval");
-
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try
-            {
-                await SendUpcomingRemindersAsync(); // 5 phút trước
-                await SendImmediateRemindersAsync(); // 1 phút trước  
-                await SendOverdueAlertsAsync(); // Quá hạn
-                await CheckLowStockAlertsAsync(); // Kiểm tra thuốc sắp hết
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in reminder processing");
-            }
-
-            await Task.Delay(_checkInterval, stoppingToken);
+            await SendUpcomingRemindersAsync(); // 5 phút trước
+            await SendImmediateRemindersAsync(); // 1 phút trước  
+            await SendOverdueAlertsAsync(); // Quá hạn
+            await CheckLowStockAlertsAsync(); // Kiểm tra thuốc sắp hết
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in reminder processing");
+            throw;
         }
     }
 
-    private async Task SendUpcomingRemindersAsync()
+    public async Task SendUpcomingRemindersAsync()
     {
         using var scope = _serviceProvider.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -87,7 +79,7 @@ public class MedicationReminderService : BackgroundService
         }
     }
 
-    private async Task SendImmediateRemindersAsync()
+    public async Task SendImmediateRemindersAsync()
     {
         using var scope = _serviceProvider.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -129,7 +121,7 @@ public class MedicationReminderService : BackgroundService
         }
     }
 
-    private async Task SendOverdueAlertsAsync()
+    public async Task SendOverdueAlertsAsync()
     {
         using var scope = _serviceProvider.CreateScope();
         var scheduleService = scope.ServiceProvider.GetRequiredService<IMedicationScheduleService>();
@@ -150,7 +142,7 @@ public class MedicationReminderService : BackgroundService
     }
 
     // Kiểm tra thuốc sắp hết
-    private async Task CheckLowStockAlertsAsync()
+    public async Task CheckLowStockAlertsAsync()
     {
         using var scope = _serviceProvider.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -187,6 +179,8 @@ public class MedicationReminderService : BackgroundService
             _logger.LogError(ex, "Error checking low stock");
         }
     }
+
+    #region Helper Methods
 
     private async Task CreateReminderNotificationsAsync(List<MedicationSchedule> schedules,
         IUnitOfWork unitOfWork, string reminderType)
@@ -318,4 +312,6 @@ public class MedicationReminderService : BackgroundService
             _ => "Không xác định"
         };
     }
+
+    #endregion
 }

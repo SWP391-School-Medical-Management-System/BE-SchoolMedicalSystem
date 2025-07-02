@@ -10,6 +10,7 @@ using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResp
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicationScheduleResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationAdministrationResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Utilities;
 using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
 using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 using SchoolMedicalManagementSystem.DataAccessLayer.UnitOfWorks.Interfaces;
@@ -104,6 +105,7 @@ public class MedicationScheduleService : IMedicationScheduleService
 
             foreach (var date in scheduleDates)
             {
+                var doseNumber = 1;
                 foreach (var time in request.ScheduledTimes)
                 {
                     try
@@ -113,7 +115,11 @@ public class MedicationScheduleService : IMedicationScheduleService
                                             ms.ScheduledDate.Date == date.Date &&
                                             ms.ScheduledTime == time && !ms.IsDeleted);
 
-                        if (exists) continue;
+                        if (exists) 
+                        {
+                            doseNumber++;
+                            continue;
+                        }
 
                         var schedule = new MedicationSchedule
                         {
@@ -122,6 +128,7 @@ public class MedicationScheduleService : IMedicationScheduleService
                             ScheduledDate = date,
                             ScheduledTime = time,
                             ScheduledDosage = medication.Dosage,
+                            DoseNumber = doseNumber,
                             Status = MedicationScheduleStatus.Pending,
                             Priority = request.Priority,
                             RequiresNurseConfirmation = request.RequireNurseConfirmation,
@@ -131,10 +138,12 @@ public class MedicationScheduleService : IMedicationScheduleService
                         };
 
                         newSchedules.Add(schedule);
+                        doseNumber++;
                     }
                     catch (Exception ex)
                     {
                         errors.Add($"Lỗi tạo lịch {date:dd/MM} {time}: {ex.Message}");
+                        doseNumber++;
                     }
                 }
             }
@@ -869,6 +878,7 @@ public class MedicationScheduleService : IMedicationScheduleService
 
             foreach (var date in scheduleDates)
             {
+                var doseNumber = 1;
                 foreach (var time in scheduleTimes)
                 {
                     try
@@ -878,7 +888,11 @@ public class MedicationScheduleService : IMedicationScheduleService
                                             ms.ScheduledDate.Date == date.Date &&
                                             ms.ScheduledTime == time && !ms.IsDeleted);
 
-                        if (exists) continue;
+                        if (exists) 
+                        {
+                            doseNumber++;
+                            continue;
+                        }
 
                         var schedule = new MedicationSchedule
                         {
@@ -887,6 +901,7 @@ public class MedicationScheduleService : IMedicationScheduleService
                             ScheduledDate = date,
                             ScheduledTime = time,
                             ScheduledDosage = medication.Dosage,
+                            DoseNumber = doseNumber,
                             Status = MedicationScheduleStatus.Pending,
                             Priority = medication.Priority,
                             RequiresNurseConfirmation = medication.RequireNurseConfirmation,
@@ -896,10 +911,12 @@ public class MedicationScheduleService : IMedicationScheduleService
                         };
 
                         newSchedules.Add(schedule);
+                        doseNumber++;
                     }
                     catch (Exception ex)
                     {
                         errors.Add($"Lỗi tạo lịch {date:dd/MM} {time}: {ex.Message}");
+                        doseNumber++;
                     }
                 }
             }
@@ -982,6 +999,7 @@ public class MedicationScheduleService : IMedicationScheduleService
     {
         var times = new List<TimeSpan>();
 
+        // 1. Ưu tiên SpecificTimes (JSON array)
         if (!string.IsNullOrEmpty(medication.SpecificTimes))
         {
             try
@@ -996,19 +1014,51 @@ public class MedicationScheduleService : IMedicationScheduleService
                             times.Add(timeSpan);
                         }
                     }
-
-                    if (times.Any())
-                        return times.OrderBy(t => t).ToList();
+                    return times.OrderBy(t => t).ToList();
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex,
-                    "Error parsing SpecificTimes for medication {MedicationId}, fallback to TimeOfDay", medication.Id);
+                _logger.LogWarning(ex, "Error parsing SpecificTimes for medication {MedicationId}", medication.Id);
             }
         }
 
-        return MapTimeOfDayToTimeSpan(medication.TimeOfDay);
+        // 2. Sử dụng TimesOfDay (JSON array)
+        if (!string.IsNullOrEmpty(medication.TimesOfDay))
+        {
+            try
+            {
+                var timeOfDayStrings = System.Text.Json.JsonSerializer.Deserialize<List<string>>(medication.TimesOfDay);
+                if (timeOfDayStrings != null && timeOfDayStrings.Any())
+                {
+                    foreach (var timeOfDayString in timeOfDayStrings)
+                    {
+                        if (Enum.TryParse<MedicationTimeOfDay>(timeOfDayString, out var timeOfDay))
+                        {
+                            times.AddRange(MapTimeOfDayToTimeSpan(timeOfDay));
+                        }
+                    }
+                    return times.OrderBy(t => t).ToList();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error parsing TimesOfDay for medication {MedicationId}", medication.Id);
+            }
+        }
+
+        // 3. Parse từ Frequency
+        if (!string.IsNullOrEmpty(medication.Frequency))
+        {
+            var (count, unit) = FrequencyParser.ParseFrequency(medication.Frequency);
+            if (unit == "lần/ngày" && count > 0)
+            {
+                return TimeGenerator.GenerateTimeSpansFromFrequency(count);
+            }
+        }
+
+        // 4. Fallback về default
+        return new List<TimeSpan> { new TimeSpan(8, 30, 0) };
     }
 
     public async Task<BaseResponse<BatchOperationResponse>> AutoMarkOverdueSchedulesAsync()
@@ -1298,14 +1348,15 @@ public class MedicationScheduleService : IMedicationScheduleService
     {
         return timeOfDay switch
         {
-            MedicationTimeOfDay.BeforeBreakfast => new List<TimeSpan> { new TimeSpan(7, 0, 0) },
+            MedicationTimeOfDay.Morning => new List<TimeSpan> { new TimeSpan(7, 0, 0) },
             MedicationTimeOfDay.AfterBreakfast => new List<TimeSpan> { new TimeSpan(8, 30, 0) },
+            MedicationTimeOfDay.MidMorning => new List<TimeSpan> { new TimeSpan(10, 0, 0) },
             MedicationTimeOfDay.BeforeLunch => new List<TimeSpan> { new TimeSpan(11, 30, 0) },
             MedicationTimeOfDay.AfterLunch => new List<TimeSpan> { new TimeSpan(13, 0, 0) },
-            MedicationTimeOfDay.BeforeDinner => new List<TimeSpan> { new TimeSpan(17, 30, 0) },
-            MedicationTimeOfDay.AfterDinner => new List<TimeSpan> { new TimeSpan(19, 0, 0) },
-            MedicationTimeOfDay.BeforeBed => new List<TimeSpan> { new TimeSpan(21, 0, 0) },
-            _ => new List<TimeSpan> { new TimeSpan(8, 0, 0) }
+            MedicationTimeOfDay.MidAfternoon => new List<TimeSpan> { new TimeSpan(14, 30, 0) },
+            MedicationTimeOfDay.LateAfternoon => new List<TimeSpan> { new TimeSpan(16, 0, 0) },
+            MedicationTimeOfDay.BeforeDismissal => new List<TimeSpan> { new TimeSpan(16, 30, 0) },
+            _ => new List<TimeSpan> { new TimeSpan(7, 0, 0) } // Default to Morning
         };
     }
 

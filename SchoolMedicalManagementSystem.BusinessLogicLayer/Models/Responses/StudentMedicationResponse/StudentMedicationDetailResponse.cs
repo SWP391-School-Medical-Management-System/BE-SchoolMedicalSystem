@@ -51,8 +51,8 @@ public class StudentMedicationDetailResponse
     
     public MedicationPriority Priority { get; set; }
     public string PriorityDisplayName { get; set; }
-    public MedicationTimeOfDay TimeOfDay { get; set; }
-    public string TimeOfDayDisplayName { get; set; }
+    public string TimesOfDay { get; set; }
+    public string TimesOfDayDisplayName { get; set; }
     
     // Audit từ entity
     public DateTime CreatedDate { get; set; }
@@ -75,4 +75,10 @@ public class StudentMedicationDetailResponse
     public bool IsExpiringSoon { get; set; }
     public bool IsLowStock { get; set; }
     public int? DaysUntilExpiry { get; set; }
+    
+    // Thông tin thêm về stock
+    public int TotalQuantitySent { get; set; }
+    public int UsedDoses { get; set; }
+    public double UsagePercentage { get; set; }
+    public bool IsStockAvailable { get; set; }
 }

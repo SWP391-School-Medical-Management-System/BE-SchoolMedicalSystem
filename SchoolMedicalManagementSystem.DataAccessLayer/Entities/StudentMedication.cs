@@ -16,6 +16,8 @@ public class StudentMedication : BaseEntity
     public string Dosage { get; set; }              // Liều lượng
     public string Instructions { get; set; }        // Hướng dẫn sử dụng
     public string Frequency { get; set; }           // Tần suất uống thuốc
+    public int? FrequencyCount { get; set; }        // 3, 2 - số lần uống/ngày
+    public string? FrequencyUnit { get; set; }      // "lần/ngày", "lần/tuần"
     public DateTime ExpiryDate { get; set; }        // Ngày hết hạn thuốc
     public string Purpose { get; set; }             // Mục đích sử dụng
     public string? SideEffects { get; set; }        // Tác dụng phụ
@@ -42,6 +44,7 @@ public class StudentMedication : BaseEntity
     public string? ManagementNotes { get; set; }       // Ghi chú quản lý từ y tá
     public bool SkipWeekends { get; set; } = false;    // Bỏ qua cuối tuần
     public string? SpecificTimes { get; set; }         // JSON: ["08:00", "12:00", "18:00"]
+    public string? TimesOfDay { get; set; }            // JSON: ["Morning", "AfterLunch", "LateAfternoon"]
     public string? SkipDates { get; set; }             // JSON: ["2024-12-25", "2024-01-01"]
     
     public StudentMedicationStatus Status { get; set; } // Trạng thái
@@ -49,7 +52,6 @@ public class StudentMedication : BaseEntity
     public DateTime? ApprovedAt { get; set; }        // Thời gian phê duyệt
     public DateTime? SubmittedAt { get; set; }       // Thời gian gửi yêu cầu
     public MedicationPriority Priority { get; set; } = MedicationPriority.Normal;
-    public MedicationTimeOfDay TimeOfDay { get; set; } = MedicationTimeOfDay.AfterBreakfast;
     
     // Navigation Properties
     public virtual ApplicationUser Student { get; set; }        // Học sinh

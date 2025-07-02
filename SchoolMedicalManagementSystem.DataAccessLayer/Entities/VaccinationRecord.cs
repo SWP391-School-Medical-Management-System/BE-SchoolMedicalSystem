@@ -11,8 +11,10 @@ public class VaccinationRecord : BaseEntity
     public int DoseNumber { get; set; }            // Số mũi tiêm (1, 2, 3)
     public DateTime? AdministeredDate { get; set; } // Ngày tiêm
     public string AdministeredBy { get; set; }     // Người tiêm
+    public Guid? AdministeredByUserId { get; set; } // Người tiêm
     public string BatchNumber { get; set; }        // Số lô vắc-xin
     public string Notes { get; set; }              // Ghi chú
+    public string NoteAfterSession { get; set; }   // Ghi chú sau khi tiêm
     public Guid? SessionId { get; set; }           // Foreign Key đến VaccinationSession, nullable
     public string VaccinationStatus { get; set; }  // Trạng thái tiêm: Scheduled, Completed, Missed, NotAdministered
     public string Symptoms { get; set; }           // Triệu chứng (nếu có)
@@ -22,4 +24,5 @@ public class VaccinationRecord : BaseEntity
     public virtual VaccinationType VaccinationType { get; set; } // Loại vắc-xin
     public virtual ICollection<Notification> Notifications { get; set; }    // Thông báo tiêm chủng
     public virtual VaccinationSession Session { get; set; }      // Quan hệ với buổi tiêm
+    public virtual ApplicationUser AdministeredByUser { get; set; } // Dùng để lấy tên người tiêm
 }
