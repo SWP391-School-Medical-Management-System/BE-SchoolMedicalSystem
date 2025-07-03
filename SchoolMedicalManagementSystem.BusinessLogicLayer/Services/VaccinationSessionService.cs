@@ -1031,126 +1031,126 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
         public async Task<BaseResponse<bool>> ParentApproveAsync(
             Guid sessionId,
+            Guid studentId,
             ParentApproveRequest request,
             CancellationToken cancellationToken = default)
+        {
+            try
             {
-                try
+                var validationResult = await _parentApproveValidator.ValidateAsync(request);
+                if (!validationResult.IsValid)
                 {
-                    var validationResult = await _parentApproveValidator.ValidateAsync(request);
-                    if (!validationResult.IsValid)
-                    {
-                        string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                        return new BaseResponse<bool>
-                        {
-                            Success = false,
-                            Message = errors
-                        };
-                    }
-
-                    return await _unitOfWork.ExecuteInTransactionAsync(async () =>
-                    {
-                        // Lấy tất cả các VaccinationConsent liên quan đến sessionId
-                        var consents = await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().GetQueryable()
-                            .Include(c => c.Parent)
-                            .Include(c => c.Student)
-                            .Include(c => c.Session)
-                                .ThenInclude(s => s.VaccineType)
-                            .Where(c => c.SessionId == sessionId && !c.IsDeleted && c.ParentId != null)
-                            .ToListAsync(cancellationToken);
-
-                        var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
-                        if (!Guid.TryParse(userIdClaim, out var parentId))
-                        {
-                            throw new UnauthorizedAccessException("Không thể xác định ID phụ huynh.");
-                        }
-
-                        // Tìm consent hiện có của phụ huynh
-                        var consentToUpdate = consents.FirstOrDefault(c => c.ParentId == parentId && c.Status == "Pending");
-
-                        // Nếu không tìm thấy consent, tạo mới
-                        if (consentToUpdate == null)
-                        {
-                            var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                                .FirstOrDefaultAsync(u => u.ParentId == parentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"), cancellationToken);
-                            if (student == null)
-                            {
-                                return new BaseResponse<bool>
-                                {
-                                    Success = false,
-                                    Message = "Không tìm thấy học sinh cho phụ huynh này."
-                                };
-                            }
-
-                            var parent = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                                .FirstOrDefaultAsync(u => u.Id == parentId, cancellationToken);
-                            var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
-                                .Include(s => s.VaccineType)
-                                .FirstOrDefaultAsync(s => s.Id == sessionId && !s.IsDeleted, cancellationToken);
-
-                            if (parent == null || session == null)
-                            {
-                                return new BaseResponse<bool>
-                                {
-                                    Success = false,
-                                    Message = "Dữ liệu phụ huynh hoặc buổi tiêm không hợp lệ."
-                                };
-                            }
-
-                            consentToUpdate = new VaccinationConsent
-                            {
-                                Id = Guid.NewGuid(),
-                                SessionId = sessionId,
-                                StudentId = student.Id,
-                                ParentId = parentId,
-                                Status = "Pending",
-                                CreatedDate = DateTime.UtcNow,
-                                IsDeleted = false,
-                                ConsentFormUrl = "",
-                                Parent = parent, // Gán đối tượng Parent
-                                Student = student, // Gán đối tượng Student
-                                Session = session // Gán đối tượng Session
-                            };
-                            await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().AddAsync(consentToUpdate);
-                            await _unitOfWork.SaveChangesAsync(cancellationToken);
-                            consents.Add(consentToUpdate);
-                        }
-
-                        // Cập nhật trạng thái consent
-                        consentToUpdate.Status = request.Status;
-                        consentToUpdate.ResponseDate = DateTime.UtcNow;
-
-                        await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().UpdateAsync(consentToUpdate);
-                        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                        var emailBody = GenerateConfirmationEmail(consentToUpdate);
-                        await _emailService.SendEmailAsync(consentToUpdate.Parent.Email,
-                            $"Xác nhận {request.Status} yêu cầu tiêm vaccine",
-                            emailBody);
-
-                        _logger.LogInformation("Phụ huynh {ParentId} đã {Status} yêu cầu đồng ý {ConsentId} cho học sinh {StudentId}",
-                            parentId, request.Status, consentToUpdate.Id, consentToUpdate.StudentId);
-
-                        return new BaseResponse<bool>
-                        {
-                            Success = true,
-                            Data = true,
-                            Message = $"Yêu cầu đồng ý đã được {request.Status.ToLower()}."
-                        };
-                    }, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Lỗi khi xử lý yêu cầu đồng ý cho buổi tiêm {SessionId}. InnerException: {InnerException}",
-                        sessionId, ex.InnerException?.ToString() ?? "Không có InnerException");
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
                     return new BaseResponse<bool>
                     {
                         Success = false,
-                        Data = false,
-                        Message = $"Lỗi khi xử lý yêu cầu đồng ý: {ex.Message}"
+                        Message = errors
                     };
                 }
-            }
 
+                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                {
+                    // Lấy tất cả các VaccinationConsent liên quan đến sessionId
+                    var consents = await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().GetQueryable()
+                        .Include(c => c.Parent)
+                        .Include(c => c.Student)
+                        .Include(c => c.Session)
+                            .ThenInclude(s => s.VaccineType)
+                        .Where(c => c.SessionId == sessionId && !c.IsDeleted && c.ParentId != null)
+                        .ToListAsync(cancellationToken);
+
+                    var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var parentId))
+                    {
+                        throw new UnauthorizedAccessException("Không thể xác định ID phụ huynh.");
+                    }
+
+                    // Tìm consent hiện có của phụ huynh cho học sinh cụ thể
+                    var consentToUpdate = consents.FirstOrDefault(c => c.ParentId == parentId && c.StudentId == studentId && c.Status == "Pending");
+
+                    // Nếu không tìm thấy consent, tạo mới
+                    if (consentToUpdate == null)
+                    {
+                        var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                            .FirstOrDefaultAsync(u => u.Id == studentId && u.ParentId == parentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"), cancellationToken);
+                        if (student == null)
+                        {
+                            return new BaseResponse<bool>
+                            {
+                                Success = false,
+                                Message = "Không tìm thấy học sinh cho phụ huynh này."
+                            };
+                        }
+
+                        var parent = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                            .FirstOrDefaultAsync(u => u.Id == parentId, cancellationToken);
+                        var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
+                            .Include(s => s.VaccineType)
+                            .FirstOrDefaultAsync(s => s.Id == sessionId && !s.IsDeleted, cancellationToken);
+
+                        if (parent == null || session == null)
+                        {
+                            return new BaseResponse<bool>
+                            {
+                                Success = false,
+                                Message = "Dữ liệu phụ huynh hoặc buổi tiêm không hợp lệ."
+                            };
+                        }
+
+                        consentToUpdate = new VaccinationConsent
+                        {
+                            Id = Guid.NewGuid(),
+                            SessionId = sessionId,
+                            StudentId = studentId,
+                            ParentId = parentId,
+                            Status = "Pending",
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false,
+                            ConsentFormUrl = "",
+                            Parent = parent,
+                            Student = student,
+                            Session = session
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().AddAsync(consentToUpdate);
+                        await _unitOfWork.SaveChangesAsync(cancellationToken);
+                        consents.Add(consentToUpdate);
+                    }
+
+                    // Cập nhật trạng thái consent
+                    consentToUpdate.Status = request.Status;
+                    consentToUpdate.ResponseDate = DateTime.UtcNow;
+
+                    await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().UpdateAsync(consentToUpdate);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                    var emailBody = GenerateConfirmationEmail(consentToUpdate);
+                    await _emailService.SendEmailAsync(consentToUpdate.Parent.Email,
+                        $"Xác nhận {request.Status} yêu cầu tiêm vaccine",
+                        emailBody);
+
+                    _logger.LogInformation("Phụ huynh {ParentId} đã {Status} yêu cầu đồng ý {ConsentId} cho học sinh {StudentId}",
+                        parentId, request.Status, consentToUpdate.Id, studentId);
+
+                    return new BaseResponse<bool>
+                    {
+                        Success = true,
+                        Data = true,
+                        Message = $"Yêu cầu đồng ý đã được {request.Status.ToLower()}."
+                    };
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xử lý yêu cầu đồng ý cho buổi tiêm {SessionId} và học sinh {StudentId}. InnerException: {InnerException}",
+                    sessionId, studentId, ex.InnerException?.ToString() ?? "Không có InnerException");
+                return new BaseResponse<bool>
+                {
+                    Success = false,
+                    Data = false,
+                    Message = $"Lỗi khi xử lý yêu cầu đồng ý: {ex.Message}"
+                };
+            }
+        }
         public async Task<BaseResponse<bool>> AssignNurseToSessionAsync(
          AssignNurseToSessionRequest request,
          CancellationToken cancellationToken = default)

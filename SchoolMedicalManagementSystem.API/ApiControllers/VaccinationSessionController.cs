@@ -201,11 +201,14 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
 
         [HttpPut("{sessionId}/parent-approval")]
         [Authorize(Roles = "PARENT")]
-        public async Task<ActionResult<BaseResponse<bool>>> ParentApprove(Guid sessionId, [FromBody] ParentApproveRequest request)
+        public async Task<ActionResult<BaseResponse<bool>>> ParentApprove(
+            Guid sessionId,
+            Guid studentId,
+            [FromBody] ParentApproveRequest request)
         {
             try
             {
-                var result = await _vaccinationSessionService.ParentApproveAsync(sessionId, request);
+                var result = await _vaccinationSessionService.ParentApproveAsync(sessionId, studentId, request);
                 if (!result.Success)
                     return BadRequest(result);
 
