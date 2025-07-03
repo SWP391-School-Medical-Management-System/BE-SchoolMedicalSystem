@@ -1655,21 +1655,32 @@ public class HealthEventService : IHealthEventService
     {
         try
         {
-            _logger.LogDebug("Starting cache invalidation for health events");
+            _logger.LogDebug("Starting comprehensive cache invalidation for health events and related entities");
+            var keysBefore = await _cacheService.GetKeysByPatternAsync("*health_event*");
+            _logger.LogDebug("Cache keys before invalidation: {Keys}", string.Join(", ", keysBefore));
 
+            // Xóa toàn bộ tracking set của HealthEvent
+            await _cacheService.InvalidateTrackingSetAsync(HEALTH_EVENT_CACHE_SET);
+            // Xóa các tiền tố liên quan đến HealthEvent và các thực thể liên quan
             await Task.WhenAll(
                 _cacheService.RemoveByPrefixAsync(HEALTH_EVENT_CACHE_PREFIX),
                 _cacheService.RemoveByPrefixAsync(HEALTH_EVENT_LIST_PREFIX),
-                _cacheService.RemoveByPrefixAsync(STATISTICS_PREFIX)
+                _cacheService.RemoveByPrefixAsync(STATISTICS_PREFIX),
+                // Xóa cache liên quan đến MedicalItem, MedicalItemUsage, và Notification
+                _cacheService.RemoveByPrefixAsync("medical_item"),
+                _cacheService.RemoveByPrefixAsync("medical_items_list"),
+                _cacheService.RemoveByPrefixAsync("medical_item_usage"),
+                _cacheService.RemoveByPrefixAsync("notification"),
+                _cacheService.RemoveByPrefixAsync("notifications_list")
             );
 
-            await Task.Delay(100);
-
-            _logger.LogDebug("Completed cache invalidation for health events");
+            var keysAfter = await _cacheService.GetKeysByPatternAsync("*health_event*");
+            _logger.LogDebug("Cache keys after invalidation: {Keys}", string.Join(", ", keysAfter));
+            _logger.LogDebug("Completed comprehensive cache invalidation for health events and related entities");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in cache invalidation for health events");
+            _logger.LogError(ex, "Error in comprehensive cache invalidation for health events");
         }
     }
 

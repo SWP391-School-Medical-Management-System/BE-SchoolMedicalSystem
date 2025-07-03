@@ -1787,13 +1787,16 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             try
             {
                 _logger.LogDebug("Starting cache invalidation for vaccination sessions");
+                // Xóa toàn bộ tracking set để làm mới tất cả các khóa cache
+                await _cacheService.InvalidateTrackingSetAsync(SESSION_CACHE_SET);
+                // Xóa thêm các tiền tố cụ thể để đảm bảo
                 await Task.WhenAll(
-                    _cacheService.RemoveByPrefixAsync("vaccination_session"),
-                    _cacheService.RemoveByPrefixAsync("vaccination_sessions_list"),
+                    _cacheService.RemoveByPrefixAsync(SESSION_CACHE_PREFIX),
+                    _cacheService.RemoveByPrefixAsync(SESSION_LIST_PREFIX),
                     _cacheService.RemoveByPrefixAsync("student_vaccination_result"),
-                    _cacheService.RemoveByPrefixAsync("parent_consent_status")
+                    _cacheService.RemoveByPrefixAsync("parent_consent_status"),
+                    _cacheService.RemoveByPrefixAsync("student_sessions")
                 );
-                await Task.Delay(100);
                 _logger.LogDebug("Completed cache invalidation for vaccination sessions");
             }
             catch (Exception ex)
