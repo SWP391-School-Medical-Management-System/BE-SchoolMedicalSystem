@@ -62,9 +62,10 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
         Task<BaseResponse<bool>> FinalizeSessionAsync(Guid sessionId);
 
         Task<BaseResponse<bool>> ParentApproveAsync(
-          Guid sessionId,
-          ParentApproveRequest request,
-          CancellationToken cancellationToken = default);
+             Guid sessionId,
+             Guid studentId,
+             ParentApproveRequest request,
+             CancellationToken cancellationToken = default);
 
         Task<BaseResponse<bool>> AssignNurseToSessionAsync(
             AssignNurseToSessionRequest request,
