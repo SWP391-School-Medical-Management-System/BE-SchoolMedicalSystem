@@ -81,7 +81,7 @@ public class SchoolClassService : ISchoolClassService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<SchoolClassSummaryResponse>>(cacheKey);
             if (cachedResult != null)
             {
-                _logger.LogDebug("School classes list found in cache");
+                _logger.LogDebug("School classes list found in cache with key: {CacheKey}", cacheKey);
                 return cachedResult;
             }
 
@@ -111,6 +111,7 @@ public class SchoolClassService : ISchoolClassService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, CLASS_CACHE_SET);
+            _logger.LogDebug("Cached school classes list with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -130,7 +131,7 @@ public class SchoolClassService : ISchoolClassService
 
             if (cachedResponse != null)
             {
-                _logger.LogDebug("School class found in cache: {ClassId}", classId);
+                _logger.LogDebug("School class found in cache with key: {CacheKey}", cacheKey);
                 return cachedResponse;
             }
 
@@ -144,35 +145,24 @@ public class SchoolClassService : ISchoolClassService
 
             if (schoolClass == null)
             {
-                return new BaseResponse<SchoolClassResponse>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy lớp học."
-                };
+                return BaseResponse<SchoolClassResponse>.ErrorResult("Không tìm thấy lớp học.");
             }
 
             var classResponse = MapToClassResponse(schoolClass);
 
-            var response = new BaseResponse<SchoolClassResponse>
-            {
-                Success = true,
-                Data = classResponse,
-                Message = "Lấy thông tin lớp học thành công."
-            };
+            var response = BaseResponse<SchoolClassResponse>.SuccessResult(
+                classResponse, "Lấy thông tin lớp học thành công.");
 
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, CLASS_CACHE_SET);
+            _logger.LogDebug("Cached school class with key: {CacheKey}", cacheKey);
 
             return response;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting school class by ID: {ClassId}", classId);
-            return new BaseResponse<SchoolClassResponse>
-            {
-                Success = false,
-                Message = $"Lỗi lấy thông tin lớp học: {ex.Message}"
-            };
+            return BaseResponse<SchoolClassResponse>.ErrorResult($"Lỗi lấy thông tin lớp học: {ex.Message}");
         }
     }
 
@@ -184,11 +174,7 @@ public class SchoolClassService : ISchoolClassService
             if (!validationResult.IsValid)
             {
                 string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                return new BaseResponse<SchoolClassResponse>
-                {
-                    Success = false,
-                    Message = errors
-                };
+                return BaseResponse<SchoolClassResponse>.ErrorResult(errors);
             }
 
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
@@ -199,11 +185,7 @@ public class SchoolClassService : ISchoolClassService
 
             if (duplicateExists)
             {
-                return new BaseResponse<SchoolClassResponse>
-                {
-                    Success = false,
-                    Message = "Tên lớp học đã tồn tại trong năm học này."
-                };
+                return BaseResponse<SchoolClassResponse>.ErrorResult("Tên lớp học đã tồn tại trong năm học này.");
             }
 
             var managerRoleName = await GetManagerRoleName();
@@ -216,25 +198,26 @@ public class SchoolClassService : ISchoolClassService
             await classRepo.AddAsync(schoolClass);
             await _unitOfWork.SaveChangesAsync();
 
+            // Xóa cache cụ thể
+            var classCacheKey = _cacheService.GenerateCacheKey(CLASS_CACHE_PREFIX, schoolClass.Id.ToString());
+            await _cacheService.RemoveAsync(classCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho school class detail: {CacheKey}", classCacheKey);
+            await _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách school classes với prefix: {Prefix}", CLASS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             var classResponse = MapToClassResponse(schoolClass);
 
-            return new BaseResponse<SchoolClassResponse>
-            {
-                Success = true,
-                Data = classResponse,
-                Message = "Tạo lớp học thành công."
-            };
+            _logger.LogInformation("Created school class {ClassId}", schoolClass.Id);
+
+            return BaseResponse<SchoolClassResponse>.SuccessResult(
+                classResponse, "Tạo lớp học thành công.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating school class");
-            return new BaseResponse<SchoolClassResponse>
-            {
-                Success = false,
-                Message = $"Lỗi tạo lớp học: {ex.Message}"
-            };
+            return BaseResponse<SchoolClassResponse>.ErrorResult($"Lỗi tạo lớp học: {ex.Message}");
         }
     }
 
@@ -247,11 +230,7 @@ public class SchoolClassService : ISchoolClassService
             if (!validationResult.IsValid)
             {
                 string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                return new BaseResponse<SchoolClassResponse>
-                {
-                    Success = false,
-                    Message = errors
-                };
+                return BaseResponse<SchoolClassResponse>.ErrorResult(errors);
             }
 
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
@@ -262,11 +241,7 @@ public class SchoolClassService : ISchoolClassService
 
             if (schoolClass == null)
             {
-                return new BaseResponse<SchoolClassResponse>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy lớp học."
-                };
+                return BaseResponse<SchoolClassResponse>.ErrorResult("Không tìm thấy lớp học.");
             }
 
             var duplicateExists = await classRepo.GetQueryable()
@@ -277,11 +252,7 @@ public class SchoolClassService : ISchoolClassService
 
             if (duplicateExists)
             {
-                return new BaseResponse<SchoolClassResponse>
-                {
-                    Success = false,
-                    Message = "Tên lớp học đã tồn tại trong năm học này."
-                };
+                return BaseResponse<SchoolClassResponse>.ErrorResult("Tên lớp học đã tồn tại trong năm học này.");
             }
 
             var managerRoleName = await GetManagerRoleName();
@@ -293,25 +264,27 @@ public class SchoolClassService : ISchoolClassService
             schoolClass.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể
+            var classCacheKey = _cacheService.GenerateCacheKey(CLASS_CACHE_PREFIX, classId.ToString());
+            await _cacheService.RemoveAsync(classCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho school class detail: {CacheKey}", classCacheKey);
+            await _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách school classes với prefix: {Prefix}", CLASS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             var classResponse = MapToClassResponse(schoolClass);
 
-            return new BaseResponse<SchoolClassResponse>
-            {
-                Success = true,
-                Data = classResponse,
-                Message = "Cập nhật lớp học thành công."
-            };
+            _logger.LogInformation("Updated school class {ClassId}", classId);
+
+            return BaseResponse<SchoolClassResponse>.SuccessResult(
+                classResponse, "Cập nhật lớp học thành công.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating school class");
-            return new BaseResponse<SchoolClassResponse>
-            {
-                Success = false,
-                Message = $"Lỗi cập nhật lớp học: {ex.Message}"
-            };
+            _logger.LogError(ex, "Error updating school class: {ClassId}", classId);
+            return BaseResponse<SchoolClassResponse>.ErrorResult($"Lỗi cập nhật lớp học: {ex.Message}");
         }
     }
 
@@ -327,20 +300,12 @@ public class SchoolClassService : ISchoolClassService
 
             if (schoolClass == null)
             {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy lớp học."
-                };
+                return BaseResponse<bool>.ErrorResult("Không tìm thấy lớp học.");
             }
 
             if (schoolClass.StudentClasses != null && schoolClass.StudentClasses.Any(sc => !sc.IsDeleted))
             {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không thể xóa lớp học đang có học sinh. Vui lòng chuyển học sinh sang lớp khác trước."
-                };
+                return BaseResponse<bool>.ErrorResult("Không thể xóa lớp học đang có học sinh. Vui lòng chuyển học sinh sang lớp khác trước.");
             }
 
             var managerRoleName = await GetManagerRoleName();
@@ -350,24 +315,24 @@ public class SchoolClassService : ISchoolClassService
             schoolClass.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể
+            var classCacheKey = _cacheService.GenerateCacheKey(CLASS_CACHE_PREFIX, classId.ToString());
+            await _cacheService.RemoveAsync(classCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho school class detail: {CacheKey}", classCacheKey);
+            await _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách school classes với prefix: {Prefix}", CLASS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
-            return new BaseResponse<bool>
-            {
-                Success = true,
-                Data = true,
-                Message = "Xóa lớp học thành công."
-            };
+            _logger.LogInformation("Deleted school class {ClassId}", classId);
+
+            return BaseResponse<bool>.SuccessResult(true, "Xóa lớp học thành công.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting school class: {ClassId}", classId);
-            return new BaseResponse<bool>
-            {
-                Success = false,
-                Data = false,
-                Message = $"Lỗi xóa lớp học: {ex.Message}"
-            };
+            return BaseResponse<bool>.ErrorResult($"Lỗi xóa lớp học: {ex.Message}");
         }
     }
 
@@ -384,11 +349,7 @@ public class SchoolClassService : ISchoolClassService
             if (!validationResult.IsValid)
             {
                 string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                return new BaseResponse<StudentsBatchResponse>
-                {
-                    Success = false,
-                    Message = errors
-                };
+                return BaseResponse<StudentsBatchResponse>.ErrorResult(errors);
             }
 
             var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
@@ -397,11 +358,7 @@ public class SchoolClassService : ISchoolClassService
 
             if (schoolClass == null)
             {
-                return new BaseResponse<StudentsBatchResponse>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy lớp học."
-                };
+                return BaseResponse<StudentsBatchResponse>.ErrorResult("Không tìm thấy lớp học.");
             }
 
             var response = new StudentsBatchResponse
@@ -531,26 +488,43 @@ public class SchoolClassService : ISchoolClassService
             if (response.SuccessCount > 0)
             {
                 await _unitOfWork.SaveChangesAsync();
+
+                // Xóa cache cụ thể
+                var classCacheKey = _cacheService.GenerateCacheKey(CLASS_CACHE_PREFIX, classId.ToString());
+                await _cacheService.RemoveAsync(classCacheKey);
+                _logger.LogDebug("Đã xóa cache cụ thể cho school class detail: {CacheKey}", classCacheKey);
+                await _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách school classes với prefix: {Prefix}", CLASS_LIST_PREFIX);
+                await _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách students với prefix: {Prefix}", STUDENT_LIST_PREFIX);
+                foreach (var studentId in model.StudentIds)
+                {
+                    var studentCacheKey = _cacheService.GenerateCacheKey(STUDENT_CACHE_PREFIX, studentId.ToString());
+                    await _cacheService.RemoveAsync(studentCacheKey);
+                    _logger.LogDebug("Đã xóa cache cụ thể cho student detail: {CacheKey}", studentCacheKey);
+                }
+                foreach (var parentId in studentsWithParents)
+                {
+                    var parentCacheKey = _cacheService.GenerateCacheKey(PARENT_CACHE_PREFIX, parentId.ToString());
+                    await _cacheService.RemoveAsync(parentCacheKey);
+                    _logger.LogDebug("Đã xóa cache cụ thể cho parent detail: {CacheKey}", parentCacheKey);
+                }
+                await _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách parents với prefix: {Prefix}", PARENT_LIST_PREFIX);
+
                 await InvalidateAllCachesAsync();
             }
 
-            return new BaseResponse<StudentsBatchResponse>
-            {
-                Success = response.SuccessCount > 0,
-                Data = response,
-                Message = response.SuccessCount > 0
-                    ? $"Thêm thành công {response.SuccessCount}/{response.TotalStudents} học sinh vào lớp {schoolClass.Name}."
-                    : "Không có học sinh nào được thêm vào lớp."
-            };
+            _logger.LogInformation("Added {SuccessCount}/{TotalCount} students to class {ClassId}", response.SuccessCount, response.TotalStudents, classId);
+
+            return BaseResponse<StudentsBatchResponse>.SuccessResult(
+                response,
+                $"Thêm thành công {response.SuccessCount}/{response.TotalStudents} học sinh vào lớp {schoolClass.Name}.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error adding students to class: {ClassId}", classId);
-            return new BaseResponse<StudentsBatchResponse>
-            {
-                Success = false,
-                Message = $"Lỗi thêm học sinh vào lớp: {ex.Message}"
-            };
+            return BaseResponse<StudentsBatchResponse>.ErrorResult($"Lỗi thêm học sinh vào lớp: {ex.Message}");
         }
     }
 
@@ -569,20 +543,12 @@ public class SchoolClassService : ISchoolClassService
 
             if (studentClass == null)
             {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy học sinh trong lớp học này."
-                };
+                return BaseResponse<bool>.ErrorResult("Không tìm thấy học sinh trong lớp học này.");
             }
 
             if (!studentClass.Student.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
             {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Người dùng không phải là học sinh."
-                };
+                return BaseResponse<bool>.ErrorResult("Người dùng không phải là học sinh.");
             }
 
             var managerRoleName = await GetManagerRoleName();
@@ -592,24 +558,38 @@ public class SchoolClassService : ISchoolClassService
             studentClass.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể
+            var classCacheKey = _cacheService.GenerateCacheKey(CLASS_CACHE_PREFIX, classId.ToString());
+            await _cacheService.RemoveAsync(classCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho school class detail: {CacheKey}", classCacheKey);
+            await _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách school classes với prefix: {Prefix}", CLASS_LIST_PREFIX);
+            var studentCacheKey = _cacheService.GenerateCacheKey(STUDENT_CACHE_PREFIX, studentId.ToString());
+            await _cacheService.RemoveAsync(studentCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho student detail: {CacheKey}", studentCacheKey);
+            await _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách students với prefix: {Prefix}", STUDENT_LIST_PREFIX);
+            var parentId = studentClass.Student.ParentId;
+            if (parentId.HasValue)
+            {
+                var parentCacheKey = _cacheService.GenerateCacheKey(PARENT_CACHE_PREFIX, parentId.Value.ToString());
+                await _cacheService.RemoveAsync(parentCacheKey);
+                _logger.LogDebug("Đã xóa cache cụ thể cho parent detail: {CacheKey}", parentCacheKey);
+            }
+            await _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách parents với prefix: {Prefix}", PARENT_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
-            return new BaseResponse<bool>
-            {
-                Success = true,
-                Data = true,
-                Message = "Xóa học sinh khỏi lớp thành công."
-            };
+            _logger.LogInformation("Removed student {StudentId} from class {ClassId}", studentId, classId);
+
+            return BaseResponse<bool>.SuccessResult(true, "Xóa học sinh khỏi lớp thành công.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error removing student from class: {ClassId} <- {StudentId}", classId, studentId);
-            return new BaseResponse<bool>
-            {
-                Success = false,
-                Data = false,
-                Message = $"Lỗi xóa học sinh khỏi lớp: {ex.Message}"
-            };
+            return BaseResponse<bool>.ErrorResult($"Lỗi xóa học sinh khỏi lớp: {ex.Message}");
         }
     }
 
@@ -681,21 +661,13 @@ public class SchoolClassService : ISchoolClassService
             if (!validationResult.IsValid)
             {
                 string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                return new BaseResponse<SchoolClassImportResponse>
-                {
-                    Success = false,
-                    Message = errors
-                };
+                return BaseResponse<SchoolClassImportResponse>.ErrorResult(errors);
             }
 
             var excelResult = await _excelService.ReadSchoolClassExcelAsync(request.ExcelFile);
             if (!excelResult.Success)
             {
-                return new BaseResponse<SchoolClassImportResponse>
-                {
-                    Success = false,
-                    Message = excelResult.Message
-                };
+                return BaseResponse<SchoolClassImportResponse>.ErrorResult(excelResult.Message);
             }
 
             var importResponse = new SchoolClassImportResponse
@@ -794,6 +766,24 @@ public class SchoolClassService : ISchoolClassService
             if (successCount > 0)
             {
                 await _unitOfWork.SaveChangesAsync();
+
+                // Xóa cache cụ thể
+                await _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách school classes với prefix: {Prefix}", CLASS_LIST_PREFIX);
+                foreach (var excelClass in excelResult.ValidData.Where(c => importResponse.ImportDetails.Any(d => d.Name == c.Name && d.IsSuccess)))
+                {
+                    var existingClass = await classRepo.GetQueryable()
+                        .FirstOrDefaultAsync(c => c.Name == excelClass.Name &&
+                                                  c.AcademicYear == excelClass.AcademicYear &&
+                                                  !c.IsDeleted);
+                    if (existingClass != null)
+                    {
+                        var classCacheKey = _cacheService.GenerateCacheKey(CLASS_CACHE_PREFIX, existingClass.Id.ToString());
+                        await _cacheService.RemoveAsync(classCacheKey);
+                        _logger.LogDebug("Đã xóa cache cụ thể cho school class detail: {CacheKey}", classCacheKey);
+                    }
+                }
+
                 await InvalidateAllCachesAsync();
             }
 
@@ -809,21 +799,15 @@ public class SchoolClassService : ISchoolClassService
                 importResponse.Errors = excelResult.Errors;
             }
 
-            return new BaseResponse<SchoolClassImportResponse>
-            {
-                Success = true,
-                Data = importResponse,
-                Message = "Xử lý import Excel hoàn tất."
-            };
+            _logger.LogInformation("Imported {SuccessCount}/{TotalRows} school classes from Excel", successCount, excelResult.TotalRows);
+
+            return BaseResponse<SchoolClassImportResponse>.SuccessResult(
+                importResponse, "Xử lý import Excel hoàn tất.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error importing school classes from Excel");
-            return new BaseResponse<SchoolClassImportResponse>
-            {
-                Success = false,
-                Message = $"Lỗi import Excel: {ex.Message}"
-            };
+            return BaseResponse<SchoolClassImportResponse>.ErrorResult($"Lỗi import Excel: {ex.Message}");
         }
     }
 
@@ -964,9 +948,12 @@ public class SchoolClassService : ISchoolClassService
     {
         try
         {
-            _logger.LogDebug("Starting complete cache invalidation");
+            _logger.LogDebug("Starting comprehensive cache invalidation for school classes, students, and parents");
+            var keysBefore = await _cacheService.GetKeysByPatternAsync("*class*");
+            _logger.LogDebug("Cache keys before invalidation: {Keys}", string.Join(", ", keysBefore));
 
             await Task.WhenAll(
+                _cacheService.InvalidateTrackingSetAsync(CLASS_CACHE_SET),
                 _cacheService.RemoveByPrefixAsync(CLASS_CACHE_PREFIX),
                 _cacheService.RemoveByPrefixAsync(CLASS_LIST_PREFIX),
                 _cacheService.RemoveByPrefixAsync(STUDENT_CACHE_PREFIX),
@@ -975,13 +962,13 @@ public class SchoolClassService : ISchoolClassService
                 _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX)
             );
 
-            await Task.Delay(100);
-
-            _logger.LogDebug("Completed complete cache invalidation");
+            var keysAfter = await _cacheService.GetKeysByPatternAsync("*class*");
+            _logger.LogDebug("Cache keys after invalidation: {Keys}", string.Join(", ", keysAfter));
+            _logger.LogDebug("Completed comprehensive cache invalidation for school classes, students, and parents");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in complete cache invalidation");
+            _logger.LogError(ex, "Error in comprehensive cache invalidation for school classes");
         }
     }
 

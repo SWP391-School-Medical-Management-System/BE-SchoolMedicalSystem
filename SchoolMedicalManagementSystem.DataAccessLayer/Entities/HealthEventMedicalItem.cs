@@ -15,8 +15,10 @@ public class HealthEventMedicalItem : BaseEntity
     public string? NurseName { get; set; }        // Tên y tá xử lý (có thể null nếu chưa phân công)
     public string? MedicationName { get; set; }   // Tên thuốc (có thể null nếu không sử dụng thuốc)
     public double? MedicationQuantity { get; set; } // Số lượng thuốc
-    public string? MedicationDosage { get; set; } // Liều lượng thuốc (ví dụ: "500mg mỗi 8 giờ")
+    public string? MedicationDosage { get; set; } // Note về thuốc(uống lúc nào, không được quá liều...)
     public double? SupplyQuantity { get; set; }   // Số lượng vật tư y tế (có thể null nếu không sử dụng vật tư)
+    public double? Dose { get; set; }            // Số liều uống
+    public double? MedicalPerOnce { get; set; }   // Số thuốc uống trên 1 liều 
 
     // Navigation properties
     public virtual HealthEvent HealthEvent { get; set; }       // Sự kiện y tế liên quan
