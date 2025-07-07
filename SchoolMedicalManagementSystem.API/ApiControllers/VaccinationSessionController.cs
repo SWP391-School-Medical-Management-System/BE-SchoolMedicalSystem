@@ -274,6 +274,47 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             }
         }
 
+        [HttpGet("{sessionId}/nurse-assignments")]
+        [Authorize(Roles = "MANAGER")]
+        public async Task<ActionResult<BaseListResponse<NurseAssignmentStatusResponse>>> GetNurseAssignments(
+            Guid sessionId,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var response = await _vaccinationSessionService.GetNurseAssignmentStatusesAsync(sessionId, cancellationToken);
+                if (!response.Success)
+                    return NotFound(response);
+
+                return Ok(response);
+            }
+            catch
+            {
+                return StatusCode(500, BaseListResponse<NurseAssignmentStatusResponse>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
+        [HttpPut("{sessionId}/reassign-nurse")]
+        [Authorize(Roles = "MANAGER")]
+        public async Task<ActionResult<BaseResponse<bool>>> ReassignNurseToSession(
+            Guid sessionId, 
+            [FromBody] AssignNurseToSessionRequest request, 
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _vaccinationSessionService.ReassignNurseToSessionAsync(sessionId, request, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
+
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
         #endregion
 
         #region Student and Consent

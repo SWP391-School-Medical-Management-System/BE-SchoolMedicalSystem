@@ -35,6 +35,8 @@ public class MedicalConditionService : IMedicalConditionService
     private const string PARENT_CACHE_PREFIX = "parent";
     private const string PARENT_LIST_PREFIX = "parents_list";
     private const string STATISTICS_PREFIX = "statistics";
+    private const string NOTIFICATION_PREFIX = "notification";
+    private const string NOTIFICATIONS_LIST_PREFIX = "notifications_list";
 
     public MedicalConditionService(
         IMapper mapper,
@@ -82,7 +84,7 @@ public class MedicalConditionService : IMedicalConditionService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicalConditionResponse>>(cacheKey);
             if (cachedResult != null)
             {
-                _logger.LogDebug("Medical conditions list found in cache");
+                _logger.LogDebug("Medical conditions list found in cache with key: {CacheKey}", cacheKey);
                 return cachedResult;
             }
 
@@ -112,6 +114,7 @@ public class MedicalConditionService : IMedicalConditionService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_CONDITION_CACHE_SET);
+            _logger.LogDebug("Cached medical conditions list with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -131,7 +134,7 @@ public class MedicalConditionService : IMedicalConditionService
 
             if (cachedResponse != null)
             {
-                _logger.LogDebug("Medical condition found in cache: {ConditionId}", conditionId);
+                _logger.LogDebug("Medical condition found in cache with key: {CacheKey}", cacheKey);
                 return cachedResponse;
             }
 
@@ -144,44 +147,33 @@ public class MedicalConditionService : IMedicalConditionService
 
             if (medicalCondition == null)
             {
-                return new BaseResponse<MedicalConditionResponse>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy tình trạng y tế."
-                };
+                return BaseResponse<MedicalConditionResponse>.ErrorResult("Không tìm thấy tình trạng y tế.");
             }
 
             var conditionResponse = MapToMedicalConditionResponse(medicalCondition);
 
-            var response = new BaseResponse<MedicalConditionResponse>
-            {
-                Success = true,
-                Data = conditionResponse,
-                Message = "Lấy thông tin tình trạng y tế thành công."
-            };
+            var response = BaseResponse<MedicalConditionResponse>.SuccessResult(
+                conditionResponse, "Lấy thông tin tình trạng y tế thành công.");
 
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_CONDITION_CACHE_SET);
+            _logger.LogDebug("Cached medical condition with key: {CacheKey}", cacheKey);
 
             return response;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting medical condition by ID: {ConditionId}", conditionId);
-            return new BaseResponse<MedicalConditionResponse>
-            {
-                Success = false,
-                Message = $"Lỗi lấy thông tin tình trạng y tế: {ex.Message}"
-            };
+            return BaseResponse<MedicalConditionResponse>.ErrorResult($"Lỗi lấy thông tin tình trạng y tế: {ex.Message}");
         }
     }
 
     public async Task<BaseListResponse<MedicalConditionResponse>> GetAllMedicalConditionByStudentIdAsync(
-    Guid studentId,
-    int pageIndex = 1,
-    int pageSize = 10,
-    MedicalConditionType? type = null,
-    CancellationToken cancellationToken = default)
+        Guid studentId,
+        int pageIndex = 1,
+        int pageSize = 10,
+        MedicalConditionType? type = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -197,7 +189,7 @@ public class MedicalConditionService : IMedicalConditionService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicalConditionResponse>>(cacheKey);
             if (cachedResult != null)
             {
-                _logger.LogDebug("Medical conditions found in cache for student: {StudentId}", studentId);
+                _logger.LogDebug("Medical conditions found in cache for student: {StudentId}, cacheKey: {CacheKey}", studentId, cacheKey);
                 return cachedResult;
             }
 
@@ -230,6 +222,7 @@ public class MedicalConditionService : IMedicalConditionService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_CONDITION_CACHE_SET);
+            _logger.LogDebug("Cached medical conditions by student with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -258,7 +251,7 @@ public class MedicalConditionService : IMedicalConditionService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicalConditionResponse>>(cacheKey);
             if (cachedResult != null)
             {
-                _logger.LogDebug("Medical conditions found in cache for record: {RecordId}", medicalRecordId);
+                _logger.LogDebug("Medical conditions found in cache for record: {RecordId}, cacheKey: {CacheKey}", medicalRecordId, cacheKey);
                 return cachedResult;
             }
 
@@ -288,6 +281,7 @@ public class MedicalConditionService : IMedicalConditionService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_CONDITION_CACHE_SET);
+            _logger.LogDebug("Cached medical conditions by record with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -345,6 +339,18 @@ public class MedicalConditionService : IMedicalConditionService
             }
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể cho medical condition detail và danh sách medical conditions
+            var conditionCacheKey = _cacheService.GenerateCacheKey(MEDICAL_CONDITION_CACHE_PREFIX, medicalCondition.Id.ToString());
+            await _cacheService.RemoveAsync(conditionCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical condition detail: {CacheKey}", conditionCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_CONDITION_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical conditions với prefix: {Prefix}", MEDICAL_CONDITION_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             medicalCondition = await conditionRepo.GetQueryable()
@@ -415,6 +421,18 @@ public class MedicalConditionService : IMedicalConditionService
             }
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể cho medical condition detail và danh sách medical conditions
+            var conditionCacheKey = _cacheService.GenerateCacheKey(MEDICAL_CONDITION_CACHE_PREFIX, conditionId.ToString());
+            await _cacheService.RemoveAsync(conditionCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical condition detail: {CacheKey}", conditionCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_CONDITION_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical conditions với prefix: {Prefix}", MEDICAL_CONDITION_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             var conditionResponse = MapToMedicalConditionResponse(medicalCondition);
@@ -443,11 +461,7 @@ public class MedicalConditionService : IMedicalConditionService
 
             if (medicalCondition == null)
             {
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy tình trạng y tế."
-                };
+                return BaseResponse<bool>.ErrorResult("Không tìm thấy tình trạng y tế.");
             }
 
             var schoolNurseRoleName = await GetSchoolNurseRoleName();
@@ -457,24 +471,24 @@ public class MedicalConditionService : IMedicalConditionService
             medicalCondition.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể cho medical condition detail và danh sách medical conditions
+            var conditionCacheKey = _cacheService.GenerateCacheKey(MEDICAL_CONDITION_CACHE_PREFIX, conditionId.ToString());
+            await _cacheService.RemoveAsync(conditionCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical condition detail: {CacheKey}", conditionCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_CONDITION_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical conditions với prefix: {Prefix}", MEDICAL_CONDITION_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
-            return new BaseResponse<bool>
-            {
-                Success = true,
-                Data = true,
-                Message = "Xóa tình trạng y tế thành công."
-            };
+            _logger.LogInformation("Deleted medical condition {ConditionId}", conditionId);
+
+            return BaseResponse<bool>.SuccessResult(true, "Xóa tình trạng y tế thành công.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting medical condition: {ConditionId}", conditionId);
-            return new BaseResponse<bool>
-            {
-                Success = false,
-                Data = false,
-                Message = $"Lỗi xóa tình trạng y tế: {ex.Message}"
-            };
+            return BaseResponse<bool>.ErrorResult($"Lỗi xóa tình trạng y tế: {ex.Message}");
         }
     }
 
@@ -598,9 +612,12 @@ public class MedicalConditionService : IMedicalConditionService
     {
         try
         {
-            _logger.LogDebug("Starting comprehensive cache invalidation for medical conditions");
+            _logger.LogDebug("Starting comprehensive cache invalidation for medical conditions and related entities");
+            var keysBefore = await _cacheService.GetKeysByPatternAsync("*medical_condition*");
+            _logger.LogDebug("Cache keys before invalidation: {Keys}", string.Join(", ", keysBefore));
 
             await Task.WhenAll(
+                _cacheService.InvalidateTrackingSetAsync(MEDICAL_CONDITION_CACHE_SET),
                 _cacheService.RemoveByPrefixAsync(MEDICAL_CONDITION_CACHE_PREFIX),
                 _cacheService.RemoveByPrefixAsync(MEDICAL_CONDITION_LIST_PREFIX),
                 _cacheService.RemoveByPrefixAsync(MEDICAL_RECORD_CACHE_PREFIX),
@@ -609,12 +626,14 @@ public class MedicalConditionService : IMedicalConditionService
                 _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX),
                 _cacheService.RemoveByPrefixAsync(PARENT_CACHE_PREFIX),
                 _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX),
-                _cacheService.RemoveByPrefixAsync(STATISTICS_PREFIX)
+                _cacheService.RemoveByPrefixAsync(STATISTICS_PREFIX),
+                _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX),
+                _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX)
             );
 
-            await Task.Delay(100);
-
-            _logger.LogDebug("Completed comprehensive cache invalidation for medical conditions");
+            var keysAfter = await _cacheService.GetKeysByPatternAsync("*medical_condition*");
+            _logger.LogDebug("Cache keys after invalidation: {Keys}", string.Join(", ", keysAfter));
+            _logger.LogDebug("Completed comprehensive cache invalidation for medical conditions and related entities");
         }
         catch (Exception ex)
         {
@@ -686,6 +705,14 @@ public class MedicalConditionService : IMedicalConditionService
 
             await notificationRepo.AddAsync(notification);
 
+            await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache liên quan đến notification
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
+
             _logger.LogInformation(
                 "Created medical condition notification {NotificationId} for parent {ParentId}, student {StudentId}",
                 notification.Id, student.ParentId.Value, student.Id);
@@ -746,6 +773,14 @@ public class MedicalConditionService : IMedicalConditionService
             }
 
             await notificationRepo.AddRangeAsync(notifications);
+
+            await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache liên quan đến notification
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
 
             _logger.LogInformation("Created severe condition alerts for {Count} nurses, student {StudentId}",
                 nurses.Count, student.Id);

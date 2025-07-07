@@ -62,7 +62,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 var cachedResult = await _cacheService.GetAsync<BaseListResponse<VaccinationRecordResponse>>(cacheKey);
                 if (cachedResult != null)
                 {
-                    _logger.LogDebug("Vaccination records list found in cache for medical record: {MedicalRecordId}", medicalRecordId);
+                    _logger.LogDebug("Vaccination records list found in cache for medical record: {MedicalRecordId}, cacheKey: {CacheKey}", medicalRecordId, cacheKey);
                     return cachedResult;
                 }
 
@@ -105,6 +105,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
                 await _cacheService.AddToTrackingSetAsync(cacheKey, VACCINATION_RECORD_CACHE_SET);
 
+                _logger.LogDebug("Cached vaccination records list with key: {CacheKey}", cacheKey);
                 return result;
             }
             catch (Exception ex)
@@ -184,6 +185,17 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 var recordRepoVac = _unitOfWork.GetRepositoryByEntity<VaccinationRecord>();
                 await recordRepoVac.AddAsync(vaccinationRecord);
                 await _unitOfWork.SaveChangesAsync();
+
+                // Xóa cache cụ thể cho danh sách vaccination records và vaccination record detail
+                var recordCacheKey = _cacheService.GenerateCacheKey(VACCINATION_RECORD_CACHE_PREFIX, vaccinationRecord.Id.ToString());
+                await _cacheService.RemoveAsync(recordCacheKey);
+                _logger.LogDebug("Đã xóa cache cụ thể cho vaccination record detail: {CacheKey}", recordCacheKey);
+                await _cacheService.RemoveByPrefixAsync(VACCINATION_RECORD_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách vaccination records với prefix: {Prefix}", VACCINATION_RECORD_LIST_PREFIX);
+                // Xóa cache student_vaccination_result liên quan
+                var vaccinationResultCacheKey = _cacheService.GenerateCacheKey("student_vaccination_result", vaccinationRecord.SessionId?.ToString() ?? "", vaccinationRecord.UserId.ToString());
+                await _cacheService.RemoveAsync(vaccinationResultCacheKey);
+                _logger.LogDebug("Đã xóa cache student vaccination result: {CacheKey}", vaccinationResultCacheKey);
 
                 await InvalidateAllCachesAsync();
 
@@ -265,13 +277,26 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 _mapper.Map(model, vaccinationRecord);
                 vaccinationRecord.LastUpdatedBy = "SCHOOLNURSE";
-                vaccinationRecord.LastUpdatedDate = DateTime.UtcNow; 
+                vaccinationRecord.LastUpdatedDate = DateTime.UtcNow;
 
                 await _unitOfWork.SaveChangesAsync();
+
+                // Xóa cache cụ thể cho vaccination record detail và danh sách vaccination records
+                var recordCacheKey = _cacheService.GenerateCacheKey(VACCINATION_RECORD_CACHE_PREFIX, recordId.ToString());
+                await _cacheService.RemoveAsync(recordCacheKey);
+                _logger.LogDebug("Đã xóa cache cụ thể cho vaccination record detail: {CacheKey}", recordCacheKey);
+                await _cacheService.RemoveByPrefixAsync(VACCINATION_RECORD_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách vaccination records với prefix: {Prefix}", VACCINATION_RECORD_LIST_PREFIX);
+                // Xóa cache student_vaccination_result liên quan
+                var vaccinationResultCacheKey = _cacheService.GenerateCacheKey("student_vaccination_result", vaccinationRecord.SessionId?.ToString() ?? "", vaccinationRecord.UserId.ToString());
+                await _cacheService.RemoveAsync(vaccinationResultCacheKey);
+                _logger.LogDebug("Đã xóa cache student vaccination result: {CacheKey}", vaccinationResultCacheKey);
+
                 await InvalidateAllCachesAsync();
 
                 var response = MapToVaccinationRecordResponse(vaccinationRecord);
 
+                _logger.LogInformation("Cập nhật hồ sơ tiêm chủng thành công với ID: {VaccinationRecordId}", recordId);
                 return new BaseResponse<VaccinationRecordResponse>
                 {
                     Success = true,
@@ -312,8 +337,21 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 vaccinationRecord.LastUpdatedDate = DateTime.UtcNow;
 
                 await _unitOfWork.SaveChangesAsync();
+
+                // Xóa cache cụ thể cho vaccination record detail và danh sách vaccination records
+                var recordCacheKey = _cacheService.GenerateCacheKey(VACCINATION_RECORD_CACHE_PREFIX, recordId.ToString());
+                await _cacheService.RemoveAsync(recordCacheKey);
+                _logger.LogDebug("Đã xóa cache cụ thể cho vaccination record detail: {CacheKey}", recordCacheKey);
+                await _cacheService.RemoveByPrefixAsync(VACCINATION_RECORD_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách vaccination records với prefix: {Prefix}", VACCINATION_RECORD_LIST_PREFIX);
+                // Xóa cache student_vaccination_result liên quan
+                var vaccinationResultCacheKey = _cacheService.GenerateCacheKey("student_vaccination_result", vaccinationRecord.SessionId?.ToString() ?? "", vaccinationRecord.UserId.ToString());
+                await _cacheService.RemoveAsync(vaccinationResultCacheKey);
+                _logger.LogDebug("Đã xóa cache student vaccination result: {CacheKey}", vaccinationResultCacheKey);
+
                 await InvalidateAllCachesAsync();
 
+                _logger.LogInformation("Xóa hồ sơ tiêm chủng thành công với ID: {VaccinationRecordId}", recordId);
                 return new BaseResponse<bool>
                 {
                     Success = true,
