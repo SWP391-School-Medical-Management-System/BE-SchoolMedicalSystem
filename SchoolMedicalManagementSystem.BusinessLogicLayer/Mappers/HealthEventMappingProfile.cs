@@ -105,6 +105,8 @@ public class HealthEventMappingProfile : Profile
             .ForMember(dest => dest.MedicationName, opt => opt.MapFrom(src => src.MedicationName))
             .ForMember(dest => dest.MedicationQuantity, opt => opt.MapFrom(src => src.MedicationQuantity))
             .ForMember(dest => dest.MedicationDosage, opt => opt.MapFrom(src => src.MedicationDosage))
+            .ForMember(dest => dest.Dose, opt => opt.MapFrom(src => src.Dose))
+            .ForMember(dest => dest.MedicalPerOnce, opt => opt.MapFrom(src => src.MedicalPerOnce))
             .ForMember(dest => dest.SupplyQuantity, opt => opt.MapFrom(src => src.SupplyQuantity));
     }
 }

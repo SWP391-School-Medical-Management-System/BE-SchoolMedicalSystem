@@ -91,6 +91,15 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
             Guid sessionId,
             CancellationToken cancellationToken = default);
 
+        Task<BaseListResponse<NurseAssignmentStatusResponse>> GetNurseAssignmentStatusesAsync(
+            Guid sessionId,
+            CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<bool>> ReassignNurseToSessionAsync(
+            Guid sessionId,
+            AssignNurseToSessionRequest request,
+            CancellationToken cancellationToken = default);
+
         #endregion
     }
 }
