@@ -12,27 +12,6 @@ public class UpdateMedicalRecordRequestValidator : AbstractValidator<UpdateMedic
             .WithMessage("Nhóm máu phải là: A, B, AB, O, A+, A-, B+, B-, AB+, AB-, O+, O-.")
             .When(x => !string.IsNullOrEmpty(x.BloodType));
 
-        RuleFor(x => x.Height)
-            .GreaterThan(0)
-            .WithMessage("Chiều cao phải lớn hơn 0.")
-            .LessThanOrEqualTo(250)
-            .WithMessage("Chiều cao không thể vượt quá 250cm.")
-            .When(x => x.Height.HasValue);
-
-        RuleFor(x => x.Weight)
-            .GreaterThan(0)
-            .WithMessage("Cân nặng phải lớn hơn 0.")
-            .LessThanOrEqualTo(200)
-            .WithMessage("Cân nặng không thể vượt quá 200kg.")
-            .When(x => x.Weight.HasValue);
-
-        RuleFor(x => x.EmergencyContact)
-            .MaximumLength(100)
-            .WithMessage("Tên người liên hệ khẩn cấp không được vượt quá 100 ký tự.")
-            .Matches(@"^[a-zA-ZÀ-ỹ\s]+$")
-            .WithMessage("Tên người liên hệ chỉ được chứa chữ cái và khoảng trắng.")
-            .When(x => !string.IsNullOrEmpty(x.EmergencyContact));
-
         RuleFor(x => x.EmergencyContactPhone)
             .Matches(@"^[0-9+\-\s()]+$")
             .WithMessage("Số điện thoại không hợp lệ.")
@@ -60,8 +39,6 @@ public class UpdateMedicalRecordRequestValidator : AbstractValidator<UpdateMedic
     private bool HaveAtLeastOneField(UpdateMedicalRecordRequest request)
     {
         return !string.IsNullOrEmpty(request.BloodType) ||
-               request.Height.HasValue ||
-               request.Weight.HasValue ||
                !string.IsNullOrEmpty(request.EmergencyContact) ||
                !string.IsNullOrEmpty(request.EmergencyContactPhone);
     }

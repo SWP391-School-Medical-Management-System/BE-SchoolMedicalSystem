@@ -17,18 +17,6 @@ public class CreateMedicalRecordRequestValidator : AbstractValidator<CreateMedic
             .Must(BeValidBloodType)
             .WithMessage("Nhóm máu phải là: A, B, AB, O, A+, A-, B+, B-, AB+, AB-, O+, O-.");
 
-        RuleFor(x => x.Height)
-            .GreaterThan(0)
-            .WithMessage("Chiều cao phải lớn hơn 0.")
-            .LessThanOrEqualTo(250)
-            .WithMessage("Chiều cao không thể vượt quá 250cm.");
-
-        RuleFor(x => x.Weight)
-            .GreaterThan(0)
-            .WithMessage("Cân nặng phải lớn hơn 0.")
-            .LessThanOrEqualTo(200)
-            .WithMessage("Cân nặng không thể vượt quá 200kg.");
-
         RuleFor(x => x.EmergencyContact)
             .NotEmpty()
             .WithMessage("Tên người liên hệ khẩn cấp là bắt buộc.")

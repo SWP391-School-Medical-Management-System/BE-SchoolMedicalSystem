@@ -360,12 +360,6 @@ public class MedicalRecordService : IMedicalRecordService
             if (!string.IsNullOrEmpty(model.BloodType))
                 medicalRecord.BloodType = model.BloodType;
 
-            if (model.Height.HasValue)
-                medicalRecord.Height = model.Height.Value;
-
-            if (model.Weight.HasValue)
-                medicalRecord.Weight = model.Weight.Value;
-
             if (!string.IsNullOrEmpty(model.EmergencyContact))
                 medicalRecord.EmergencyContact = model.EmergencyContact;
 
@@ -480,12 +474,6 @@ public class MedicalRecordService : IMedicalRecordService
             response.ChronicDiseaseCount = activeConditions.Count(mc => mc.Type == MedicalConditionType.ChronicDisease);
         }
 
-        if (medicalRecord.Height > 0 && medicalRecord.Weight > 0)
-        {
-            var heightInMeters = medicalRecord.Height / 100;
-            response.BMI = Math.Round(medicalRecord.Weight / (heightInMeters * heightInMeters), 2);
-        }
-
         var sixMonthsAgo = DateTime.Now.AddMonths(-6);
         response.NeedsUpdate = medicalRecord.LastUpdatedDate == null || medicalRecord.LastUpdatedDate < sixMonthsAgo;
 
@@ -512,12 +500,6 @@ public class MedicalRecordService : IMedicalRecordService
         {
             var activeVaccinations = medicalRecord.VaccinationRecords.Where(vr => !vr.IsDeleted).ToList();
             response.VaccinationRecords = _mapper.Map<List<VaccinationRecordResponse>>(activeVaccinations);
-        }
-
-        if (medicalRecord.Height > 0 && medicalRecord.Weight > 0)
-        {
-            var heightInMeters = medicalRecord.Height / 100;
-            response.BMI = Math.Round(medicalRecord.Weight / (heightInMeters * heightInMeters), 2);
         }
 
         var sixMonthsAgo = DateTime.Now.AddMonths(-6);
@@ -602,10 +584,6 @@ public class MedicalRecordService : IMedicalRecordService
             "studentcode_desc" => query.OrderByDescending(mr => mr.Student.StudentCode),
             "bloodtype" => query.OrderBy(mr => mr.BloodType),
             "bloodtype_desc" => query.OrderByDescending(mr => mr.BloodType),
-            "height" => query.OrderBy(mr => mr.Height),
-            "height_desc" => query.OrderByDescending(mr => mr.Height),
-            "weight" => query.OrderBy(mr => mr.Weight),
-            "weight_desc" => query.OrderByDescending(mr => mr.Weight),
             "lastupdated" => query.OrderBy(mr => mr.LastUpdatedDate ?? mr.CreatedDate),
             "lastupdated_desc" => query.OrderByDescending(mr => mr.LastUpdatedDate ?? mr.CreatedDate),
             "createdate" => query.OrderBy(mr => mr.CreatedDate),

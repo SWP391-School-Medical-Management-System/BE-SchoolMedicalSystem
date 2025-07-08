@@ -398,17 +398,16 @@ public class HealthEventService : IHealthEventService
             healthEvent.CreatedDate = DateTime.Now;
             healthEvent.Code = await GenerateHealthEventCodeAsync();
 
+            healthEvent.HandledById = currentUserId;
             if (model.IsEmergency)
             {
-                healthEvent.HandledById = currentUserId;
                 _logger.LogInformation("Emergency event {Code} auto-assigned to current nurse {UserId}",
                     healthEvent.Code, currentUserId);
             }
             else
             {
-                healthEvent.HandledById = null;
-                _logger.LogInformation("Normal event {Code} created for background processing",
-                    healthEvent.Code);
+                _logger.LogInformation("Normal event {Code} created and assigned to current nurse {UserId}",
+                    healthEvent.Code, currentUserId);
             }
 
             var eventRepo = _unitOfWork.GetRepositoryByEntity<HealthEvent>();
@@ -455,7 +454,7 @@ public class HealthEventService : IHealthEventService
                     CreatedDate = DateTime.Now,
                     IsDeleted = false
                 };
-                medicalItemUsage.HealthEventMedicalItem = healthEventMedicalItem; // Gán ngược lại
+                medicalItemUsage.HealthEventMedicalItem = healthEventMedicalItem;
                 healthEventMedicalItems.Add(healthEventMedicalItem);
             }
 
