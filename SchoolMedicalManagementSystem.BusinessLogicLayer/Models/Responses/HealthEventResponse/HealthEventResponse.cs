@@ -38,4 +38,6 @@ public class HealthEventMedicalItemResponse
     public double? MedicationQuantity { get; set; }
     public string? MedicationDosage { get; set; }
     public double? SupplyQuantity { get; set; }
+    public double? Dose { get; set; }
+    public double? MedicalPerOnce { get; set; }
 }

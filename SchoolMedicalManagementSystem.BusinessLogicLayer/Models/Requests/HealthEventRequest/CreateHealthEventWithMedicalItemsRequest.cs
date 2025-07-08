@@ -9,9 +9,9 @@ using System.Threading.Tasks;
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.HealthEventRequest
 {
     public class CreateHealthEventWithMedicalItemsRequest
-    {       
+    {
         public Guid UserId { get; set; } // ID học sinh
-        public HealthEventType EventType { get; set; }      
+        public HealthEventType EventType { get; set; }
         public string Description { get; set; }
         public DateTime OccurredAt { get; set; } // Thời gian xảy ra
         public string Location { get; set; } // Địa điểm xảy ra
@@ -30,5 +30,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Healt
         public double Quantity { get; set; } // Số lượng sử dụng
         public string Notes { get; set; } // Ghi chú
         public DateTime UsedAt { get; set; } // Thời gian sử dụng
+        public double? Dose { get; set; }
+        public double? MedicalPerOnce { get; set; }
     }
 }

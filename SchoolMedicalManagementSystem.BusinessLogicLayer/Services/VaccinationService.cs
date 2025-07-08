@@ -60,7 +60,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 var cachedResult = await _cacheService.GetAsync<BaseListResponse<VaccinationTypeResponse>>(cacheKey);
                 if (cachedResult != null)
                 {
-                    _logger.LogDebug("Vaccination types list found in cache");
+                    _logger.LogDebug("Vaccination types list found in cache for key: {CacheKey}", cacheKey);
                     return cachedResult;
                 }
 
@@ -94,6 +94,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
                 await _cacheService.AddToTrackingSetAsync(cacheKey, VACCINE_TYPE_CACHE_SET);
 
+                _logger.LogDebug("Cached vaccination types list with key: {CacheKey}", cacheKey);
                 return result;
             }
             catch (Exception ex)
@@ -117,7 +118,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 var cachedResult = await _cacheService.GetAsync<BaseResponse<VaccinationTypeResponse>>(cacheKey);
                 if (cachedResult != null)
                 {
-                    _logger.LogDebug("Vaccine type detail found in cache for id: {Id}", id);
+                    _logger.LogDebug("Vaccine type detail found in cache for id: {Id}, cacheKey: {CacheKey}", id, cacheKey);
                     return cachedResult;
                 }
 
@@ -146,6 +147,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
                 await _cacheService.AddToTrackingSetAsync(cacheKey, VACCINE_TYPE_CACHE_SET);
 
+                _logger.LogDebug("Cached vaccine type detail with key: {CacheKey}", cacheKey);
                 return result;
             }
             catch (Exception ex)
@@ -174,11 +176,18 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 vaccinationType.Id = Guid.NewGuid();
                 vaccinationType.CreatedBy = "SCHOOLNURSE";
                 vaccinationType.CreatedDate = DateTime.UtcNow;
-                vaccinationType.IsDeleted = false; 
+                vaccinationType.IsDeleted = false;
 
                 var repo = _unitOfWork.GetRepositoryByEntity<VaccinationType>();
                 await repo.AddAsync(vaccinationType);
                 await _unitOfWork.SaveChangesAsync();
+
+                // Xóa cache cụ thể cho danh sách vaccine types và vaccine type detail
+                var vaccineTypeCacheKey = _cacheService.GenerateCacheKey(VACCINE_TYPE_CACHE_PREFIX, vaccinationType.Id.ToString());
+                await _cacheService.RemoveAsync(vaccineTypeCacheKey);
+                _logger.LogDebug("Đã xóa cache cụ thể cho vaccine type detail: {CacheKey}", vaccineTypeCacheKey);
+                await _cacheService.RemoveByPrefixAsync(VACCINE_TYPE_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách vaccine types với prefix: {Prefix}", VACCINE_TYPE_LIST_PREFIX);
 
                 await InvalidateAllCachesAsync();
 
@@ -187,6 +196,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 var response = MapToVaccinationTypeResponse(vaccinationType);
 
+                _logger.LogInformation("Tạo loại vaccine thành công với ID: {VaccineTypeId}", vaccinationType.Id);
                 return new BaseResponse<VaccinationTypeResponse>
                 {
                     Success = true,
@@ -238,10 +248,19 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 vaccinationType.LastUpdatedDate = DateTime.UtcNow;
 
                 await _unitOfWork.SaveChangesAsync();
+
+                // Xóa cache cụ thể cho vaccine type detail và danh sách vaccine types
+                var vaccineTypeCacheKey = _cacheService.GenerateCacheKey(VACCINE_TYPE_CACHE_PREFIX, id.ToString());
+                await _cacheService.RemoveAsync(vaccineTypeCacheKey);
+                _logger.LogDebug("Đã xóa cache cụ thể cho vaccine type detail: {CacheKey}", vaccineTypeCacheKey);
+                await _cacheService.RemoveByPrefixAsync(VACCINE_TYPE_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách vaccine types với prefix: {Prefix}", VACCINE_TYPE_LIST_PREFIX);
+
                 await InvalidateAllCachesAsync();
 
                 var response = MapToVaccinationTypeResponse(vaccinationType);
 
+                _logger.LogInformation("Cập nhật loại vaccine thành công với ID: {VaccineTypeId}", id);
                 return new BaseResponse<VaccinationTypeResponse>
                 {
                     Success = true,
@@ -282,8 +301,17 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 vaccinationType.LastUpdatedDate = DateTime.UtcNow;
 
                 await _unitOfWork.SaveChangesAsync();
+
+                // Xóa cache cụ thể cho vaccine type detail và danh sách vaccine types
+                var vaccineTypeCacheKey = _cacheService.GenerateCacheKey(VACCINE_TYPE_CACHE_PREFIX, id.ToString());
+                await _cacheService.RemoveAsync(vaccineTypeCacheKey);
+                _logger.LogDebug("Đã xóa cache cụ thể cho vaccine type detail: {CacheKey}", vaccineTypeCacheKey);
+                await _cacheService.RemoveByPrefixAsync(VACCINE_TYPE_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách vaccine types với prefix: {Prefix}", VACCINE_TYPE_LIST_PREFIX);
+
                 await InvalidateAllCachesAsync();
 
+                _logger.LogInformation("Xóa loại vaccine thành công với ID: {VaccineTypeId}", id);
                 return new BaseResponse<bool>
                 {
                     Success = true,
@@ -339,11 +367,10 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 _logger.LogDebug("Starting comprehensive cache invalidation for vaccine types and related entities");
                 // Xóa toàn bộ tracking set của VaccinationType
                 await _cacheService.InvalidateTrackingSetAsync(VACCINE_TYPE_CACHE_SET);
-                // Xóa các tiền tố cụ thể của VaccinationType
+                // Xóa các tiền tố cụ thể của VaccinationType và VaccinationSessionService
                 await Task.WhenAll(
                     _cacheService.RemoveByPrefixAsync(VACCINE_TYPE_CACHE_PREFIX),
                     _cacheService.RemoveByPrefixAsync(VACCINE_TYPE_LIST_PREFIX),
-                    // Xóa các cache liên quan đến VaccinationSessionService
                     _cacheService.RemoveByPrefixAsync("vaccination_session"),
                     _cacheService.RemoveByPrefixAsync("vaccination_sessions_list"),
                     _cacheService.RemoveByPrefixAsync("student_sessions"),

@@ -35,6 +35,8 @@ public class MedicalItemService : IMedicalItemService
     private const string MEDICAL_ITEM_USAGE_LIST_PREFIX = "medical_item_usages_list";
     private const string MEDICAL_ITEM_CACHE_SET = "medical_item_cache_keys";
     private const string STATISTICS_PREFIX = "statistics";
+    private const string NOTIFICATION_PREFIX = "notification";
+    private const string NOTIFICATIONS_LIST_PREFIX = "notifications_list";
 
     public MedicalItemService(
         IMapper mapper,
@@ -98,7 +100,7 @@ public class MedicalItemService : IMedicalItemService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicalItemResponse>>(cacheKey);
             if (cachedResult != null)
             {
-                _logger.LogDebug("Medical items list found in cache");
+                _logger.LogDebug("Medical items list found in cache with key: {CacheKey}", cacheKey);
                 return cachedResult;
             }
 
@@ -146,6 +148,7 @@ public class MedicalItemService : IMedicalItemService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_ITEM_CACHE_SET);
+            _logger.LogDebug("Cached medical items list with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -165,28 +168,14 @@ public class MedicalItemService : IMedicalItemService
 
             if (cachedResponse != null)
             {
-                _logger.LogDebug("Medical item found in cache: {ItemId}, checking freshness", itemId);
-                // Lấy dữ liệu từ DB để so sánh
-                var itemRepos = _unitOfWork.GetRepositoryByEntity<MedicalItem>();
-                var medicalItemFromDb = await itemRepos.GetQueryable()
-                    .Where(mi => mi.Id == itemId && !mi.IsDeleted)
-                    .FirstOrDefaultAsync();
-
-                if (medicalItemFromDb != null && cachedResponse.Data.Quantity != medicalItemFromDb.Quantity)
-                {
-                    _logger.LogWarning("Cache stale for MedicalItem {ItemId}, DB Quantity {DbQty} vs Cache Quantity {CacheQty}",
-                        itemId, medicalItemFromDb.Quantity, cachedResponse.Data.Quantity);
-                    await _cacheService.RemoveAsync(cacheKey); // Xóa cache cũ
-                    cachedResponse = null; // Bỏ qua cache cũ
-                }
-                else
-                {
-                    return cachedResponse; // Sử dụng cache nếu khớp
-                }
+                _logger.LogDebug("Medical item found in cache with key: {CacheKey}", cacheKey);
+                return cachedResponse;
             }
 
             var itemRepo = _unitOfWork.GetRepositoryByEntity<MedicalItem>();
             var medicalItem = await itemRepo.GetQueryable()
+                .Include(mi => mi.RequestedBy)
+                .Include(mi => mi.ApprovedBy)
                 .Where(mi => mi.Id == itemId && !mi.IsDeleted)
                 .FirstOrDefaultAsync();
 
@@ -200,11 +189,9 @@ public class MedicalItemService : IMedicalItemService
             var response = BaseResponse<MedicalItemResponse>.SuccessResult(
                 itemResponse, "Lấy thông tin thuốc/vật tư y tế thành công.");
 
-            // Lưu cache với dữ liệu mới nhất
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_ITEM_CACHE_SET);
-
-            _logger.LogInformation("Cached updated MedicalItem {ItemId} with Quantity {Quantity}", itemId, medicalItem.Quantity);
+            _logger.LogDebug("Cached medical item with key: {CacheKey}", cacheKey);
 
             return response;
         }
@@ -214,6 +201,7 @@ public class MedicalItemService : IMedicalItemService
             return BaseResponse<MedicalItemResponse>.ErrorResult($"Lỗi lấy thông tin thuốc/vật tư y tế: {ex.Message}");
         }
     }
+
     public async Task<BaseResponse<MedicalItemResponse>> CreateMedicalItemAsync(CreateMedicalItemRequest model)
     {
         try
@@ -240,14 +228,25 @@ public class MedicalItemService : IMedicalItemService
             await itemRepo.AddAsync(medicalItem);
             await _unitOfWork.SaveChangesAsync();
 
+            await CreateApprovalRequestNotificationAsync(medicalItem);
+
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, medicalItem.Id.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
+
+            await InvalidateAllCachesAsync();
+
             medicalItem = await itemRepo.GetQueryable()
                 .Include(mi => mi.RequestedBy)
                 .Include(mi => mi.ApprovedBy)
                 .FirstOrDefaultAsync(mi => mi.Id == medicalItem.Id);
-
-            await CreateApprovalRequestNotificationAsync(medicalItem);
-
-            await InvalidateAllCachesAsync();
 
             var itemResponse = MapToMedicalItemResponse(medicalItem);
 
@@ -333,6 +332,17 @@ public class MedicalItemService : IMedicalItemService
                 await CreateStockAlertNotificationsAsync(medicalItem);
             }
 
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, itemId.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             var itemResponse = MapToMedicalItemResponse(medicalItem);
@@ -382,7 +392,17 @@ public class MedicalItemService : IMedicalItemService
             medicalItem.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, itemId.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
+
+            _logger.LogInformation("Deleted medical item {ItemId}", itemId);
 
             return BaseResponse<bool>.SuccessResult(true, "Xóa thuốc/vật tư y tế thành công.");
         }
@@ -428,6 +448,17 @@ public class MedicalItemService : IMedicalItemService
             await CreateApprovalNotificationAsync(medicalItem, true, model.ApprovalNotes);
 
             await CreateStockAlertNotificationsAsync(medicalItem);
+
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, itemId.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
 
             await InvalidateAllCachesAsync();
 
@@ -480,6 +511,17 @@ public class MedicalItemService : IMedicalItemService
 
             await CreateApprovalNotificationAsync(medicalItem, false, model.RejectionReason);
 
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, itemId.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             var itemResponse = MapToMedicalItemResponse(medicalItem);
@@ -521,6 +563,7 @@ public class MedicalItemService : IMedicalItemService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicalItemResponse>>(cacheKey);
             if (cachedResult != null)
             {
+                _logger.LogDebug("Pending approvals found in cache with key: {CacheKey}", cacheKey);
                 return cachedResult;
             }
 
@@ -578,6 +621,8 @@ public class MedicalItemService : IMedicalItemService
                 "Lấy danh sách chờ phê duyệt thành công.");
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_ITEM_CACHE_SET);
+            _logger.LogDebug("Cached pending approvals with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -601,7 +646,7 @@ public class MedicalItemService : IMedicalItemService
 
             if (cachedResult != null)
             {
-                _logger.LogDebug("Stock summary found in cache");
+                _logger.LogDebug("Stock summary found in cache with key: {CacheKey}", cacheKey);
                 return cachedResult;
             }
 
@@ -627,6 +672,7 @@ public class MedicalItemService : IMedicalItemService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_ITEM_CACHE_SET);
+            _logger.LogDebug("Cached stock summary with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -661,6 +707,18 @@ public class MedicalItemService : IMedicalItemService
 
             await CreateStockChangeNotificationAsync(medicalItem, oldQuantity, newQuantity, reason);
             await CreateStockAlertNotificationsAsync(medicalItem);
+
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, itemId.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             _logger.LogInformation(
@@ -744,6 +802,20 @@ public class MedicalItemService : IMedicalItemService
             await CreateMedicationUsageNotificationAsync(healthEvent.Student, medicalItem, usage);
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, model.MedicalItemId.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_USAGE_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical item usages với prefix: {Prefix}", MEDICAL_ITEM_USAGE_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             usage = await usageRepo.GetQueryable()
@@ -769,10 +841,6 @@ public class MedicalItemService : IMedicalItemService
         }
     }
 
-    /// <summary>
-    /// Sửa lỗi nhập liệu
-    /// Ghi nhầm số lượng thuốc đã sử dụng
-    /// </summary>
     public async Task<BaseResponse<MedicalItemUsageResponse>> CorrectMedicalItemUsageAsync(
         Guid originalUsageId,
         CorrectMedicalItemUsageRequest request)
@@ -787,7 +855,6 @@ public class MedicalItemService : IMedicalItemService
             }
 
             var usageRepo = _unitOfWork.GetRepositoryByEntity<MedicalItemUsage>();
-
             var originalUsage = await usageRepo.GetQueryable()
                 .Include(miu => miu.MedicalItem)
                 .Include(miu => miu.HealthEvent)
@@ -842,6 +909,16 @@ public class MedicalItemService : IMedicalItemService
             medicalItem.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, request.CorrectedData.MedicalItemId.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_USAGE_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical item usages với prefix: {Prefix}", MEDICAL_ITEM_USAGE_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             correctedUsage = await usageRepo.GetQueryable()
@@ -875,7 +952,6 @@ public class MedicalItemService : IMedicalItemService
         try
         {
             var usageRepo = _unitOfWork.GetRepositoryByEntity<MedicalItemUsage>();
-
             var originalUsage = await usageRepo.GetQueryable()
                 .Include(miu => miu.MedicalItem)
                 .Include(miu => miu.HealthEvent)
@@ -917,6 +993,16 @@ public class MedicalItemService : IMedicalItemService
             originalUsage.MedicalItem.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể
+            var itemCacheKey = _cacheService.GenerateCacheKey(MEDICAL_ITEM_CACHE_PREFIX, originalUsage.MedicalItemId.ToString());
+            await _cacheService.RemoveAsync(itemCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho medical item detail: {CacheKey}", itemCacheKey);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical items với prefix: {Prefix}", MEDICAL_ITEM_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_USAGE_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách medical item usages với prefix: {Prefix}", MEDICAL_ITEM_USAGE_LIST_PREFIX);
+
             await InvalidateAllCachesAsync();
 
             returnUsage = await usageRepo.GetQueryable()
@@ -970,7 +1056,7 @@ public class MedicalItemService : IMedicalItemService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicalItemUsageResponse>>(cacheKey);
             if (cachedResult != null)
             {
-                _logger.LogDebug("Medical item usages list found in cache");
+                _logger.LogDebug("Medical item usages list found in cache with key: {CacheKey}", cacheKey);
                 return cachedResult;
             }
 
@@ -1002,6 +1088,7 @@ public class MedicalItemService : IMedicalItemService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_ITEM_CACHE_SET);
+            _logger.LogDebug("Cached medical item usage history with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -1035,7 +1122,7 @@ public class MedicalItemService : IMedicalItemService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<MedicalItemUsageResponse>>(cacheKey);
             if (cachedResult != null)
             {
-                _logger.LogDebug("Usage history by student found in cache: {StudentId}", studentId);
+                _logger.LogDebug("Usage history by student found in cache with key: {CacheKey}", cacheKey);
                 return cachedResult;
             }
 
@@ -1076,6 +1163,7 @@ public class MedicalItemService : IMedicalItemService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_ITEM_CACHE_SET);
+            _logger.LogDebug("Cached usage history by student with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -1499,23 +1587,28 @@ public class MedicalItemService : IMedicalItemService
     {
         try
         {
-            _logger.LogDebug("Starting cache invalidation for medical items and usages");
+            _logger.LogDebug("Starting comprehensive cache invalidation for medical items, usages, and related entities");
+            var keysBefore = await _cacheService.GetKeysByPatternAsync("*medical_item*");
+            _logger.LogDebug("Cache keys before invalidation: {Keys}", string.Join(", ", keysBefore));
 
             await Task.WhenAll(
+                _cacheService.InvalidateTrackingSetAsync(MEDICAL_ITEM_CACHE_SET),
                 _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_CACHE_PREFIX),
                 _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_LIST_PREFIX),
                 _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_USAGE_CACHE_PREFIX),
                 _cacheService.RemoveByPrefixAsync(MEDICAL_ITEM_USAGE_LIST_PREFIX),
-                _cacheService.RemoveByPrefixAsync(STATISTICS_PREFIX)
+                _cacheService.RemoveByPrefixAsync(STATISTICS_PREFIX),
+                _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX),
+                _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX)
             );
 
-            await Task.Delay(100);
-
-            _logger.LogDebug("Completed cache invalidation for medical items and usages");
+            var keysAfter = await _cacheService.GetKeysByPatternAsync("*medical_item*");
+            _logger.LogDebug("Cache keys after invalidation: {Keys}", string.Join(", ", keysAfter));
+            _logger.LogDebug("Completed comprehensive cache invalidation for medical items, usages, and related entities");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in cache invalidation for medical items and usages");
+            _logger.LogError(ex, "Error in comprehensive cache invalidation for medical items and usages");
         }
     }
 
@@ -1567,8 +1660,13 @@ public class MedicalItemService : IMedicalItemService
             }
 
             await notificationRepo.AddRangeAsync(notifications);
-
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache liên quan đến notification
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
 
             _logger.LogInformation(
                 "Created approval request notifications for item {ItemId} to {ManagerCount} managers",
@@ -1595,7 +1693,7 @@ public class MedicalItemService : IMedicalItemService
             var content = isApproved
                 ? $"Yêu cầu thêm {medicalItem.Name} đã được Manager phê duyệt. " +
                   $"Thuốc/vật tư đã có thể sử dụng trong hệ thống. " +
-                  (string.IsNullOrEmpty(notes) ? "" : $"Ghi chú: {notes}")
+                  (string.IsNullOrEmpty(notes) ? "" : $". Ghi chú: {notes}")
                 : $"Yêu cầu thêm {medicalItem.Name} đã bị từ chối. " +
                   $"Lý do: {notes}";
 
@@ -1615,8 +1713,13 @@ public class MedicalItemService : IMedicalItemService
             };
 
             await notificationRepo.AddAsync(notification);
-
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache liên quan đến notification
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATION_PREFIX);
+            _logger.LogDebug("Đã xóa cache notification với prefix: {Prefix}", NOTIFICATION_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(NOTIFICATIONS_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache notifications list với prefix: {Prefix}", NOTIFICATIONS_LIST_PREFIX);
 
             _logger.LogInformation("Created approval notification for item {ItemId}, approved: {IsApproved}",
                 medicalItem.Id, isApproved);

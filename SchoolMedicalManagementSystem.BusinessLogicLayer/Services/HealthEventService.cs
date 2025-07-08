@@ -85,7 +85,7 @@ public class HealthEventService : IHealthEventService
             var cachedResult = await _cacheService.GetAsync<BaseListResponse<HealthEventResponse>>(cacheKey);
             if (cachedResult != null)
             {
-                _logger.LogDebug("Health events list found in cache");
+                _logger.LogDebug("Health events list found in cache with key: {CacheKey}", cacheKey);
                 return cachedResult;
             }
 
@@ -117,6 +117,7 @@ public class HealthEventService : IHealthEventService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, HEALTH_EVENT_CACHE_SET);
+            _logger.LogDebug("Cached health events list with key: {CacheKey}", cacheKey);
 
             return result;
         }
@@ -136,7 +137,7 @@ public class HealthEventService : IHealthEventService
 
             if (cachedResponse != null)
             {
-                _logger.LogDebug("Health event found in cache: {EventId}", eventId);
+                _logger.LogDebug("Health event found in cache: {EventId}, cacheKey: {CacheKey}", eventId, cacheKey);
                 return cachedResponse;
             }
 
@@ -161,9 +162,9 @@ public class HealthEventService : IHealthEventService
             var response = BaseResponse<HealthEventResponse>.SuccessResult(
                 eventResponse, "Lấy thông tin sự kiện y tế thành công.");
 
-            // Lưu cache với dữ liệu mới
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, HEALTH_EVENT_CACHE_SET);
+            _logger.LogDebug("Cached health event with key: {CacheKey}", cacheKey);
 
             return response;
         }
@@ -173,7 +174,6 @@ public class HealthEventService : IHealthEventService
             return BaseResponse<HealthEventResponse>.ErrorResult($"Lỗi lấy thông tin sự kiện y tế: {ex.Message}");
         }
     }
-
 
     public async Task<BaseResponse<HealthEventResponse>> CreateHealthEventAsync(CreateHealthEventRequest model)
     {
@@ -309,7 +309,7 @@ public class HealthEventService : IHealthEventService
     }
 
     public async Task<BaseResponse<HealthEventResponse>> CreateHealthEventWithMedicalItemsAsync(
-    CreateHealthEventWithMedicalItemsRequest model)
+        CreateHealthEventWithMedicalItemsRequest model)
     {
         try
         {
@@ -450,6 +450,8 @@ public class HealthEventService : IHealthEventService
                     MedicationQuantity = usageRequest.Quantity,
                     MedicationDosage = usageRequest.Notes ?? "No dosage specified",
                     SupplyQuantity = null,
+                    Dose = usageRequest.Dose,
+                    MedicalPerOnce = usageRequest.MedicalPerOnce,
                     CreatedBy = schoolNurseRoleName,
                     CreatedDate = DateTime.Now,
                     IsDeleted = false
@@ -461,28 +463,36 @@ public class HealthEventService : IHealthEventService
             await medicalItemUsageRepo.AddRangeAsync(medicalItemUsages);
             await healthEventMedicalItemRepo.AddRangeAsync(healthEventMedicalItems);
 
-            // Cập nhật Quantity của MedicalItem dựa trên số lượng mới sử dụng
             foreach (var medicalItemId in medicalItemIds)
             {
-                var currentMedicalItem = await medicalItemRepo.GetById(medicalItemId); // Lấy từ DB để lấy giá trị hiện tại
+                var currentMedicalItem = await medicalItemRepo.GetById(medicalItemId);
                 if (currentMedicalItem != null)
                 {
                     var newUsageQuantity = model.MedicalItemUsages
                         .Where(miu => miu.MedicalItemId == medicalItemId)
-                        .Sum(miu => miu.Quantity); // Tổng số lượng mới trong request
-                    currentMedicalItem.Quantity -= (int)newUsageQuantity; // Chỉ trừ số lượng mới
+                        .Sum(miu => miu.Quantity);
+                    currentMedicalItem.Quantity -= (int)newUsageQuantity;
                     if (currentMedicalItem.Quantity < 0)
                     {
                         _logger.LogWarning("Quantity of MedicalItem {MedicalItemId} is negative after usage: {NewQuantity}", medicalItemId, currentMedicalItem.Quantity);
-                        currentMedicalItem.Quantity = 0; // Đảm bảo không âm
+                        currentMedicalItem.Quantity = 0;
                     }
-                    // Xóa cache cho MedicalItem
-                    var medicalItemCacheKey = _cacheService.GenerateCacheKey("MedicalItem", medicalItemId.ToString());
+                    var medicalItemCacheKey = _cacheService.GenerateCacheKey("medical_item", medicalItemId.ToString());
                     await _cacheService.RemoveAsync(medicalItemCacheKey);
+                    _logger.LogDebug("Đã xóa cache cụ thể cho medical item: {CacheKey}", medicalItemCacheKey);
                 }
             }
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể cho health event detail và danh sách health events
+            var eventCacheKey = _cacheService.GenerateCacheKey(HEALTH_EVENT_CACHE_PREFIX, healthEvent.Id.ToString());
+            await _cacheService.RemoveAsync(eventCacheKey);
+            _logger.LogDebug("Đã xóa cache cụ thể cho health event detail: {CacheKey}", eventCacheKey);
+            await _cacheService.RemoveByPrefixAsync(HEALTH_EVENT_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách health events với prefix: {Prefix}", HEALTH_EVENT_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync("medical_item_usage");
+            _logger.LogDebug("Đã xóa cache medical item usage với prefix: {Prefix}", "medical_item_usage");
 
             if (healthEvent.IsEmergency)
             {
@@ -972,7 +982,7 @@ public class HealthEventService : IHealthEventService
 
             await _unitOfWork.SaveChangesAsync();
             await NotifyOtherNursesAboutTakeOwnershipAsync(healthEvent, currentUser);
-            
+
             await InvalidateAllCachesAsync();
 
             var eventResponse = MapToHealthEventResponse(healthEvent);
@@ -1136,7 +1146,7 @@ public class HealthEventService : IHealthEventService
             {
                 return BaseResponse<HealthEventResponse>.ErrorResult("Không thể xác định người dùng hiện tại.");
             }
-            
+
             var currentUser = await ValidateCurrentUserPermissions(currentUserId);
             if (currentUser == null)
             {
@@ -1175,7 +1185,7 @@ public class HealthEventService : IHealthEventService
 
             await _unitOfWork.SaveChangesAsync();
             await NotifyOtherNursesAboutCompletionAsync(healthEvent, currentUser);
-            
+
             await InvalidateAllCachesAsync();
 
             var eventResponse = MapToHealthEventResponse(healthEvent);
