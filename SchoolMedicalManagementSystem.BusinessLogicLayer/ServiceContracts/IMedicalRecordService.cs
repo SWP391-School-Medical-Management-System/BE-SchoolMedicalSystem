@@ -24,5 +24,10 @@ public interface IMedicalRecordService
     Task<BaseResponse<MedicalRecordDetailResponse>> UpdateMedicalRecordAsync(Guid recordId,
         UpdateMedicalRecordRequest model);
 
+    Task<BaseResponse<MedicalRecordDetailResponse>> UpdateMedicalRecordByParentAsync(
+        Guid studentId,
+        UpdateMedicalRecordByParentRequest model,
+        Guid parentId);
+
     Task<BaseResponse<bool>> DeleteMedicalRecordAsync(Guid recordId);
 }

@@ -6,6 +6,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
@@ -55,6 +56,8 @@ public class UserService : IUserService
     private const string STAFF_CACHE_SET = "staff_cache_keys";
     private const string STUDENT_CACHE_SET = "student_cache_keys";
     private const string PARENT_CACHE_SET = "parent_cache_keys";
+    private const string CLASS_ENROLLMENT_PREFIX = "class_enrollment";
+    private const string CLASS_ENROLLMENT_CACHE_SET = "class_enrollment_cache_keys";
 
     public UserService(
         IMapper mapper,
@@ -1094,7 +1097,7 @@ public class UserService : IUserService
             return BaseListResponse<StudentResponse>.ErrorResult("Lỗi lấy danh sách học sinh của phụ huynh.");
         }
     }
-    public async Task<BaseResponse<StudentResponse>> CreateStudentAsync(CreateStudentRequest model)
+    public async Task<BaseResponse<StudentResponse>> CreateStudentAsync(CreateStudentRequest model, Guid currentUserId)
     {
         try
         {
@@ -1112,6 +1115,10 @@ public class UserService : IUserService
             var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
             var studentClassRepo = _unitOfWork.GetRepositoryByEntity<StudentClass>();
             var schoolClassRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
+            var medicalRecordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
+            var visionRecordRepo = _unitOfWork.GetRepositoryByEntity<VisionRecord>();
+            var hearingRecordRepo = _unitOfWork.GetRepositoryByEntity<HearingRecord>();
+            var physicalRecordRepo = _unitOfWork.GetRepositoryByEntity<PhysicalRecord>();
 
             var duplicateCheck = await userRepo.GetQueryable().AnyAsync(u =>
                 (u.Username == model.Username || u.Email == model.Email || u.StudentCode == model.StudentCode)
@@ -1233,6 +1240,65 @@ public class UserService : IUserService
 
                 await studentClassRepo.AddAsync(studentClass);
             }
+
+            // Tạo MedicalRecord và các bảng liên quan
+            var medicalRecord = new MedicalRecord
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                CreatedBy = managerRoleName,
+                CreatedDate = DateTime.Now,
+                BloodType = "Unknown",
+                EmergencyContact = "Unknown",
+                EmergencyContactPhone = "Unknown",
+                MedicalConditions = new List<MedicalCondition>(),
+                VaccinationRecords = new List<VaccinationRecord>(),
+                VisionRecords = new List<VisionRecord>(),
+                HearingRecords = new List<HearingRecord>(),
+                PhysicalRecords = new List<PhysicalRecord>()
+            };
+
+            await medicalRecordRepo.AddAsync(medicalRecord);
+
+            // Tạo VisionRecord với giá trị mặc định
+            var visionRecord = new VisionRecord
+            {
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                LeftEye = 0,
+                RightEye = 0,
+                CheckDate = DateTime.MinValue,
+                Comments = "Not recorded",
+                RecordedBy = currentUserId
+            };
+            await visionRecordRepo.AddAsync(visionRecord);
+
+            // Tạo HearingRecord với giá trị mặc định
+            var hearingRecord = new HearingRecord
+            {
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                LeftEar = "Not recorded",
+                RightEar = "Not recorded",
+                CheckDate = DateTime.MinValue,
+                Comments = null,
+                RecordedBy = currentUserId
+            };
+            await hearingRecordRepo.AddAsync(hearingRecord);
+
+            // Tạo PhysicalRecord với giá trị mặc định
+            var physicalRecord = new PhysicalRecord
+            {
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                Height = 0,
+                Weight = 0,
+                BMI = 0,
+                CheckDate = DateTime.MinValue,
+                Comments = "Not recorded",
+                RecordedBy = currentUserId
+            };
+            await physicalRecordRepo.AddAsync(physicalRecord);
 
             await _unitOfWork.SaveChangesAsync();
 
@@ -2253,266 +2319,354 @@ public class UserService : IUserService
     public async Task<BaseResponse<StudentParentCombinedImportResult>> ImportStudentParentCombinedFromExcelAsync(
         IFormFile file)
     {
-        try
+        var executionStrategy = _unitOfWork.CreateExecutionStrategy(); 
+
+        return await executionStrategy.ExecuteAsync(async () =>
         {
-            var excelResult = await _excelService.ReadStudentParentCombinedExcelAsync(file);
-
-            if (!excelResult.Success)
-            {
-                return new BaseResponse<StudentParentCombinedImportResult>
-                {
-                    Success = false,
-                    Message = excelResult.Message
-                };
-            }
-
-            var importResult = new StudentParentCombinedImportResult
-            {
-                TotalRows = excelResult.TotalRows,
-                Success = true,
-                Message = "Import hoàn tất."
-            };
-
-            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
-            var roleRepo = _unitOfWork.GetRepositoryByEntity<Role>();
-            var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
-
-            var studentRole = await roleRepo.GetQueryable().FirstOrDefaultAsync(r => r.Name == "STUDENT");
-            var parentRole = await roleRepo.GetQueryable().FirstOrDefaultAsync(r => r.Name == "PARENT");
-
-            if (studentRole == null || parentRole == null)
-            {
-                return new BaseResponse<StudentParentCombinedImportResult>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy vai trò STUDENT hoặc PARENT trong hệ thống."
-                };
-            }
-
-            var parentPhoneNumbers = excelResult.ValidData.Select(d => d.ParentPhoneNumber).Distinct().ToList();
-            var existingParents = await userRepo.GetQueryable()
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .Where(u => !u.IsDeleted &&
-                            parentPhoneNumbers.Contains(u.PhoneNumber) &&
-                            u.UserRoles.Any(ur => ur.Role.Name == "PARENT"))
-                .ToDictionaryAsync(u => u.PhoneNumber, u => u);
-
-            var allClasses = await classRepo.GetQueryable()
-                .Where(c => !c.IsDeleted)
-                .ToListAsync();
-            var classLookup = allClasses.ToDictionary(c => $"{c.Name}|{c.Grade}|{c.AcademicYear}", c => c);
-
-            var processedParents = new Dictionary<string, Guid>();
-            var createdParents = new List<ParentResponse>();
-            var createdStudents = new List<StudentResponse>();
+            using var transaction = await _unitOfWork.BeginTransactionAsync();
             var failedImports = new List<string>();
-            var warnings = new List<string>();
-
-            var managerRoleName = await GetManagerRoleName();
-
-            foreach (var data in excelResult.ValidData)
+            try
             {
-                try
+                var excelResult = await _excelService.ReadStudentParentCombinedExcelAsync(file);
+
+                if (!excelResult.Success)
                 {
-                    var duplicateCheck = await ValidateUniqueConstraintsForStudent(data);
-                    if (!duplicateCheck.IsValid)
+                    return new BaseResponse<StudentParentCombinedImportResult>
                     {
-                        failedImports.Add($"Học sinh {data.StudentUsername}: {duplicateCheck.Message}");
-                        continue;
-                    }
+                        Success = false,
+                        Message = excelResult.Message
+                    };
+                }
 
-                    var classValidationResult = await ValidateAndResolveClasses(data, classLookup);
-                    if (!classValidationResult.IsValid)
+                var importResult = new StudentParentCombinedImportResult
+                {
+                    TotalRows = excelResult.TotalRows,
+                    Success = true,
+                    Message = "Import hoàn tất."
+                };
+
+                var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+                var roleRepo = _unitOfWork.GetRepositoryByEntity<Role>();
+                var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
+                var medicalRecordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
+                var visionRecordRepo = _unitOfWork.GetRepositoryByEntity<VisionRecord>();
+                var hearingRecordRepo = _unitOfWork.GetRepositoryByEntity<HearingRecord>();
+                var physicalRecordRepo = _unitOfWork.GetRepositoryByEntity<PhysicalRecord>();
+
+                var studentRole = await roleRepo.GetQueryable().FirstOrDefaultAsync(r => r.Name == "STUDENT");
+                var parentRole = await roleRepo.GetQueryable().FirstOrDefaultAsync(r => r.Name == "PARENT");
+
+                if (studentRole == null || parentRole == null)
+                {
+                    return new BaseResponse<StudentParentCombinedImportResult>
                     {
-                        failedImports.Add($"Học sinh {data.StudentUsername}: {classValidationResult.Message}");
-                        continue;
-                    }
+                        Success = false,
+                        Message = "Không tìm thấy vai trò STUDENT hoặc PARENT trong hệ thống."
+                    };
+                }
 
-                    var hasParentInfo = !string.IsNullOrWhiteSpace(data.ParentFullName) &&
-                                        !string.IsNullOrWhiteSpace(data.ParentPhoneNumber) &&
-                                        !string.IsNullOrWhiteSpace(data.ParentEmail);
+                var parentPhoneNumbers = excelResult.ValidData.Select(d => d.ParentPhoneNumber).Distinct().ToList();
+                var existingParents = await userRepo.GetQueryable()
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .Where(u => !u.IsDeleted &&
+                                parentPhoneNumbers.Contains(u.PhoneNumber) &&
+                                u.UserRoles.Any(ur => ur.Role.Name == "PARENT"))
+                    .ToDictionaryAsync(u => u.PhoneNumber, u => u);
 
-                    Guid? parentId = null;
-                    bool isNewParent = false;
+                var allClasses = await classRepo.GetQueryable()
+                    .Where(c => !c.IsDeleted)
+                    .ToListAsync();
+                var classLookup = allClasses.ToDictionary(c => $"{c.Name}|{c.Grade}|{c.AcademicYear}", c => c);
 
-                    if (hasParentInfo)
+                var processedParents = new Dictionary<string, Guid>();
+                var createdParents = new List<ParentResponse>();
+                var createdStudents = new List<StudentResponse>();
+                var warnings = new List<string>();
+
+                var managerRoleName = await GetManagerRoleName();
+
+                foreach (var data in excelResult.ValidData)
+                {
+                    try
                     {
-                        if (existingParents.ContainsKey(data.ParentPhoneNumber))
+                        var duplicateCheck = await ValidateUniqueConstraintsForStudent(data);
+                        if (!duplicateCheck.IsValid)
                         {
-                            parentId = existingParents[data.ParentPhoneNumber].Id;
-                            data.IsParentExisting = true;
-                            data.ExistingParentId = parentId;
-
-                            warnings.Add(
-                                $"Học sinh {data.StudentFullName}: Sử dụng phụ huynh có sẵn - {existingParents[data.ParentPhoneNumber].FullName}");
+                            failedImports.Add($"Học sinh {data.StudentUsername}: {duplicateCheck.Message}");
+                            throw new InvalidOperationException($"Lỗi: {duplicateCheck.Message}"); 
                         }
-                        else if (processedParents.ContainsKey(data.ParentPhoneNumber))
-                        {
-                            parentId = processedParents[data.ParentPhoneNumber];
-                            data.IsParentExisting = true;
-                            data.ExistingParentId = parentId;
 
-                            warnings.Add($"Học sinh {data.StudentFullName}: Sử dụng phụ huynh đã tạo trong batch này");
+                        var classValidationResult = await ValidateAndResolveClasses(data, classLookup);
+                        if (!classValidationResult.IsValid)
+                        {
+                            failedImports.Add($"Học sinh {data.StudentUsername}: {classValidationResult.Message}");
+                            throw new InvalidOperationException($"Lỗi: {classValidationResult.Message}");
+                        }
+
+                        var hasParentInfo = !string.IsNullOrWhiteSpace(data.ParentFullName) &&
+                                            !string.IsNullOrWhiteSpace(data.ParentPhoneNumber) &&
+                                            !string.IsNullOrWhiteSpace(data.ParentEmail);
+
+                        Guid? parentId = null;
+                        bool isNewParent = false;
+
+                        if (hasParentInfo)
+                        {
+                            if (existingParents.ContainsKey(data.ParentPhoneNumber))
+                            {
+                                parentId = existingParents[data.ParentPhoneNumber].Id;
+                                data.IsParentExisting = true;
+                                data.ExistingParentId = parentId;
+
+                                warnings.Add(
+                                    $"Học sinh {data.StudentFullName}: Sử dụng phụ huynh có sẵn - {existingParents[data.ParentPhoneNumber].FullName}");
+                            }
+                            else if (processedParents.ContainsKey(data.ParentPhoneNumber))
+                            {
+                                parentId = processedParents[data.ParentPhoneNumber];
+                                data.IsParentExisting = true;
+                                data.ExistingParentId = parentId;
+
+                                warnings.Add($"Học sinh {data.StudentFullName}: Sử dụng phụ huynh đã tạo trong batch này");
+                            }
+                            else
+                            {
+                                var createParentResult =
+                                    await CreateParentFromCombinedData(data, parentRole, managerRoleName);
+                                if (!createParentResult.Success)
+                                {
+                                    failedImports.Add($"Phụ huynh {data.ParentFullName}: {createParentResult.Message}");
+                                    throw new InvalidOperationException($"Lỗi: {createParentResult.Message}");
+                                }
+
+                                parentId = createParentResult.Data.Id;
+                                processedParents[data.ParentPhoneNumber] = parentId.Value;
+                                createdParents.Add(createParentResult.Data);
+                                isNewParent = true;
+                            }
                         }
                         else
                         {
-                            var createParentResult =
-                                await CreateParentFromCombinedData(data, parentRole, managerRoleName);
-                            if (!createParentResult.Success)
+                            warnings.Add($"Học sinh {data.StudentFullName}: Được tạo mà không có phụ huynh");
+                        }
+
+                        var createStudentResult = await CreateStudentFromCombinedData(data, studentRole, managerRoleName);
+                        if (!createStudentResult.Success)
+                        {
+                            failedImports.Add($"Học sinh {data.StudentUsername}: {createStudentResult.Message}");
+                            throw new InvalidOperationException($"Lỗi: {createStudentResult.Message}");
+                        }
+
+                        var student = createStudentResult.Data;
+
+                        // Tạo MedicalRecord, VisionRecord, HearingRecord, PhysicalRecord
+                        var medicalRecord = new MedicalRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            UserId = student.Id,
+                            CreatedBy = managerRoleName,
+                            CreatedDate = DateTime.Now,
+                            BloodType = "Unknown",
+                            EmergencyContact = "Unknown",
+                            EmergencyContactPhone = "Unknown",
+                            MedicalConditions = new List<MedicalCondition>(),
+                            VaccinationRecords = new List<VaccinationRecord>(),
+                            VisionRecords = new List<VisionRecord>(),
+                            HearingRecords = new List<HearingRecord>(),
+                            PhysicalRecords = new List<PhysicalRecord>()
+                        };
+                        await medicalRecordRepo.AddAsync(medicalRecord);
+
+                        var visionRecord = new VisionRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            LeftEye = 0,
+                            RightEye = 0,
+                            CheckDate = DateTime.Now,
+                            Comments = "Not recorded",
+                            RecordedBy = parentId ?? Guid.Empty,
+                            CreatedDate = DateTime.Now,
+                            LastUpdatedDate = DateTime.Now
+                        };
+                        await visionRecordRepo.AddAsync(visionRecord);
+
+                        var hearingRecord = new HearingRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            LeftEar = "Not recorded",
+                            RightEar = "Not recorded",
+                            CheckDate = DateTime.Now,
+                            Comments = null,
+                            RecordedBy = parentId ?? Guid.Empty,
+                            CreatedDate = DateTime.Now,
+                            LastUpdatedDate = DateTime.Now
+                        };
+                        await hearingRecordRepo.AddAsync(hearingRecord);
+
+                        var physicalRecord = new PhysicalRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            Height = 0,
+                            Weight = 0,
+                            BMI = 0,
+                            CheckDate = DateTime.Now,
+                            Comments = "Not recorded",
+                            RecordedBy = parentId ?? Guid.Empty,
+                            CreatedDate = DateTime.Now,
+                            LastUpdatedDate = DateTime.Now
+                        };
+                        await physicalRecordRepo.AddAsync(physicalRecord);
+
+                        if (parentId.HasValue)
+                        {
+                            var linkResult = await LinkParentToStudentAsync(parentId.Value, student.Id, true);
+                            if (!linkResult.Success)
                             {
-                                failedImports.Add($"Phụ huynh {data.ParentFullName}: {createParentResult.Message}");
-                                continue;
+                                failedImports.Add($"Liên kết {data.StudentFullName} với phụ huynh: {linkResult.Message}");
+                                throw new InvalidOperationException($"Lỗi: {linkResult.Message}");
                             }
 
-                            parentId = createParentResult.Data.Id;
-                            processedParents[data.ParentPhoneNumber] = parentId.Value;
-                            createdParents.Add(createParentResult.Data);
-                            isNewParent = true;
-                        }
-                    }
-                    else
-                    {
-                        warnings.Add($"Học sinh {data.StudentFullName}: Được tạo mà không có phụ huynh");
-                    }
-
-                    var createStudentResult = await CreateStudentFromCombinedData(data, studentRole, managerRoleName);
-                    if (!createStudentResult.Success)
-                    {
-                        failedImports.Add($"Học sinh {data.StudentUsername}: {createStudentResult.Message}");
-                        continue;
-                    }
-
-                    var student = createStudentResult.Data;
-
-                    if (parentId.HasValue)
-                    {
-                        var linkResult = await LinkParentToStudentAsync(parentId.Value, student.Id, true);
-                        if (!linkResult.Success)
-                        {
-                            failedImports.Add($"Liên kết {data.StudentFullName} với phụ huynh: {linkResult.Message}");
-                            continue;
+                            importResult.SuccessfulLinks++;
                         }
 
-                        importResult.SuccessfulLinks++;
-                    }
+                        var studentWithParent = await userRepo.GetQueryable()
+                            .Include(u => u.Parent)
+                            .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
+                            .ThenInclude(sc => sc.SchoolClass)
+                            .Include(u => u.MedicalRecord)
+                            .FirstOrDefaultAsync(u => u.Id == student.Id);
 
-                    var studentWithParent = await userRepo.GetQueryable()
-                        .Include(u => u.Parent)
-                        .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
-                        .ThenInclude(sc => sc.SchoolClass)
-                        .Include(u => u.MedicalRecord)
-                        .FirstOrDefaultAsync(u => u.Id == student.Id);
-
-                    if (studentWithParent != null)
-                    {
-                        student = MapToStudentResponse(studentWithParent);
-                    }
-
-                    createdStudents.Add(student);
-
-                    var classEnrollmentResult =
-                        await AddStudentToMultipleClasses(student.Id, data.ClassInfoList, managerRoleName);
-                    data.ClassEnrollmentResults = classEnrollmentResult.Results;
-
-                    importResult.TotalClassEnrollments += classEnrollmentResult.TotalAttempts;
-                    importResult.SuccessfulClassEnrollments += classEnrollmentResult.SuccessCount;
-                    importResult.FailedClassEnrollments += classEnrollmentResult.FailureCount;
-
-                    importResult.ClassEnrollmentDetails.Add(new ClassEnrollmentSummary
-                    {
-                        StudentName = student.FullName,
-                        StudentCode = student.StudentCode,
-                        EnrollmentResults = classEnrollmentResult.Results
-                    });
-
-                    if (hasParentInfo)
-                    {
-                        if (!isNewParent)
+                        if (studentWithParent != null)
                         {
-                            var existingParent = existingParents.ContainsKey(data.ParentPhoneNumber)
-                                ? existingParents[data.ParentPhoneNumber]
-                                : await userRepo.GetQueryable().FirstOrDefaultAsync(u => u.Id == parentId);
+                            student = MapToStudentResponse(studentWithParent);
+                        }
 
-                            if (existingParent != null)
+                        createdStudents.Add(student);
+
+                        var classEnrollmentResult =
+                            await AddStudentToMultipleClasses(student.Id, data.ClassInfoList, managerRoleName);
+                        data.ClassEnrollmentResults = classEnrollmentResult.Results;
+
+                        importResult.TotalClassEnrollments += classEnrollmentResult.TotalAttempts;
+                        importResult.SuccessfulClassEnrollments += classEnrollmentResult.SuccessCount;
+                        importResult.FailedClassEnrollments += classEnrollmentResult.FailureCount;
+
+                        importResult.ClassEnrollmentDetails.Add(new ClassEnrollmentSummary
+                        {
+                            StudentName = student.FullName,
+                            StudentCode = student.StudentCode,
+                            EnrollmentResults = classEnrollmentResult.Results
+                        });
+
+                        if (hasParentInfo)
+                        {
+                            if (!isNewParent)
                             {
-                                var currentChildrenCount =
-                                    importResult.ParentChildrenCount.GetValueOrDefault(data.ParentPhoneNumber, 0) + 1;
+                                var existingParent = existingParents.ContainsKey(data.ParentPhoneNumber)
+                                    ? existingParents[data.ParentPhoneNumber]
+                                    : await userRepo.GetQueryable().FirstOrDefaultAsync(u => u.Id == parentId);
 
-                                await _emailService.SendChildAddedNotificationAsync(
-                                    parentEmail: existingParent.Email,
-                                    childName: data.StudentFullName,
-                                    parentName: existingParent.FullName,
-                                    studentCode: data.StudentCode,
-                                    className: string.Join(", ", data.ClassList),
-                                    relationship: data.ParentRelationship ?? existingParent.Relationship ?? "Guardian",
-                                    totalChildren: currentChildrenCount,
-                                    parentPhone: existingParent.PhoneNumber
-                                );
+                                if (existingParent != null)
+                                {
+                                    var currentChildrenCount =
+                                        importResult.ParentChildrenCount.GetValueOrDefault(data.ParentPhoneNumber, 0) + 1;
+
+                                    await _emailService.SendChildAddedNotificationAsync(
+                                        parentEmail: existingParent.Email,
+                                        childName: data.StudentFullName,
+                                        parentName: existingParent.FullName,
+                                        studentCode: data.StudentCode,
+                                        className: string.Join(", ", data.ClassList),
+                                        relationship: data.ParentRelationship ?? existingParent.Relationship ?? "Guardian",
+                                        totalChildren: currentChildrenCount,
+                                        parentPhone: existingParent.PhoneNumber
+                                    );
+                                }
                             }
-                        }
 
-                        if (!importResult.ParentChildrenCount.ContainsKey(data.ParentPhoneNumber))
-                        {
-                            importResult.ParentChildrenCount[data.ParentPhoneNumber] = 0;
-                        }
+                            if (!importResult.ParentChildrenCount.ContainsKey(data.ParentPhoneNumber))
+                            {
+                                importResult.ParentChildrenCount[data.ParentPhoneNumber] = 0;
+                            }
 
-                        importResult.ParentChildrenCount[data.ParentPhoneNumber]++;
+                            importResult.ParentChildrenCount[data.ParentPhoneNumber]++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing row for student {StudentUsername}", data.StudentUsername);
+                        failedImports.Add($"Học sinh {data.StudentUsername}: Lỗi xử lý - {ex.Message}");
+                        throw;
                     }
                 }
-                catch (Exception ex)
+
+                await _unitOfWork.SaveChangesAsync(); 
+
+                await _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách học sinh với prefix: {Prefix}", STUDENT_LIST_PREFIX);
+                await _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX);
+                _logger.LogDebug("Đã xóa cache danh sách phụ huynh với prefix: {Prefix}", PARENT_LIST_PREFIX);
+                await _cacheService.RemoveByPrefixAsync(CLASS_ENROLLMENT_PREFIX);
+                _logger.LogDebug("Đã xóa cache liên kết lớp học với prefix: {Prefix}", CLASS_ENROLLMENT_PREFIX);
+
+                await InvalidateAllCachesAsync();
+
+                importResult.SuccessfulStudents = createdStudents.Count;
+                importResult.SuccessfulParents = createdParents.Count;
+                importResult.ErrorRows = failedImports.Count;
+                importResult.Errors = failedImports;
+                importResult.Warnings = warnings;
+
+                importResult.CreatedStudents = createdStudents;
+                importResult.CreatedParents = createdParents;
+
+                var studentsWithoutParents = createdStudents.Count(s => !s.HasParent);
+
+                if (failedImports.Any())
                 {
-                    _logger.LogError(ex, "Error processing row for student {StudentUsername}", data.StudentUsername);
-                    failedImports.Add($"Học sinh {data.StudentUsername}: Lỗi xử lý - {ex.Message}");
+                    throw new InvalidOperationException($"Tồn tại lỗi trong dữ liệu import. Chi tiết: {string.Join(", ", failedImports)}");
                 }
+                else
+                {
+                    await transaction.CommitAsync();
+                    importResult.Message = $"Import thành công! " +
+                                           $"Đã tạo {importResult.SuccessfulStudents} học sinh " +
+                                           $"({importResult.SuccessfulLinks} có phụ huynh, {studentsWithoutParents} chưa có), " +
+                                           $"{importResult.SuccessfulParents} phụ huynh mới, " +
+                                           $"sử dụng {importResult.ExistingParentsUsed.Count} phụ huynh có sẵn, " +
+                                           $"add vào {importResult.SuccessfulClassEnrollments} lớp học.";
+                }
+
+                return new BaseResponse<StudentParentCombinedImportResult>
+                {
+                    Success = true,
+                    Data = importResult,
+                    Message = importResult.Message
+                };
             }
-
-            importResult.SuccessfulStudents = createdStudents.Count;
-            importResult.SuccessfulParents = createdParents.Count;
-            importResult.ErrorRows = failedImports.Count;
-            importResult.Errors = failedImports;
-            importResult.Warnings = warnings;
-
-            importResult.CreatedStudents = createdStudents;
-            importResult.CreatedParents = createdParents;
-
-            var studentsWithoutParents = createdStudents.Count(s => !s.HasParent);
-
-            if (failedImports.Any())
+            catch (Exception ex)
             {
-                importResult.Message = $"Import hoàn tất. " +
-                                       $"Thành công: {importResult.SuccessfulStudents} học sinh " +
-                                       $"({importResult.SuccessfulLinks} có phụ huynh, {studentsWithoutParents} chưa có), " +
-                                       $"{importResult.SuccessfulParents} phụ huynh mới, " +
-                                       $"{importResult.SuccessfulClassEnrollments}/{importResult.TotalClassEnrollments} lớp học. " +
-                                       $"Lỗi: {importResult.ErrorRows}";
+                _logger.LogError(ex, "Error importing student-parent combined from Excel");
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                    _logger.LogWarning("Giao dịch đã bị rollback do lỗi: {Error}", ex.Message);
+                }
+                return new BaseResponse<StudentParentCombinedImportResult>
+                {
+                    Success = false,
+                    Message = $"Lỗi import Student-Parent: {ex.Message}. Vui lòng kiểm tra dữ liệu và import lại.",
+                    Data = new StudentParentCombinedImportResult
+                    {
+                        Errors = failedImports
+                    }
+                };
             }
-            else
-            {
-                importResult.Message = $"Import thành công! " +
-                                       $"Đã tạo {importResult.SuccessfulStudents} học sinh " +
-                                       $"({importResult.SuccessfulLinks} có phụ huynh, {studentsWithoutParents} chưa có), " +
-                                       $"{importResult.SuccessfulParents} phụ huynh mới, " +
-                                       $"sử dụng {importResult.ExistingParentsUsed.Count} phụ huynh có sẵn, " +
-                                       $"add vào {importResult.SuccessfulClassEnrollments} lớp học.";
-            }
-
-            return new BaseResponse<StudentParentCombinedImportResult>
-            {
-                Success = true,
-                Data = importResult,
-                Message = "Import Student-Parent kết hợp hoàn tất."
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error importing student-parent combined from Excel");
-            return new BaseResponse<StudentParentCombinedImportResult>
-            {
-                Success = false,
-                Message = $"Lỗi import Student-Parent: {ex.Message}"
-            };
-        }
+        });
     }
 
     public async Task<byte[]> ExportParentStudentRelationshipAsync()

@@ -1340,7 +1340,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
         public async Task<BaseResponse<bool>> ReassignNurseToSessionAsync(
             Guid sessionId,
-            AssignNurseToSessionRequest request,
+            ReAssignNurseToSessionRequest request,
             CancellationToken cancellationToken = default)
         {
             try

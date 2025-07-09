@@ -97,7 +97,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
 
         Task<BaseResponse<bool>> ReassignNurseToSessionAsync(
             Guid sessionId,
-            AssignNurseToSessionRequest request,
+            ReAssignNurseToSessionRequest request,
             CancellationToken cancellationToken = default);
 
         #endregion
