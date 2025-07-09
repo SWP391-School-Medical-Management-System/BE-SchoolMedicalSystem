@@ -473,16 +473,25 @@ public class UserController : ControllerBase
 
     [HttpPost("students")]
     [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<StudentResponse>>> CreateStudent([FromBody] CreateStudentRequest model)
+    public async Task<IActionResult> CreateStudent([FromBody] CreateStudentRequest model)
     {
-        var result = await _userService.CreateStudentAsync(model);
-
-        if (!result.Success)
+        var userId = User.FindFirst("uid")?.Value;
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out Guid currentUserId))
         {
-            return BadRequest(result);
+            return BadRequest(new BaseResponse<StudentResponse>
+            {
+                Success = false,
+                Message = "Không thể xác định người dùng hiện tại."
+            });
         }
 
-        return CreatedAtAction(nameof(GetStudentById), new { id = result.Data.Id }, result);
+        var response = await _userService.CreateStudentAsync(model, currentUserId);
+        if (!response.Success)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
     }
 
     [HttpPut("students/{id}")]

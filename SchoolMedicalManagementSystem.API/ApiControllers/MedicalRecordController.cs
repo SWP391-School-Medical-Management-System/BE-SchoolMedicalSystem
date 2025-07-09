@@ -133,6 +133,29 @@ public class MedicalRecordController : ControllerBase
         }
     }
 
+    [Authorize(Roles = "PARENT")]
+    [HttpPut("{studentId}/update-by-parent")]
+    public async Task<IActionResult> UpdateMedicalRecordByParent(Guid studentId, [FromBody] UpdateMedicalRecordByParentRequest model)
+    {
+        var parentId = User.FindFirst("uid")?.Value; // Lấy uid từ token
+        if (string.IsNullOrEmpty(parentId) || !Guid.TryParse(parentId, out Guid currentParentId))
+        {
+            return BadRequest(new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = "Không thể xác định phụ huynh hiện tại."
+            });
+        }
+
+        var response = await _medicalRecordService.UpdateMedicalRecordByParentAsync(studentId, model, currentParentId);
+        if (!response.Success)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
+
     [HttpDelete("{id}")]
     [Authorize(Roles = "SCHOOLNURSE,MANAGER")]
     public async Task<ActionResult<BaseResponse<bool>>> DeleteMedicalRecord(Guid id)

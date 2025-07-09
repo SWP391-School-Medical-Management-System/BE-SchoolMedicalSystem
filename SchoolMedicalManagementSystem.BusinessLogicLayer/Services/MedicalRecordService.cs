@@ -360,12 +360,6 @@ public class MedicalRecordService : IMedicalRecordService
             if (!string.IsNullOrEmpty(model.BloodType))
                 medicalRecord.BloodType = model.BloodType;
 
-            if (model.Height.HasValue)
-                medicalRecord.Height = model.Height.Value;
-
-            if (model.Weight.HasValue)
-                medicalRecord.Weight = model.Weight.Value;
-
             if (!string.IsNullOrEmpty(model.EmergencyContact))
                 medicalRecord.EmergencyContact = model.EmergencyContact;
 
@@ -390,6 +384,180 @@ public class MedicalRecordService : IMedicalRecordService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating medical record");
+            return new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = $"Lỗi cập nhật hồ sơ y tế: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<BaseResponse<MedicalRecordDetailResponse>> UpdateMedicalRecordByParentAsync(
+    Guid studentId,
+    UpdateMedicalRecordByParentRequest model,
+    Guid parentId)
+    {
+        try
+        {
+            // Xác thực phụ huynh
+            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var student = await userRepo.GetQueryable()
+                .Include(u => u.Parent)
+                .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted);
+
+            if (student == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy học sinh."
+                };
+            }
+
+            if (student.ParentId == null || student.ParentId != parentId)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Bạn không có quyền chỉnh sửa hồ sơ y tế của học sinh này."
+                };
+            }
+
+            // Lấy MedicalRecord và các bản ghi liên quan
+            var recordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
+            var medicalRecord = await recordRepo.GetQueryable()
+                .Include(mr => mr.VisionRecords.Where(vr => !vr.IsDeleted))
+                .Include(mr => mr.HearingRecords.Where(hr => !hr.IsDeleted))
+                .Include(mr => mr.PhysicalRecords.Where(pr => !pr.IsDeleted))
+                .FirstOrDefaultAsync(mr => mr.UserId == studentId && !mr.IsDeleted);
+
+            if (medicalRecord == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy hồ sơ y tế cho học sinh này."
+                };
+            }
+
+            // Cập nhật MedicalRecord
+            if (!string.IsNullOrEmpty(model.BloodType))
+                medicalRecord.BloodType = model.BloodType;
+            if (!string.IsNullOrEmpty(model.EmergencyContact))
+                medicalRecord.EmergencyContact = model.EmergencyContact;
+            if (!string.IsNullOrEmpty(model.EmergencyContactPhone))
+                medicalRecord.EmergencyContactPhone = model.EmergencyContactPhone;
+
+            medicalRecord.LastUpdatedBy = "PARENT"; // Hoặc lấy từ một nguồn khác nếu cần
+            medicalRecord.LastUpdatedDate = DateTime.Now;
+
+            // Cập nhật VisionRecord (tạo hoặc cập nhật bản ghi mới nhất)
+            var visionRecord = medicalRecord.VisionRecords.OrderByDescending(vr => vr.CreatedDate).FirstOrDefault();
+            if (visionRecord != null)
+            {
+                if (model.LeftEye.HasValue) visionRecord.LeftEye = model.LeftEye.Value;
+                if (model.RightEye.HasValue) visionRecord.RightEye = model.RightEye.Value;
+                if (model.CheckDate.HasValue) visionRecord.CheckDate = model.CheckDate.Value;
+                if (!string.IsNullOrEmpty(model.Comments)) visionRecord.Comments = model.Comments;
+                visionRecord.LastUpdatedDate = DateTime.Now;
+            }
+            else
+            {
+                visionRecord = new VisionRecord
+                {
+                    Id = Guid.NewGuid(),
+                    MedicalRecordId = medicalRecord.Id,
+                    LeftEye = model.LeftEye ?? 0,
+                    RightEye = model.RightEye ?? 0,
+                    CheckDate = model.CheckDate ?? DateTime.Now,
+                    Comments = model.Comments,
+                    RecordedBy = parentId, // Gán parentId làm RecordedBy
+                    CreatedDate = DateTime.Now,
+                    LastUpdatedDate = DateTime.Now
+                };
+                await _unitOfWork.GetRepositoryByEntity<VisionRecord>().AddAsync(visionRecord);
+            }
+
+            // Cập nhật HearingRecord
+            var hearingRecord = medicalRecord.HearingRecords.OrderByDescending(hr => hr.CreatedDate).FirstOrDefault();
+            if (hearingRecord != null)
+            {
+                if (!string.IsNullOrEmpty(model.LeftEar)) hearingRecord.LeftEar = model.LeftEar;
+                if (!string.IsNullOrEmpty(model.RightEar)) hearingRecord.RightEar = model.RightEar;
+                if (model.CheckDateHearing.HasValue) hearingRecord.CheckDate = model.CheckDateHearing.Value;
+                if (!string.IsNullOrEmpty(model.CommentsHearing)) hearingRecord.Comments = model.CommentsHearing;
+                hearingRecord.LastUpdatedDate = DateTime.Now;
+            }
+            else
+            {
+                hearingRecord = new HearingRecord
+                {
+                    Id = Guid.NewGuid(),
+                    MedicalRecordId = medicalRecord.Id,
+                    LeftEar = model.LeftEar ?? "Not recorded",
+                    RightEar = model.RightEar ?? "Not recorded",
+                    CheckDate = model.CheckDateHearing ?? DateTime.Now,
+                    Comments = model.CommentsHearing,
+                    RecordedBy = parentId,
+                    CreatedDate = DateTime.Now,
+                    LastUpdatedDate = DateTime.Now
+                };
+                await _unitOfWork.GetRepositoryByEntity<HearingRecord>().AddAsync(hearingRecord);
+            }
+
+            // Cập nhật PhysicalRecord
+            var physicalRecord = medicalRecord.PhysicalRecords.OrderByDescending(pr => pr.CreatedDate).FirstOrDefault();
+            if (physicalRecord != null)
+            {
+                if (model.Height.HasValue) physicalRecord.Height = model.Height.Value;
+                if (model.Weight.HasValue) physicalRecord.Weight = model.Weight.Value;
+                if (model.BMI.HasValue) physicalRecord.BMI = model.BMI.Value;
+                if (model.CheckDatePhysical.HasValue) physicalRecord.CheckDate = model.CheckDatePhysical.Value;
+                if (!string.IsNullOrEmpty(model.CommentsPhysical)) physicalRecord.Comments = model.CommentsPhysical;
+                physicalRecord.LastUpdatedDate = DateTime.Now;
+            }
+            else
+            {
+                physicalRecord = new PhysicalRecord
+                {
+                    Id = Guid.NewGuid(),
+                    MedicalRecordId = medicalRecord.Id,
+                    Height = model.Height ?? 0,
+                    Weight = model.Weight ?? 0,
+                    BMI = model.BMI ?? 0,
+                    CheckDate = model.CheckDatePhysical ?? DateTime.Now,
+                    Comments = model.CommentsPhysical,
+                    RecordedBy = parentId,
+                    CreatedDate = DateTime.Now,
+                    LastUpdatedDate = DateTime.Now
+                };
+                await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().AddAsync(physicalRecord);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await InvalidateAllCachesAsync();
+
+            // Lấy lại dữ liệu để trả về response
+            medicalRecord = await recordRepo.GetQueryable()
+                .Include(mr => mr.Student)
+                .Include(mr => mr.MedicalConditions.Where(mc => !mc.IsDeleted))
+                .Include(mr => mr.VisionRecords.Where(vr => !vr.IsDeleted))
+                .Include(mr => mr.HearingRecords.Where(hr => !hr.IsDeleted))
+                .Include(mr => mr.PhysicalRecords.Where(pr => !pr.IsDeleted))
+                .FirstOrDefaultAsync(mr => mr.Id == medicalRecord.Id);
+
+            var recordResponse = MapToMedicalRecordDetailResponse(medicalRecord);
+
+            return new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = true,
+                Data = recordResponse,
+                Message = "Cập nhật hồ sơ y tế thành công."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating medical record by parent for student: {StudentId}", studentId);
             return new BaseResponse<MedicalRecordDetailResponse>
             {
                 Success = false,
@@ -480,12 +648,6 @@ public class MedicalRecordService : IMedicalRecordService
             response.ChronicDiseaseCount = activeConditions.Count(mc => mc.Type == MedicalConditionType.ChronicDisease);
         }
 
-        if (medicalRecord.Height > 0 && medicalRecord.Weight > 0)
-        {
-            var heightInMeters = medicalRecord.Height / 100;
-            response.BMI = Math.Round(medicalRecord.Weight / (heightInMeters * heightInMeters), 2);
-        }
-
         var sixMonthsAgo = DateTime.Now.AddMonths(-6);
         response.NeedsUpdate = medicalRecord.LastUpdatedDate == null || medicalRecord.LastUpdatedDate < sixMonthsAgo;
 
@@ -512,12 +674,6 @@ public class MedicalRecordService : IMedicalRecordService
         {
             var activeVaccinations = medicalRecord.VaccinationRecords.Where(vr => !vr.IsDeleted).ToList();
             response.VaccinationRecords = _mapper.Map<List<VaccinationRecordResponse>>(activeVaccinations);
-        }
-
-        if (medicalRecord.Height > 0 && medicalRecord.Weight > 0)
-        {
-            var heightInMeters = medicalRecord.Height / 100;
-            response.BMI = Math.Round(medicalRecord.Weight / (heightInMeters * heightInMeters), 2);
         }
 
         var sixMonthsAgo = DateTime.Now.AddMonths(-6);
@@ -602,10 +758,6 @@ public class MedicalRecordService : IMedicalRecordService
             "studentcode_desc" => query.OrderByDescending(mr => mr.Student.StudentCode),
             "bloodtype" => query.OrderBy(mr => mr.BloodType),
             "bloodtype_desc" => query.OrderByDescending(mr => mr.BloodType),
-            "height" => query.OrderBy(mr => mr.Height),
-            "height_desc" => query.OrderByDescending(mr => mr.Height),
-            "weight" => query.OrderBy(mr => mr.Weight),
-            "weight_desc" => query.OrderByDescending(mr => mr.Weight),
             "lastupdated" => query.OrderBy(mr => mr.LastUpdatedDate ?? mr.CreatedDate),
             "lastupdated_desc" => query.OrderByDescending(mr => mr.LastUpdatedDate ?? mr.CreatedDate),
             "createdate" => query.OrderBy(mr => mr.CreatedDate),
