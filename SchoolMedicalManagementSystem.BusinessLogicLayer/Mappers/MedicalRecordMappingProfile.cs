@@ -48,7 +48,6 @@ public class MedicalRecordMappingProfile : Profile
         CreateMap<MedicalRecord, MedicalRecordResponse>()
             .ForMember(dest => dest.StudentName, opt => opt.Ignore()) // Set in service
             .ForMember(dest => dest.StudentCode, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.BMI, opt => opt.Ignore()) // Calculated in service
             .ForMember(dest => dest.AllergyCount, opt => opt.Ignore()) // Set in service
             .ForMember(dest => dest.ChronicDiseaseCount, opt => opt.Ignore()) // Set in service
             .ForMember(dest => dest.NeedsUpdate, opt => opt.Ignore()); // Set in service
@@ -56,7 +55,6 @@ public class MedicalRecordMappingProfile : Profile
         CreateMap<MedicalRecord, MedicalRecordDetailResponse>()
             .ForMember(dest => dest.StudentName, opt => opt.Ignore()) // Set in service
             .ForMember(dest => dest.StudentCode, opt => opt.Ignore()) // Set in service
-            .ForMember(dest => dest.BMI, opt => opt.Ignore()) // Calculated in service
             .ForMember(dest => dest.MedicalConditions, opt => opt.Ignore()) // Set in service
             .ForMember(dest => dest.VaccinationRecords, opt => opt.Ignore()) // Set in service
             .ForMember(dest => dest.NeedsUpdate, opt => opt.Ignore()); // Set in service

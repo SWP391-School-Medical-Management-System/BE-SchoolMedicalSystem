@@ -60,7 +60,7 @@ public interface IUserService
     string orderBy = null,
     CancellationToken cancellationToken = default);
 
-    Task<BaseResponse<StudentResponse>> CreateStudentAsync(CreateStudentRequest model);
+    Task<BaseResponse<StudentResponse>> CreateStudentAsync(CreateStudentRequest model, Guid currentUserId);
     Task<BaseResponse<StudentResponse>> UpdateStudentAsync(Guid studentId, UpdateStudentRequest model);
     Task<BaseResponse<bool>> DeleteStudentAsync(Guid studentId);
 

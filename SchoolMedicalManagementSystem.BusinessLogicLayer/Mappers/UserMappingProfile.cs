@@ -92,8 +92,6 @@ public class UserMappingProfile : Profile
             .ForMember(dest => dest.ParentEmail, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Email : null))
             .ForMember(dest => dest.ParentRelationship, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Relationship : null))
             .ForMember(dest => dest.BloodType, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.BloodType : null))
-            .ForMember(dest => dest.Height, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.Height : (double?)null))
-            .ForMember(dest => dest.Weight, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.Weight : (double?)null))
             .ForMember(dest => dest.EmergencyContact, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContact : null))
             .ForMember(dest => dest.EmergencyContactPhone, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContactPhone : null));
 

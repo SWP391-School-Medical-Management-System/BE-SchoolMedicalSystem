@@ -298,7 +298,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         [Authorize(Roles = "MANAGER")]
         public async Task<ActionResult<BaseResponse<bool>>> ReassignNurseToSession(
             Guid sessionId, 
-            [FromBody] AssignNurseToSessionRequest request, 
+            [FromBody] ReAssignNurseToSessionRequest request, 
             CancellationToken cancellationToken = default)
         {
             try

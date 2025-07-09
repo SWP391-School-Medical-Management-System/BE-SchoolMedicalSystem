@@ -58,7 +58,6 @@ public class HealthEventController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<HealthEventResponse>>> GetHealthEventById(Guid id)
     {
         try
