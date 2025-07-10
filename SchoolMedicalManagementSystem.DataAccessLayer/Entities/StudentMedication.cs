@@ -19,7 +19,7 @@ public class StudentMedication : BaseEntity
     public int? FrequencyCount { get; set; }        // 3, 2 - số lần uống/ngày
     public string? FrequencyUnit { get; set; }      // "lần/ngày", "lần/tuần"
     public DateTime ExpiryDate { get; set; }        // Ngày hết hạn thuốc
-    public string Purpose { get; set; }             // Mục đích sử dụng
+    public string? Purpose { get; set; }             // Mục đích sử dụng
     public string? SideEffects { get; set; }        // Tác dụng phụ
     public string? StorageInstructions { get; set; } // Hướng dẫn bảo quản
     
@@ -29,7 +29,7 @@ public class StudentMedication : BaseEntity
     public DateTime? PrescriptionDate { get; set; } // Ngày kê đơn
     public string? PrescriptionNumber { get; set; } // Số đơn thuốc
     public int QuantitySent { get; set; }           // Số lượng Parent gửi
-    public string QuantityUnit { get; set; }        // Đơn vị (viên, chai, gói)
+    public string? QuantityUnit { get; set; }        // Đơn vị (viên, chai, gói)
     public string? SpecialNotes { get; set; }       // Ghi chú từ Parent
     public string? EmergencyContactInstructions { get; set; } // Hướng dẫn khẩn cấp
     

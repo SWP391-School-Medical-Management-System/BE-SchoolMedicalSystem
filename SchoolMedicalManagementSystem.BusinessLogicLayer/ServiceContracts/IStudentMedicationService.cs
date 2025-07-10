@@ -28,6 +28,8 @@ public interface IStudentMedicationService
 
     Task<BaseResponse<StudentMedicationResponse>> CreateStudentMedicationAsync(CreateStudentMedicationRequest model);
 
+    Task<BaseListResponse<StudentMedicationResponse>> CreateBulkStudentMedicationsAsync(CreateBulkStudentMedicationRequest request);
+
     Task<BaseResponse<StudentMedicationResponse>> UpdateStudentMedicationAsync(Guid medicationId,
         UpdateStudentMedicationRequest model);
 

@@ -51,6 +51,40 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.Schedules, opt => opt.Ignore())
             .ForMember(dest => dest.StockHistory, opt => opt.Ignore());
 
+        CreateMap<CreateBulkStudentMedicationRequest.BulkMedicationDetails, StudentMedication>()
+             .ForMember(dest => dest.Id, opt => opt.Ignore())
+             .ForMember(dest => dest.StudentId, opt => opt.Ignore())
+             .ForMember(dest => dest.ParentId, opt => opt.Ignore())
+             .ForMember(dest => dest.ApprovedById, opt => opt.Ignore())
+             .ForMember(dest => dest.Status, opt => opt.MapFrom(src => StudentMedicationStatus.PendingApproval))
+             .ForMember(dest => dest.RejectionReason, opt => opt.Ignore())
+             .ForMember(dest => dest.ApprovedAt, opt => opt.Ignore())
+             .ForMember(dest => dest.SubmittedAt, opt => opt.Ignore())
+             .ForMember(dest => dest.TotalDoses, opt => opt.MapFrom(src => 0))
+             .ForMember(dest => dest.RemainingDoses, opt => opt.MapFrom(src => 0))
+             .ForMember(dest => dest.MinStockThreshold, opt => opt.MapFrom(src => 3))
+             .ForMember(dest => dest.LowStockAlertSent, opt => opt.MapFrom(src => false))
+             .ForMember(dest => dest.AutoGenerateSchedule, opt => opt.MapFrom(src => true))
+             .ForMember(dest => dest.RequireNurseConfirmation, opt => opt.MapFrom(src => false))
+             .ForMember(dest => dest.SkipOnAbsence, opt => opt.MapFrom(src => true))
+             .ForMember(dest => dest.SkipWeekends, opt => opt.MapFrom(src => false))
+             .ForMember(dest => dest.ManagementNotes, opt => opt.Ignore())
+             .ForMember(dest => dest.SkipDates, opt => opt.Ignore())
+             .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
+             .ForMember(dest => dest.CreatedDate, opt => opt.Ignore())
+             .ForMember(dest => dest.LastUpdatedBy, opt => opt.Ignore())
+             .ForMember(dest => dest.LastUpdatedDate, opt => opt.Ignore())
+             .ForMember(dest => dest.IsDeleted, opt => opt.Ignore())
+             .ForMember(dest => dest.Student, opt => opt.Ignore())
+             .ForMember(dest => dest.Parent, opt => opt.Ignore())
+             .ForMember(dest => dest.ApprovedBy, opt => opt.Ignore())
+             .ForMember(dest => dest.Administrations, opt => opt.Ignore())
+             .ForMember(dest => dest.Schedules, opt => opt.Ignore())
+             .ForMember(dest => dest.StockHistory, opt => opt.Ignore())
+             .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => SerializeTimesOfDay(src.TimesOfDay)))
+             .ForMember(dest => dest.SpecificTimes, opt => opt.MapFrom(src => SerializeSpecificTimes(src.SpecificTimes)))
+             .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority));
+
         CreateMap<UpdateStudentMedicationRequest, StudentMedication>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
@@ -307,6 +341,16 @@ public class StudentMedicationMappingProfile : Profile
             .Where(a => !a.IsDeleted)
             .OrderByDescending(a => a.AdministeredAt)
             .FirstOrDefault()?.AdministeredAt;
+    }
+
+    private string SerializeTimesOfDay(List<MedicationTimeOfDay>? timesOfDay)
+    {
+        return timesOfDay != null && timesOfDay.Any() ? JsonSerializer.Serialize(timesOfDay) : null;
+    }
+
+    private string SerializeSpecificTimes(List<TimeSpan>? specificTimes)
+    {
+        return specificTimes != null && specificTimes.Any() ? JsonSerializer.Serialize(specificTimes) : null;
     }
 
     #endregion

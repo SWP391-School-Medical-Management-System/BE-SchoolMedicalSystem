@@ -153,6 +153,38 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
+    [HttpPost]
+    [Authorize(Roles = "PARENT")]
+    [Route("api/student-medications/bulk")]
+    public async Task<ActionResult<BaseListResponse<StudentMedicationResponse>>> CreateBulkStudentMedications(
+    [FromBody] CreateBulkStudentMedicationRequest request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _studentMedicationService.CreateBulkStudentMedicationsAsync(request);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return CreatedAtAction(
+                nameof(GetStudentMedications),
+                new { pageIndex = 1, pageSize = 10 },
+                result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating bulk student medications for student {StudentId}", request.StudentId);
+            return StatusCode(500, BaseListResponse<StudentMedicationResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
     [HttpPut("{id}")]
     [Authorize(Roles = "PARENT")]
     public async Task<ActionResult<BaseResponse<StudentMedicationResponse>>> UpdateStudentMedication(
