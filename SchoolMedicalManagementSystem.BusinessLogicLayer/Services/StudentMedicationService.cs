@@ -285,6 +285,107 @@ public class StudentMedicationService : IStudentMedicationService
         }
     }
 
+    public async Task<BaseListResponse<StudentMedicationResponse>> CreateBulkStudentMedicationsAsync(CreateBulkStudentMedicationRequest request)
+    {
+        try
+        {
+            if (request == null || request.Medications == null || !request.Medications.Any())
+            {
+                return BaseListResponse<StudentMedicationResponse>.ErrorResult("Danh sách thuốc không hợp lệ.");
+            }
+
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                return BaseListResponse<StudentMedicationResponse>.ErrorResult("Không thể xác định người dùng hiện tại.");
+            }
+
+            var student = await ValidateStudentAsync(request.StudentId);
+            if (student == null)
+            {
+                return BaseListResponse<StudentMedicationResponse>.ErrorResult(
+                    "Không tìm thấy học sinh hoặc người dùng không phải là học sinh.");
+            }
+
+            var parentValidation = await ValidateParentPermissionsAsync(currentUserId, request.StudentId);
+            if (!parentValidation.IsValid)
+            {
+                return BaseListResponse<StudentMedicationResponse>.ErrorResult(parentValidation.ErrorMessage);
+            }
+
+            var medicationRepo = _unitOfWork.GetRepositoryByEntity<StudentMedication>();
+            var stockRepo = _unitOfWork.GetRepositoryByEntity<MedicationStock>();
+            var parentRoleName = parentValidation.ParentRoleName;
+            var medications = new List<StudentMedication>();
+            var responses = new List<StudentMedicationResponse>();
+
+            foreach (var medicationDetails in request.Medications)
+            {
+                var medication = _mapper.Map<StudentMedication>(medicationDetails);
+                medication.Id = Guid.NewGuid();
+                medication.StudentId = request.StudentId;
+                medication.ParentId = currentUserId;
+                medication.Status = StudentMedicationStatus.PendingApproval;
+                medication.SubmittedAt = DateTime.Now;
+                medication.CreatedBy = parentRoleName;
+                medication.CreatedDate = DateTime.Now;
+
+                // Xử lý TimesOfDay và SpecificTimes
+                if (medicationDetails.TimesOfDay != null && medicationDetails.TimesOfDay.Count > 0)
+                {
+                    medication.TimesOfDay = JsonSerializer.Serialize(medicationDetails.TimesOfDay);
+                }
+                if (medicationDetails.SpecificTimes != null && medicationDetails.SpecificTimes.Count > 0)
+                {
+                    medication.SpecificTimes = JsonSerializer.Serialize(medicationDetails.SpecificTimes);
+                }
+
+                await medicationRepo.AddAsync(medication);
+                medications.Add(medication);
+
+                // Tạo bản ghi stock ban đầu
+                var initialStock = new MedicationStock
+                {
+                    Id = Guid.NewGuid(),
+                    StudentMedicationId = medication.Id,
+                    QuantityAdded = medicationDetails.QuantitySent,
+                    QuantityUnit = "viên", // Giả định đơn vị mặc định, có thể điều chỉnh
+                    ExpiryDate = medicationDetails.ExpiryDate,
+                    DateAdded = DateTime.Now,
+                    Notes = "Thuốc ban đầu từ phụ huynh",
+                    IsInitialStock = true,
+                    CreatedBy = parentRoleName,
+                    CreatedDate = DateTime.Now
+                };
+                await stockRepo.AddAsync(initialStock);
+
+                // Tính toán TotalDoses ban đầu
+                var totalDoses = CalculateTotalDosesFromDosage(medicationDetails.Dosage, medicationDetails.QuantitySent);
+                medication.TotalDoses = totalDoses;
+                medication.RemainingDoses = totalDoses;
+
+                var medicationResponse = _mapper.Map<StudentMedicationResponse>(medication);
+                responses.Add(medicationResponse);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await CreateBulkMedicationRequestNotificationAsync(medications);
+            await InvalidateAllCachesAsync();
+
+            _logger.LogInformation("Created {Count} bulk student medications for student {StudentId}",
+                request.Medications.Count, request.StudentId);
+
+            return BaseListResponse<StudentMedicationResponse>.SuccessResult(
+                responses, responses.Count, request.Medications.Count, 1,
+                "Gửi yêu cầu thuốc hàng loạt cho học sinh thành công.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating bulk student medications for student {StudentId}", request.StudentId);
+            return BaseListResponse<StudentMedicationResponse>.ErrorResult("Lỗi gửi yêu cầu thuốc hàng loạt: {ex.Message}");
+        }
+    }
+
     public async Task<BaseResponse<StudentMedicationResponse>> UpdateStudentMedicationAsync(
         Guid medicationId, UpdateStudentMedicationRequest model)
     {
@@ -663,7 +764,6 @@ public class StudentMedicationService : IStudentMedicationService
             medication.ApprovedAt = DateTime.Now;
             medication.Status =
                 request.IsApproved ? StudentMedicationStatus.Approved : StudentMedicationStatus.Rejected;
-            medication.RejectionReason = request.RejectionReason;
             medication.LastUpdatedBy = schoolNurseRoleName;
             medication.LastUpdatedDate = DateTime.Now;
 
@@ -1865,6 +1965,53 @@ public class StudentMedicationService : IStudentMedicationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating medication request notifications");
+        }
+    }
+
+    private async Task CreateBulkMedicationRequestNotificationAsync(List<StudentMedication> medications)
+    {
+        try
+        {
+            var nurses = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>()
+                .GetQueryable()
+                .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+                .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") &&
+                            u.IsActive && !u.IsDeleted)
+                .ToListAsync();
+
+            if (!nurses.Any() || !medications.Any()) return;
+
+            var notificationRepo = _unitOfWork.GetRepositoryByEntity<Notification>();
+            var notifications = new List<Notification>();
+
+            foreach (var nurse in nurses)
+            {
+                var notification = new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    Title = $"Yêu cầu thuốc hàng loạt mới - {medications[0].Student?.FullName}",
+                    Content = $"Phụ huynh đã gửi {medications.Count} yêu cầu thuốc cho học sinh " +
+                              $"{medications[0].Student?.FullName} ({medications[0].Student?.StudentCode}). " +
+                              "Vui lòng xem xét và phê duyệt.",
+                    NotificationType = NotificationType.General,
+                    SenderId = null,
+                    RecipientId = nurse.Id,
+                    RequiresConfirmation = false,
+                    IsRead = false,
+                    CreatedDate = DateTime.Now,
+                    EndDate = DateTime.Now.AddDays(7)
+                };
+                notifications.Add(notification);
+            }
+
+            await notificationRepo.AddRangeAsync(notifications);
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation("Created {Count} bulk medication request notifications", notifications.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating bulk medication request notifications");
         }
     }
 
