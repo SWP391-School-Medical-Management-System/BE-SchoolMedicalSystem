@@ -81,9 +81,7 @@ public class StudentMedicationMappingProfile : Profile
              .ForMember(dest => dest.Administrations, opt => opt.Ignore())
              .ForMember(dest => dest.Schedules, opt => opt.Ignore())
              .ForMember(dest => dest.StockHistory, opt => opt.Ignore())
-             .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => SerializeTimesOfDay(src.TimesOfDay)))
-             .ForMember(dest => dest.SpecificTimes, opt => opt.MapFrom(src => SerializeSpecificTimes(src.SpecificTimes)))
-             .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority));
+             .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => SerializeTimesOfDay(src.TimesOfDay)));
 
         CreateMap<UpdateStudentMedicationRequest, StudentMedication>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
