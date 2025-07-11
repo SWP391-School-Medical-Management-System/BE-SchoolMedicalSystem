@@ -1,6 +1,8 @@
 ﻿using AutoMapper;
+using Azure.Core;
 using FluentValidation;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Helpers;
@@ -285,7 +287,8 @@ public class StudentMedicationService : IStudentMedicationService
         }
     }
 
-    public async Task<BaseListResponse<StudentMedicationResponse>> CreateBulkStudentMedicationsAsync(CreateBulkStudentMedicationRequest request)
+    public async Task<BaseListResponse<StudentMedicationResponse>> CreateBulkStudentMedicationsAsync(
+    CreateBulkStudentMedicationRequest request)
     {
         try
         {
@@ -315,9 +318,32 @@ public class StudentMedicationService : IStudentMedicationService
 
             var medicationRepo = _unitOfWork.GetRepositoryByEntity<StudentMedication>();
             var stockRepo = _unitOfWork.GetRepositoryByEntity<MedicationStock>();
+            var requestRepo = _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>();
             var parentRoleName = parentValidation.ParentRoleName;
             var medications = new List<StudentMedication>();
             var responses = new List<StudentMedicationResponse>();
+
+            // Lấy thông tin phụ huynh từ repository
+            var parentRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var parent = await parentRepo.GetQueryable()
+                .FirstOrDefaultAsync(u => u.Id == currentUserId && !u.IsDeleted);
+
+            // Tự động sinh RequestId và tạo StudentMedicationRequest
+            var medicationRequest = new StudentMedicationRequest
+            {
+                Id = Guid.NewGuid(), // Tự sinh RequestId
+                StudentId = request.StudentId,
+                ParentId = currentUserId,
+                Status = StudentMedicationStatus.PendingApproval,
+                SubmittedAt = DateTime.Now,
+                CreatedBy = parentRoleName,
+                CreatedDate = DateTime.Now,
+                Priority = request.Priority,
+                StudentName = student.FullName,
+                StudentCode = student.StudentCode,
+                ParentName = parent?.FullName ?? ""
+            };
+            await requestRepo.AddAsync(medicationRequest);
 
             foreach (var medicationDetails in request.Medications)
             {
@@ -329,15 +355,12 @@ public class StudentMedicationService : IStudentMedicationService
                 medication.SubmittedAt = DateTime.Now;
                 medication.CreatedBy = parentRoleName;
                 medication.CreatedDate = DateTime.Now;
+                medication.StudentMedicationRequestId = medicationRequest.Id;
 
-                // Xử lý TimesOfDay và SpecificTimes
+                // Xử lý TimesOfDay
                 if (medicationDetails.TimesOfDay != null && medicationDetails.TimesOfDay.Count > 0)
                 {
                     medication.TimesOfDay = JsonSerializer.Serialize(medicationDetails.TimesOfDay);
-                }
-                if (medicationDetails.SpecificTimes != null && medicationDetails.SpecificTimes.Count > 0)
-                {
-                    medication.SpecificTimes = JsonSerializer.Serialize(medicationDetails.SpecificTimes);
                 }
 
                 await medicationRepo.AddAsync(medication);
@@ -349,7 +372,7 @@ public class StudentMedicationService : IStudentMedicationService
                     Id = Guid.NewGuid(),
                     StudentMedicationId = medication.Id,
                     QuantityAdded = medicationDetails.QuantitySent,
-                    QuantityUnit = "viên", // Giả định đơn vị mặc định, có thể điều chỉnh
+                    QuantityUnit = "viên",
                     ExpiryDate = medicationDetails.ExpiryDate,
                     DateAdded = DateTime.Now,
                     Notes = "Thuốc ban đầu từ phụ huynh",
@@ -365,15 +388,25 @@ public class StudentMedicationService : IStudentMedicationService
                 medication.RemainingDoses = totalDoses;
 
                 var medicationResponse = _mapper.Map<StudentMedicationResponse>(medication);
+                medicationResponse.Id = medication.Id;
+                medicationResponse.RequestId = medication.StudentMedicationRequestId;
+                medicationResponse.StudentName = student.FullName;
+                medicationResponse.StudentCode = student.StudentCode;
+                medicationResponse.ParentName = parent?.FullName ?? "";
+                medicationResponse.StatusDisplayName = medication.Status.ToString();
+                medicationResponse.PriorityDisplayName = medication.Priority.ToString();
                 responses.Add(medicationResponse);
             }
 
+            // Lưu thay đổi và cập nhật MedicationsDetails trong request
+            medicationRequest.MedicationsDetails = medications;
             await _unitOfWork.SaveChangesAsync();
+
             await CreateBulkMedicationRequestNotificationAsync(medications);
             await InvalidateAllCachesAsync();
 
-            _logger.LogInformation("Created {Count} bulk student medications for student {StudentId}",
-                request.Medications.Count, request.StudentId);
+            _logger.LogInformation("Created {Count} bulk student medications with request ID {RequestId} for student {StudentId}",
+                request.Medications.Count, medicationRequest.Id, request.StudentId);
 
             return BaseListResponse<StudentMedicationResponse>.SuccessResult(
                 responses, responses.Count, request.Medications.Count, 1,
@@ -382,7 +415,7 @@ public class StudentMedicationService : IStudentMedicationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating bulk student medications for student {StudentId}", request.StudentId);
-            return BaseListResponse<StudentMedicationResponse>.ErrorResult("Lỗi gửi yêu cầu thuốc hàng loạt: {ex.Message}");
+            return BaseListResponse<StudentMedicationResponse>.ErrorResult($"Lỗi gửi yêu cầu thuốc hàng loạt: {ex.Message}");
         }
     }
 

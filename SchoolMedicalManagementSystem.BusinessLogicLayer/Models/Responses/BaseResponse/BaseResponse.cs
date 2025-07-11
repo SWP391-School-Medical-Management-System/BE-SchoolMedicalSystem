@@ -41,6 +41,7 @@ public class BaseListResponse<T> : BaseResponse<List<T>>
     public int CurrentPage { get; set; }
     public int TotalPages { get; set; }
 
+
     public static BaseListResponse<T> SuccessResult(
         List<T> data,
         int totalCount = 0,

@@ -10,6 +10,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Stude
     public class CreateBulkStudentMedicationRequest
     {
         public Guid StudentId { get; set; }
+        public MedicationPriority Priority { get; set; } = MedicationPriority.Normal;
         public List<BulkMedicationDetails> Medications { get; set; } = new();
 
         public class BulkMedicationDetails
@@ -21,9 +22,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Stude
             public DateTime ExpiryDate { get; set; }
             public int QuantitySent { get; set; }
             public string SpecialNotes { get; set; }
-            public MedicationPriority Priority { get; set; } = MedicationPriority.Normal;
             public List<MedicationTimeOfDay> TimesOfDay { get; set; } = new();
-            public List<TimeSpan> SpecificTimes { get; set; } = new();
         }
     }
 }

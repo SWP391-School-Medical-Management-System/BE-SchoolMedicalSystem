@@ -122,7 +122,7 @@ public class MedicalConditionController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SCHOOLNURSE")]
+    [Authorize(Roles = "SCHOOLNURSE, PARENT")]
     public async Task<ActionResult<BaseResponse<MedicalConditionResponse>>> CreateMedicalCondition(
         [FromBody] CreateMedicalConditionRequest model)
     {
