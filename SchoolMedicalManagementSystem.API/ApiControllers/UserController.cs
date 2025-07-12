@@ -54,7 +54,6 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("staff/{id}")]
-    [Authorize(Roles = "ADMIN")]
     public async Task<ActionResult<BaseResponse<StaffUserResponse>>> GetStaffUserById(Guid id)
     {
         try
@@ -425,7 +424,6 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("students/{id}")]
-    [Authorize(Roles = "MANAGER, PARENT, SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<StudentResponse>>> GetStudentById(Guid id)
     {
         try
@@ -443,7 +441,6 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("parents/{parentId}/students")]
-    [Authorize(Roles = "MANAGER, PARENT, SCHOOLNURSE")]
     public async Task<ActionResult<BaseListResponse<StudentResponse>>> GetStudentsByParentId(
     Guid parentId,
     [FromQuery] int pageIndex = 1,
@@ -560,7 +557,6 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("parents/{id}")]
-    [Authorize(Roles = "MANAGER")]
     public async Task<ActionResult<BaseResponse<ParentResponse>>> GetParentById(Guid id)
     {
         try

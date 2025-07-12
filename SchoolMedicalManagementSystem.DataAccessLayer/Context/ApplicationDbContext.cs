@@ -360,6 +360,47 @@ public class ApplicationDbContext : DbContext
 
         #endregion
 
+        #region StudentMedicationRequest
+
+        modelBuilder.Entity<StudentMedicationRequest>(entity =>
+        {
+            // Khóa chính
+            entity.HasKey(e => e.Id);
+
+            // Ràng buộc khóa ngoại cho StudentId
+            entity.HasOne(r => r.Student)
+                .WithMany()
+                .HasForeignKey(r => r.StudentId)
+                .OnDelete(DeleteBehavior.NoAction); // Thay đổi thành NoAction
+
+            // Ràng buộc khóa ngoại cho ParentId
+            entity.HasOne(r => r.Parent)
+                .WithMany()
+                .HasForeignKey(r => r.ParentId)
+                .OnDelete(DeleteBehavior.NoAction); // Thay đổi thành NoAction
+
+            // Ràng buộc khóa ngoại cho ApprovedById (nullable, không cần CASCADE)
+            entity.HasOne(r => r.ApprovedBy)
+                .WithMany()
+                .HasForeignKey(r => r.ApprovedById)
+                .OnDelete(DeleteBehavior.NoAction)
+                .IsRequired(false); // ApprovedById là nullable
+
+            // Quan hệ 1-n với StudentMedication
+            entity.HasMany(r => r.MedicationsDetails)
+                .WithOne(m => m.Request)
+                .HasForeignKey(m => m.StudentMedicationRequestId)
+                .OnDelete(DeleteBehavior.Cascade); // Giữ Cascade cho quan hệ này
+
+            // Các thuộc tính khác
+            entity.Property(e => e.StudentName).IsRequired();
+            entity.Property(e => e.StudentCode).IsRequired();
+            entity.Property(e => e.ParentName).IsRequired();
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+        });
+
+        #endregion
+
         #region MedicationAdministration Relationships
 
         modelBuilder.Entity<MedicationAdministration>()

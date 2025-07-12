@@ -139,6 +139,9 @@ public class MedicalRecordService : IMedicalRecordService
                 .Include(mr => mr.MedicalConditions.Where(mc => !mc.IsDeleted))
                 .Include(mr => mr.VaccinationRecords.Where(vr => !vr.IsDeleted))
                 .ThenInclude(vr => vr.VaccinationType)
+                .Include(mr => mr.VisionRecords.Where(vr => !vr.IsDeleted))
+                .Include(mr => mr.HearingRecords.Where(hr => !hr.IsDeleted))
+                .Include(mr => mr.PhysicalRecords.Where(pr => !pr.IsDeleted))
                 .Where(mr => mr.Id == recordId && !mr.IsDeleted)
                 .FirstOrDefaultAsync();
 
@@ -194,8 +197,10 @@ public class MedicalRecordService : IMedicalRecordService
                 .Include(mr => mr.Student)
                 .Include(mr => mr.MedicalConditions.Where(mc => !mc.IsDeleted))
                 .Include(mr => mr.VaccinationRecords.Where(vr => !vr.IsDeleted))
-                .ThenInclude(vr => vr.VaccinationType) // Đảm bảo tải VaccinationType
-                .AsNoTracking()
+                .ThenInclude(vr => vr.VaccinationType)
+                .Include(mr => mr.VisionRecords.Where(vr => !vr.IsDeleted))
+                .Include(mr => mr.HearingRecords.Where(hr => !hr.IsDeleted))
+                .Include(mr => mr.PhysicalRecords.Where(pr => !pr.IsDeleted))
                 .Where(mr => mr.UserId == studentId && !mr.IsDeleted)
                 .FirstOrDefaultAsync();
 
@@ -708,6 +713,55 @@ public class MedicalRecordService : IMedicalRecordService
 
         var sixMonthsAgo = DateTime.Now.AddMonths(-6);
         response.NeedsUpdate = medicalRecord.LastUpdatedDate == null || medicalRecord.LastUpdatedDate < sixMonthsAgo;
+
+        // Ánh xạ và sắp xếp VisionRecords (mới nhất lên đầu)
+        if (medicalRecord.VisionRecords != null)
+        {
+            response.VisionRecords = medicalRecord.VisionRecords
+                .Where(vr => !vr.IsDeleted)
+                .OrderByDescending(vr => vr.CheckDate)
+                .Select(vr => new VisionRecordResponse
+                {
+                    LeftEye = vr.LeftEye,
+                    RightEye = vr.RightEye,
+                    CheckDate = vr.CheckDate,
+                    Comments = vr.Comments,
+                    RecordedBy = vr.RecordedBy
+                }).ToList();
+        }
+
+        // Ánh xạ và sắp xếp HearingRecords (mới nhất lên đầu)
+        if (medicalRecord.HearingRecords != null)
+        {
+            response.HearingRecords = medicalRecord.HearingRecords
+                .Where(hr => !hr.IsDeleted)
+                .OrderByDescending(hr => hr.CheckDate)
+                .Select(hr => new HearingRecordResponse
+                {
+                    LeftEar = hr.LeftEar,
+                    RightEar = hr.RightEar,
+                    CheckDate = hr.CheckDate,
+                    Comments = hr.Comments,
+                    RecordedBy = hr.RecordedBy
+                }).ToList();
+        }
+
+        // Ánh xạ và sắp xếp PhysicalRecords (mới nhất lên đầu)
+        if (medicalRecord.PhysicalRecords != null)
+        {
+            response.PhysicalRecords = medicalRecord.PhysicalRecords
+                .Where(pr => !pr.IsDeleted)
+                .OrderByDescending(pr => pr.CheckDate)
+                .Select(pr => new PhysicalRecordResponse
+                {
+                    Height = pr.Height,
+                    Weight = pr.Weight,
+                    BMI = pr.BMI,
+                    CheckDate = pr.CheckDate,
+                    Comments = pr.Comments,
+                    RecordedBy = pr.RecordedBy
+                }).ToList();
+        }
 
         return response;
     }

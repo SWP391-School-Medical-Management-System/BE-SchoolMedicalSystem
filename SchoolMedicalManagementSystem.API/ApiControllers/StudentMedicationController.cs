@@ -153,36 +153,34 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
-    [HttpPost]
+    [HttpPost("bulk")]
     [Authorize(Roles = "PARENT")]
     [Route("bulk")]
     public async Task<ActionResult<BaseListResponse<StudentMedicationResponse>>> CreateBulkStudentMedications(
-    [FromBody] CreateBulkStudentMedicationRequest request)
+               [FromBody] CreateBulkStudentMedicationRequest request)
     {
-        try
+        if (request == null)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
-            var result = await _studentMedicationService.CreateBulkStudentMedicationsAsync(request);
-
-            if (!result.Success)
-            {
-                return BadRequest(result);
-            }
-
-            return CreatedAtAction(
-                nameof(GetStudentMedications),
-                new { pageIndex = 1, pageSize = 10 },
-                result);
+            _logger.LogWarning("Request body is null or invalid.");
+            return BadRequest(new { errors = new { request = new[] { "The request body is required." } } });
         }
-        catch (Exception ex)
+
+        if (!ModelState.IsValid)
         {
-            _logger.LogError(ex, "Error creating bulk student medications for student {StudentId}", request.StudentId);
-            return StatusCode(500, BaseListResponse<StudentMedicationResponse>.ErrorResult("Lỗi hệ thống."));
+            _logger.LogWarning("ModelState validation failed: {Errors}", ModelState);
+            return BadRequest(ModelState);
         }
+
+        var result = await _studentMedicationService.CreateBulkStudentMedicationsAsync(request);
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return CreatedAtAction(
+            nameof(GetStudentMedications),
+            new { pageIndex = 1, pageSize = 10 },
+            result);
     }
 
     [HttpPut("{id}")]

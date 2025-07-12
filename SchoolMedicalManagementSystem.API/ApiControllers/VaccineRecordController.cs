@@ -48,7 +48,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpPost("{medicalRecordId}")]
-        [Authorize(Roles = "SCHOOLNURSE")]
+        [Authorize(Roles = "SCHOOLNURSE, PARENT")]
         public async Task<ActionResult<BaseResponse<VaccinationRecordResponse>>> CreateVaccinationRecord(
             Guid medicalRecordId,
             [FromBody] CreateVaccinationRecordRequest model)

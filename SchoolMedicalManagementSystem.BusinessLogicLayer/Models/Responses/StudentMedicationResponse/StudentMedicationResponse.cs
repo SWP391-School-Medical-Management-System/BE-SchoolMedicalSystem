@@ -5,6 +5,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
 public class StudentMedicationResponse
 {
     public Guid Id { get; set; }
+    public Guid RequestId { get; set; }
     public Guid StudentId { get; set; }
     public Guid ParentId { get; set; }
     public Guid? ApprovedById { get; set; }
