@@ -206,6 +206,7 @@ public class MedicalRecordService : IMedicalRecordService
 
             if (medicalRecord == null)
             {
+                _logger.LogDebug("No medical record found for student: {StudentId}", studentId);
                 return new BaseResponse<MedicalRecordDetailResponse>
                 {
                     Success = false,
@@ -213,9 +214,29 @@ public class MedicalRecordService : IMedicalRecordService
                 };
             }
 
+            _logger.LogDebug("Found {Count} active vaccination records for student {StudentId}",
+                medicalRecord.VaccinationRecords?.Count ?? 0, studentId);
+            foreach (var vr in medicalRecord.VaccinationRecords)
+            {
+                _logger.LogDebug("VaccinationRecord: Id={Id}, VaccineTypeId={VaccineTypeId}, VaccineType={VaccineTypeIdFromType}, VaccineTypeName={VaccineTypeName}, IsVaccinationTypeNull={IsVaccinationTypeNull}",
+                    vr.Id, vr.VaccinationTypeId, vr.VaccinationType?.Id, vr.VaccinationType?.Name ?? "null", vr.VaccinationType == null);
+            }
+
+            // Thêm log chi tiết trước khi ánh xạ
+            _logger.LogDebug("Starting mapping for MedicalRecord with Id: {MedicalRecordId}", medicalRecord.Id);
             var recordResponse = MapToMedicalRecordDetailResponse(medicalRecord);
 
-            var response = new BaseResponse<MedicalRecordDetailResponse>    
+            // Log dữ liệu sau khi ánh xạ để kiểm tra
+            if (recordResponse.VaccinationRecords != null)
+            {
+                foreach (var vrResponse in recordResponse.VaccinationRecords)
+                {
+                    _logger.LogDebug("Mapped VaccinationRecord Response: Id={Id}, VaccineTypeId={VaccineTypeId}, VaccinationTypeName={VaccinationTypeName}",
+                        vrResponse.Id, vrResponse.VaccinationTypeId, vrResponse.VaccinationTypeName);
+                }
+            }
+
+            var response = new BaseResponse<MedicalRecordDetailResponse>
             {
                 Success = true,
                 Data = recordResponse,
@@ -679,7 +700,15 @@ public class MedicalRecordService : IMedicalRecordService
         if (medicalRecord.VaccinationRecords != null)
         {
             var activeVaccinations = medicalRecord.VaccinationRecords.Where(vr => !vr.IsDeleted).ToList();
+            _logger.LogDebug("Mapping {Count} active vaccination records for MedicalRecord Id: {MedicalRecordId}", activeVaccinations.Count, medicalRecord.Id);
             response.VaccinationRecords = _mapper.Map<List<VaccinationRecordResponse>>(activeVaccinations);
+
+            // Thêm log để kiểm tra dữ liệu sau ánh xạ
+            foreach (var vr in response.VaccinationRecords)
+            {
+                _logger.LogDebug("Mapped VaccinationRecord: Id={Id}, VaccineTypeId={VaccineTypeId}, VaccinationTypeName={VaccinationTypeName} for MedicalRecord Id: {MedicalRecordId}",
+                    vr.Id, vr.VaccinationTypeId, vr.VaccinationTypeName, medicalRecord.Id);
+            }
         }
 
         var sixMonthsAgo = DateTime.Now.AddMonths(-6);

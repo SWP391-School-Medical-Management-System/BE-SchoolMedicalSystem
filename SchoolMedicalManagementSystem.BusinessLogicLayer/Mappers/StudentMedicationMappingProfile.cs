@@ -150,7 +150,34 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
             .ForMember(dest => dest.DaysWaiting, opt => opt.MapFrom(src => src.SubmittedAt.HasValue ? 
                 (int)(DateTime.Now - src.SubmittedAt.Value).TotalDays : 0));
+
+        CreateMap<StudentMedication, StudentMedicationResponseForRequest>()
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+            .ForMember(dest => dest.RequestId, opt => opt.MapFrom(src => src.StudentMedicationRequestId))
+            .ForMember(dest => dest.MedicationName, opt => opt.MapFrom(src => src.MedicationName))
+            .ForMember(dest => dest.Dosage, opt => opt.MapFrom(src => src.Dosage))
+            .ForMember(dest => dest.Purpose, opt => opt.MapFrom(src => src.Purpose))
+            .ForMember(dest => dest.ExpiryDate, opt => opt.MapFrom(src => src.ExpiryDate))
+            .ForMember(dest => dest.QuantitySent, opt => opt.MapFrom(src => src.QuantitySent))
+            .ForMember(dest => dest.QuantityUnit, opt => opt.MapFrom(src => src.QuantityUnit))
+            .ForMember(dest => dest.RejectionReason, opt => opt.MapFrom(src => src.RejectionReason))
+            .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority))
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()));
+
+        CreateMap<StudentMedicationRequest, StudentMedicationRequestResponse>()
+            .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => src.Status.ToString()))
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
+            .ForMember(dest => dest.Code, opt => opt.MapFrom(src => src.Code))
+            .ForMember(dest => dest.MedicationCount, opt => opt.MapFrom(src => src.MedicationsDetails.Count));
+
+        CreateMap<StudentMedicationRequest, StudentMedicationRequestDetailResponse>()
+            .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => src.Status.ToString()))
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
+            .ForMember(dest => dest.Code, opt => opt.MapFrom(src => src.Code))
+            .ForMember(dest => dest.Medications, opt => opt.MapFrom(src => src.MedicationsDetails));
+      
     }
+
     
     private void ConfigureMedicationStockMappings()
     {
@@ -319,14 +346,10 @@ public class StudentMedicationMappingProfile : Profile
     {
         return timeOfDay switch
         {
-            MedicationTimeOfDay.Morning => "Buổi sáng sớm (7:00)",
-            MedicationTimeOfDay.AfterBreakfast => "Sau bữa sáng (8:30)",
-            MedicationTimeOfDay.MidMorning => "Giữa buổi sáng (10:00)",
-            MedicationTimeOfDay.BeforeLunch => "Trước bữa trưa (11:30)",
-            MedicationTimeOfDay.AfterLunch => "Sau bữa trưa (13:00)",
-            MedicationTimeOfDay.MidAfternoon => "Giữa buổi chiều (14:30)",
-            MedicationTimeOfDay.LateAfternoon => "Cuối buổi chiều (16:00)",
-            MedicationTimeOfDay.BeforeDismissal => "Trước khi tan học (16:30)",
+            MedicationTimeOfDay.Morning => "Buổi sáng ",
+            MedicationTimeOfDay.Noon => "Buổi trưa ",
+            MedicationTimeOfDay.Afternoon => "Buổi chiều ",
+            MedicationTimeOfDay.Evening => "Buổi tối ",
             _ => timeOfDay.ToString()
         };
     }

@@ -144,6 +144,9 @@ public class HealthEventService : IHealthEventService
             var eventRepo = _unitOfWork.GetRepositoryByEntity<HealthEvent>();
             var healthEvent = await eventRepo.GetQueryable()
                 .Include(he => he.Student)
+                        .ThenInclude(s => s.StudentClasses)
+                          .ThenInclude(sc => sc.SchoolClass)
+
                 .Include(he => he.HandledBy)
                 .Include(he => he.RelatedMedicalCondition)
                 .Include(he => he.HealthEventMedicalItems)
@@ -1460,7 +1463,7 @@ public class HealthEventService : IHealthEventService
         if (healthEvent.Student != null)
         {
             response.StudentName = healthEvent.Student.FullName;
-            response.StudentCode = healthEvent.Student.StudentCode;
+            response.StudentCode = healthEvent.Student.StudentCode;         
         }
 
         if (healthEvent.HandledBy != null)

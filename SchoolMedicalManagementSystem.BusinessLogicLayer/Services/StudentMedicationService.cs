@@ -328,7 +328,7 @@ public class StudentMedicationService : IStudentMedicationService
             var parent = await parentRepo.GetQueryable()
                 .FirstOrDefaultAsync(u => u.Id == currentUserId && !u.IsDeleted);
 
-            // Tự động sinh RequestId và tạo StudentMedicationRequest
+            // Tự động sinh RequestId và tạo StudentMedicationRequest với Code
             var medicationRequest = new StudentMedicationRequest
             {
                 Id = Guid.NewGuid(), // Tự sinh RequestId
@@ -341,7 +341,8 @@ public class StudentMedicationService : IStudentMedicationService
                 Priority = request.Priority,
                 StudentName = student.FullName,
                 StudentCode = student.StudentCode,
-                ParentName = parent?.FullName ?? ""
+                ParentName = parent?.FullName ?? "",
+                Code = await GenerateStudentMedicationRequestCodeAsync() // Sinh Code cho request
             };
             await requestRepo.AddAsync(medicationRequest);
 
@@ -355,7 +356,11 @@ public class StudentMedicationService : IStudentMedicationService
                 medication.SubmittedAt = DateTime.Now;
                 medication.CreatedBy = parentRoleName;
                 medication.CreatedDate = DateTime.Now;
-                medication.StudentMedicationRequestId = medicationRequest.Id;
+                medication.StudentMedicationRequestId = medicationRequest.Id; // Liên kết với request
+
+                // Tạo mã Code tự động cho StudentMedication (nếu cần)
+                // Lưu ý: Nếu chỉ cần Code từ StudentMedicationRequest, có thể bỏ dòng này
+                // medication.Code = await GenerateStudentMedicationCodeAsync();
 
                 // Xử lý TimesOfDay
                 if (medicationDetails.TimesOfDay != null && medicationDetails.TimesOfDay.Count > 0)
@@ -395,6 +400,7 @@ public class StudentMedicationService : IStudentMedicationService
                 medicationResponse.ParentName = parent?.FullName ?? "";
                 medicationResponse.StatusDisplayName = medication.Status.ToString();
                 medicationResponse.PriorityDisplayName = medication.Priority.ToString();
+                medicationResponse.Code = medicationRequest.Code; // Trả về Code từ StudentMedicationRequest
                 responses.Add(medicationResponse);
             }
 
@@ -743,12 +749,150 @@ public class StudentMedicationService : IStudentMedicationService
         }
     }
 
+    public async Task<BaseListResponse<StudentMedicationRequestResponse>> GetAllStudentMedicationRequestAsync(
+    int pageIndex,
+    int pageSize,
+    Guid? studentId = null,
+    Guid? parentId = null,
+    StudentMedicationStatus? status = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var cacheKey = _cacheService.GenerateCacheKey(
+                "student_medication_requests",
+                pageIndex.ToString(),
+                pageSize.ToString(),
+                studentId?.ToString() ?? "",
+                parentId?.ToString() ?? "",
+                status?.ToString() ?? ""
+            );
+
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<StudentMedicationRequestResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                return cachedResult;
+            }
+
+            var query = _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>().GetQueryable()
+                .AsSplitQuery()
+                .Include(r => r.Student)
+                .Include(r => r.Parent)
+                .Include(r => r.ApprovedBy)
+                .Where(r => !r.IsDeleted)
+                .AsQueryable();
+
+            query = ApplyStudentMedicationRequestFilters(query, studentId, parentId, status);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var requests = await query
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var responses = _mapper.Map<List<StudentMedicationRequestResponse>>(requests);
+
+            var result = BaseListResponse<StudentMedicationRequestResponse>.SuccessResult(
+                responses, totalCount, pageSize, pageIndex,
+                "Lấy danh sách yêu cầu thuốc thành công.");
+
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving all student medication requests");
+            return BaseListResponse<StudentMedicationRequestResponse>.ErrorResult("Lỗi lấy danh sách yêu cầu thuốc.");
+        }
+    }
+
+    public async Task<BaseResponse<StudentMedicationRequestDetailResponse>> GetStudentMedicationRequestByIdAsync(Guid requestId)
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                return BaseResponse<StudentMedicationRequestDetailResponse>.ErrorResult(
+                    "Không thể xác định người dùng hiện tại.");
+            }
+
+            var cacheKey = _cacheService.GenerateCacheKey("student_medication_request_detail", requestId.ToString());
+            var cachedResponse = await _cacheService.GetAsync<BaseResponse<StudentMedicationRequestDetailResponse>>(cacheKey);
+
+            if (cachedResponse != null)
+            {
+                var canAccess = await ValidateRequestAccessPermissionAsync(currentUserId, requestId);
+                if (!canAccess)
+                {
+                    return BaseResponse<StudentMedicationRequestDetailResponse>.ErrorResult(
+                        "Bạn không có quyền xem thông tin yêu cầu này.");
+                }
+                return cachedResponse;
+            }
+
+            var requestRepo = _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>();
+            var request = await requestRepo.GetQueryable()
+                .AsSplitQuery()
+                .Include(r => r.Student)
+                .Include(r => r.Parent)
+                .Include(r => r.ApprovedBy)
+                .Include(r => r.MedicationsDetails)
+                    .ThenInclude(m => m.Student)
+                .Include(r => r.MedicationsDetails)
+                    .ThenInclude(m => m.Parent)
+                .Include(r => r.MedicationsDetails)
+                    .ThenInclude(m => m.ApprovedBy)
+                .Include(r => r.MedicationsDetails)
+                    .ThenInclude(m => m.StockHistory)
+                .Where(r => r.Id == requestId && !r.IsDeleted)
+                .FirstOrDefaultAsync();
+
+            if (request == null)
+            {
+                return BaseResponse<StudentMedicationRequestDetailResponse>.ErrorResult("Không tìm thấy yêu cầu thuốc.");
+            }
+
+            var currentUser = await GetCurrentUserWithRoles();
+            if (currentUser == null)
+            {
+                return BaseResponse<StudentMedicationRequestDetailResponse>.ErrorResult(
+                    "Không thể xác định quyền của người dùng.");
+            }
+
+            var hasPermission = await ValidateUserAccessToRequestAsync(currentUser, request);
+            if (!hasPermission)
+            {
+                return BaseResponse<StudentMedicationRequestDetailResponse>.ErrorResult(
+                    "Bạn không có quyền xem thông tin yêu cầu này.");
+            }
+
+            var requestResponse = _mapper.Map<StudentMedicationRequestDetailResponse>(request);
+
+            var response = BaseResponse<StudentMedicationRequestDetailResponse>.SuccessResult(
+                requestResponse, "Lấy thông tin chi tiết yêu cầu thuốc thành công.");
+
+            await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting student medication request by ID: {RequestId}", requestId);
+            return BaseResponse<StudentMedicationRequestDetailResponse>.ErrorResult(
+                $"Lỗi lấy thông tin yêu cầu thuốc: {ex.Message}");
+        }
+    }
+
     #endregion
 
     #region Approval Workflow
 
     public async Task<BaseResponse<StudentMedicationResponse>> ApproveStudentMedicationAsync(
-        Guid medicationId, ApproveStudentMedicationRequest request)
+     Guid medicationId, ApproveStudentMedicationRequest request)
     {
         try
         {
@@ -772,102 +916,120 @@ public class StudentMedicationService : IStudentMedicationService
                     "Chỉ School Nurse mới có quyền phê duyệt thuốc.");
             }
 
-            var medicationRepo = _unitOfWork.GetRepositoryByEntity<StudentMedication>();
-            var medication = await medicationRepo.GetQueryable()
-                .Include(sm => sm.Student)
-                .Include(sm => sm.Parent)
-                .Include(sm => sm.ApprovedBy)
-                .Include(sm => sm.StockHistory)
-                .FirstOrDefaultAsync(sm => sm.Id == medicationId && !sm.IsDeleted);
+            var requestRepo = _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>();
+            var medicationRequest = await requestRepo.GetQueryable()
+                .Include(r => r.Student)
+                .Include(r => r.Parent)
+                .Include(r => r.ApprovedBy)
+                .Include(r => r.MedicationsDetails) // Bao gồm các StudentMedication chi tiết
+                .FirstOrDefaultAsync(r => r.Id == medicationId && !r.IsDeleted);
 
-            if (medication == null)
+            if (medicationRequest == null)
             {
                 return BaseResponse<StudentMedicationResponse>.ErrorResult("Không tìm thấy yêu cầu thuốc.");
             }
 
-            if (medication.Status != StudentMedicationStatus.PendingApproval)
+            if (medicationRequest.Status != StudentMedicationStatus.PendingApproval)
             {
                 return BaseResponse<StudentMedicationResponse>.ErrorResult(
                     "Chỉ có thể phê duyệt yêu cầu đang chờ duyệt.");
             }
 
+            // Kiểm tra các yêu cầu khác có priority cao hơn
+            var higherPriorityRequests = await requestRepo.GetQueryable()
+                .Where(r => r.Id != medicationId && !r.IsDeleted && r.Status == StudentMedicationStatus.PendingApproval)
+                .ToListAsync();
+
+            var currentPriority = (int)medicationRequest.Priority;
+            var hasHigherPriority = higherPriorityRequests.Any(r => (int)r.Priority > currentPriority);
+
+            if (hasHigherPriority)
+            {
+                return BaseResponse<StudentMedicationResponse>.ErrorResult("Có yêu cầu có priority cao hơn đang chờ phê duyệt.");
+            }
+
             var schoolNurseRoleName = await GetSchoolNurseRoleName();
 
-            medication.ApprovedById = currentUserId;
-            medication.ApprovedAt = DateTime.Now;
-            medication.Status =
+            medicationRequest.ApprovedById = currentUserId;
+            medicationRequest.ApprovedAt = DateTime.Now;
+            medicationRequest.Status =
                 request.IsApproved ? StudentMedicationStatus.Approved : StudentMedicationStatus.Rejected;
-            medication.LastUpdatedBy = schoolNurseRoleName;
-            medication.LastUpdatedDate = DateTime.Now;
+            medicationRequest.LastUpdatedBy = schoolNurseRoleName;
+            medicationRequest.LastUpdatedDate = DateTime.Now;
 
             if (request.IsApproved)
             {
-                await CalculateAndUpdateMedicationDosesAsync(medication);
-
-                var currentDateTime = DateTime.Now;
-                var currentDate = currentDateTime.Date;
-
-                if (medication.StartDate.HasValue && medication.EndDate.HasValue)
+                // Cập nhật trạng thái cho tất cả các StudentMedication trong request
+                foreach (var medication in medicationRequest.MedicationsDetails)
                 {
-                    var medicationStartDate = medication.StartDate.Value.Date;
-                    var medicationEndDate = medication.EndDate.Value.Date;
+                    await CalculateAndUpdateMedicationDosesAsync(medication);
 
-                    // Trường hợp 1: Thuốc đã bắt đầu và chưa kết thúc -> Active ngay
-                    if (medicationStartDate <= currentDate && medicationEndDate >= currentDate)
+                    var currentDateTime = DateTime.Now;
+                    var currentDate = currentDateTime.Date;
+
+                    if (medication.StartDate.HasValue && medication.EndDate.HasValue)
                     {
-                        medication.Status = StudentMedicationStatus.Active;
+                        var medicationStartDate = medication.StartDate.Value.Date;
+                        var medicationEndDate = medication.EndDate.Value.Date;
 
-                        _logger.LogInformation(
-                            "Medication {MedicationId} set to ACTIVE immediately - within valid date range",
-                            medicationId);
+                        // Trường hợp 1: Thuốc đã bắt đầu và chưa kết thúc -> Active ngay
+                        if (medicationStartDate <= currentDate && medicationEndDate >= currentDate)
+                        {
+                            medication.Status = StudentMedicationStatus.Active;
+
+                            _logger.LogInformation(
+                                "Medication {MedicationId} set to ACTIVE immediately - within valid date range",
+                                medication.Id);
+                        }
+                        // Trường hợp 2: Thuốc bắt đầu từ ngày mai trở đi -> Approved, đợi Background Service
+                        else if (medicationStartDate > currentDate)
+                        {
+                            medication.Status = StudentMedicationStatus.Approved;
+
+                            _logger.LogInformation(
+                                "Medication {MedicationId} set to APPROVED - will be activated by background service on {StartDate}",
+                                medication.Id, medication.StartDate.Value.ToString("yyyy-MM-dd"));
+                        }
+                        // Trường hợp 3: Thuốc đã quá hạn -> Không thể Active
+                        else if (medicationEndDate < currentDate)
+                        {
+                            medication.Status = StudentMedicationStatus.Approved;
+
+                            _logger.LogWarning(
+                                "Medication {MedicationId} approved but already expired (EndDate: {EndDate})",
+                                medication.Id, medication.EndDate.Value.ToString("yyyy-MM-dd"));
+                        }
                     }
-                    // Trường hợp 2: Thuốc bắt đầu từ ngày mai trở đi -> Approved, đợi Background Service
-                    else if (medicationStartDate > currentDate)
+                    else
                     {
-                        medication.Status = StudentMedicationStatus.Approved;
-
-                        _logger.LogInformation(
-                            "Medication {MedicationId} set to APPROVED - will be activated by background service on {StartDate}",
-                            medicationId, medication.StartDate.Value.ToString("yyyy-MM-dd"));
-                    }
-                    // Trường hợp 3: Thuốc đã quá hạn -> Không thể Active
-                    else if (medicationEndDate < currentDate)
-                    {
+                        // Nếu thiếu StartDate hoặc EndDate, chỉ set Approved
                         medication.Status = StudentMedicationStatus.Approved;
 
                         _logger.LogWarning(
-                            "Medication {MedicationId} approved but already expired (EndDate: {EndDate})",
-                            medicationId, medication.EndDate.Value.ToString("yyyy-MM-dd"));
+                            "Medication {MedicationId} approved but missing StartDate or EndDate - StartDate: {StartDate}, EndDate: {EndDate}",
+                            medication.Id, medication.StartDate, medication.EndDate);
                     }
-                }
-                else
-                {
-                    // Nếu thiếu StartDate hoặc EndDate, chỉ set Approved
-                    medication.Status = StudentMedicationStatus.Approved;
-
-                    _logger.LogWarning(
-                        "Medication {MedicationId} approved but missing StartDate or EndDate - StartDate: {StartDate}, EndDate: {EndDate}",
-                        medicationId, medication.StartDate, medication.EndDate);
                 }
             }
 
             await _unitOfWork.SaveChangesAsync();
-            await CreateApprovalNotificationAsync(medication, request.IsApproved, request.Notes);
+            await CreateApprovalNotificationRequestAsync(medicationRequest, request.IsApproved, request.Notes);
             await InvalidateAllCachesAsync();
 
-            var medicationResponse = _mapper.Map<StudentMedicationResponse>(medication);
+            // Giả định có mapping từ StudentMedicationRequest sang StudentMedicationResponse
+            var medicationResponse = _mapper.Map<StudentMedicationResponse>(medicationRequest.MedicationsDetails.FirstOrDefault());
 
-            _logger.LogInformation("Medication {MedicationId} {Action} by {NurseId} - TotalDoses: {TotalDoses}, RemainingDoses: {RemainingDoses}",
-                medicationId, request.IsApproved ? "approved" : "rejected", currentUserId, medication.TotalDoses, medication.RemainingDoses);
+            _logger.LogInformation("Medication Request {MedicationId} {Action} by {NurseId}",
+                medicationId, request.IsApproved ? "approved" : "rejected", currentUserId);
 
             return BaseResponse<StudentMedicationResponse>.SuccessResult(
                 medicationResponse,
-                request.IsApproved ? "Phê duyệt thuốc thành công." : "Từ chối yêu cầu thuốc thành công.");
+                request.IsApproved ? "Phê duyệt yêu cầu thuốc thành công." : "Từ chối yêu cầu thuốc thành công.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error approving student medication: {MedicationId}", medicationId);
-            return BaseResponse<StudentMedicationResponse>.ErrorResult($"Lỗi phê duyệt thuốc: {ex.Message}");
+            _logger.LogError(ex, "Error approving student medication request: {MedicationId}", medicationId);
+            return BaseResponse<StudentMedicationResponse>.ErrorResult($"Lỗi phê duyệt yêu cầu thuốc: {ex.Message}");
         }
     }
 
@@ -1550,6 +1712,54 @@ public class StudentMedicationService : IStudentMedicationService
 
     #region Helper Methods
 
+    private async Task<string> GenerateStudentMedicationCodeAsync()
+    {
+        var today = DateTime.Now.ToString("yyyyMMdd");
+        var prefix = "SM-"; // Prefix cho Student Medication
+        var repo = _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>();
+        var lastCode = await repo.GetQueryable()
+            .Where(m => m.Code != null && m.Code.StartsWith(prefix + today))
+            .OrderByDescending(m => m.Code)
+            .Select(m => m.Code)
+            .FirstOrDefaultAsync();
+
+        int sequenceNumber = 1;
+        if (!string.IsNullOrEmpty(lastCode))
+        {
+            var numberPart = lastCode.Substring(lastCode.Length - 4); 
+            if (int.TryParse(numberPart, out int lastNumber))
+            {
+                sequenceNumber = lastNumber + 1;
+            }
+        }
+
+        return $"{prefix}{today}-{sequenceNumber:D4}"; 
+    }
+
+    private async Task<string> GenerateStudentMedicationRequestCodeAsync()
+    {
+        var today = DateTime.Now.ToString("yyyyMMdd");
+        var prefix = "SMR-"; // Prefix cho Student Medication Request
+        var repo = _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>();
+        var lastCode = await repo.GetQueryable()
+            .Where(m => m.Code != null && m.Code.StartsWith(prefix + today))
+            .OrderByDescending(m => m.Code)
+            .Select(m => m.Code)
+            .FirstOrDefaultAsync();
+
+        int sequenceNumber = 1;
+        if (!string.IsNullOrEmpty(lastCode))
+        {
+            var numberPart = lastCode.Substring(lastCode.Length - 4); // Giả định 4 chữ số cuối là số thứ tự
+            if (int.TryParse(numberPart, out int lastNumber))
+            {
+                sequenceNumber = lastNumber + 1;
+            }
+        }
+
+        return $"{prefix}{today}-{sequenceNumber:D4}"; // Ví dụ: SMR-20250712-0001
+    }
+
     private Guid GetCurrentUserId()
     {
         return Guid.Parse(UserHelper.GetCurrentUserId(_httpContextAccessor.HttpContext));
@@ -1686,6 +1896,29 @@ public class StudentMedicationService : IStudentMedicationService
             _ => status.ToString()
         };
     }
+    private IQueryable<StudentMedicationRequest> ApplyStudentMedicationRequestFilters(
+    IQueryable<StudentMedicationRequest> query,
+    Guid? studentId,
+    Guid? parentId,
+    StudentMedicationStatus? status)
+    {
+        if (studentId.HasValue)
+        {
+            query = query.Where(r => r.StudentId == studentId.Value);
+        }
+
+        if (parentId.HasValue)
+        {
+            query = query.Where(r => r.ParentId == parentId.Value);
+        }
+
+        if (status.HasValue)
+        {
+            query = query.Where(r => r.Status == status.Value);
+        }
+
+        return query.OrderByDescending(r => r.SubmittedAt ?? r.CreatedDate);
+    }
 
     private IQueryable<StudentMedication> ApplyStudentMedicationFilters(
         IQueryable<StudentMedication> query,
@@ -1816,6 +2049,77 @@ public class StudentMedicationService : IStudentMedicationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error invalidating caches");
+        }
+    }
+
+    private async Task<bool> ValidateRequestAccessPermissionAsync(Guid currentUserId, Guid requestId)
+    {
+        try
+        {
+            var currentUser = await GetCurrentUserWithRoles();
+            if (currentUser == null) return false;
+
+            var userRoles = currentUser.UserRoles.Select(ur => ur.Role.Name.ToUpper()).ToList();
+
+            if (userRoles.Any(role => new[] { "SCHOOLNURSE" }.Contains(role)))
+            {
+                return true;
+            }
+
+            var request = await _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>()
+                .GetQueryable()
+                .Where(r => r.Id == requestId && !r.IsDeleted)
+                .Select(r => new { r.ParentId, r.StudentId })
+                .FirstOrDefaultAsync();
+
+            if (request == null) return false;
+
+            if (userRoles.Contains("PARENT"))
+            {
+                return request.ParentId == currentUserId;
+            }
+
+            if (userRoles.Contains("STUDENT"))
+            {
+                return request.StudentId == currentUserId;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating request access permission");
+            return false;
+        }
+    }
+
+    private async Task<bool> ValidateUserAccessToRequestAsync(ApplicationUser currentUser, StudentMedicationRequest request)
+    {
+        try
+        {
+            var userRoles = currentUser.UserRoles.Select(ur => ur.Role.Name.ToUpper()).ToList();
+
+            if (userRoles.Any(role => new[] { "SCHOOLNURSE" }.Contains(role)))
+            {
+                return true;
+            }
+
+            if (userRoles.Contains("PARENT"))
+            {
+                return request.ParentId == currentUser.Id;
+            }
+
+            if (userRoles.Contains("STUDENT"))
+            {
+                return request.StudentId == currentUser.Id;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating user access to request");
+            return false;
         }
     }
 
@@ -2094,6 +2398,56 @@ public class StudentMedicationService : IStudentMedicationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating approval notification");
+        }
+    }
+
+    private async Task CreateApprovalNotificationRequestAsync(StudentMedicationRequest medicationRequest, bool isApproved, string notes)
+    {
+        try
+        {
+            var notificationRepo = _unitOfWork.GetRepositoryByEntity<Notification>();
+
+            var title = isApproved
+                ? $"Yêu cầu thuốc được phê duyệt - {medicationRequest.StudentName}"
+                : $"Yêu cầu thuốc bị từ chối - {medicationRequest.StudentName}";
+
+            // Tạo nội dung thông báo dựa trên danh sách MedicationsDetails
+            var content = isApproved
+                ? $"Yêu cầu thuốc cho con em {medicationRequest.StudentName} ({medicationRequest.StudentCode}) đã được phê duyệt. " +
+                  $"Danh sách thuốc: {string.Join(", ", medicationRequest.MedicationsDetails.Select(m => m.MedicationName))}. " +
+                  $"Nhà trường sẽ cho con em uống thuốc theo đúng hướng dẫn từ {medicationRequest.MedicationsDetails.Min(m => m.StartDate)?.ToString("dd/MM/yyyy") ?? "N/A"} " +
+                  $"đến {medicationRequest.MedicationsDetails.Max(m => m.EndDate)?.ToString("dd/MM/yyyy") ?? "N/A"}."
+                : $"Yêu cầu thuốc cho con em {medicationRequest.StudentName} ({medicationRequest.StudentCode}) đã bị từ chối. " +
+                  $"Lý do: {medicationRequest.RejectionReason ?? "Không có lý do cụ thể"}";
+
+            if (!string.IsNullOrEmpty(notes))
+            {
+                content += $" Ghi chú: {notes}";
+            }
+
+            var notification = new Notification
+            {
+                Id = Guid.NewGuid(),
+                Title = title,
+                Content = content,
+                NotificationType = NotificationType.General,
+                SenderId = medicationRequest.ApprovedById,
+                RecipientId = medicationRequest.ParentId,
+                RequiresConfirmation = false,
+                IsRead = false,
+                CreatedDate = DateTime.Now,
+                EndDate = DateTime.Now.AddDays(30)
+            };
+
+            await notificationRepo.AddAsync(notification);
+
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation("Created approval notification for medication request {RequestId}", medicationRequest.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating approval notification for request {RequestId}", medicationRequest.Id);
         }
     }
 

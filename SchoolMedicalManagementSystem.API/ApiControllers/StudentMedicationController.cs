@@ -90,6 +90,57 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
+    [HttpGet("requests")]
+    [Authorize(Roles = "SCHOOLNURSE,PARENT,STUDENT")]
+    public async Task<ActionResult<BaseListResponse<StudentMedicationRequestResponse>>> GetAllStudentMedicationRequest(
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] Guid? studentId = null,
+    [FromQuery] Guid? parentId = null,
+    [FromQuery] StudentMedicationStatus? status = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<StudentMedicationRequestResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var result = await _studentMedicationService.GetAllStudentMedicationRequestAsync(
+                pageIndex, pageSize, studentId, parentId, status, cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all student medication requests");
+            return StatusCode(500, BaseListResponse<StudentMedicationRequestResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpGet("requests/{requestId}")]
+    [Authorize(Roles = "SCHOOLNURSE,PARENT,STUDENT")]
+    public async Task<ActionResult<BaseResponse<StudentMedicationRequestDetailResponse>>> GetStudentMedicationRequestById(Guid requestId)
+    {
+        try
+        {
+            var result = await _studentMedicationService.GetStudentMedicationRequestByIdAsync(requestId);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting student medication request by ID: {RequestId}", requestId);
+            return StatusCode(500, BaseResponse<StudentMedicationRequestDetailResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
     /// <summary>
     /// Lấy lịch sử stock thuốc của một medication cụ thể (Parent view)
     /// </summary>

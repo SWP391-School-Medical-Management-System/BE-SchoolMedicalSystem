@@ -50,6 +50,14 @@ public class HealthEventMappingProfile : Profile
             .ForMember(dest => dest.EventTypeDisplayName, opt => opt.MapFrom(src => src.EventType.ToString()))
             .ForMember(dest => dest.StudentName, opt => opt.Ignore())
             .ForMember(dest => dest.StudentCode, opt => opt.Ignore())
+            .ForMember(dest => dest.StudentClass, opt => opt.MapFrom(src =>
+            src.Student != null &&
+            src.Student.StudentClasses != null &&
+            src.Student.StudentClasses.Any() &&
+            src.Student.StudentClasses.FirstOrDefault().SchoolClass != null
+                ? src.Student.StudentClasses.FirstOrDefault().SchoolClass.Name
+                : "Unknown"))
+
             .ForMember(dest => dest.HandledByName, opt => opt.Ignore())
             .ForMember(dest => dest.RelatedMedicalConditionName, opt => opt.Ignore())
             .ForMember(dest => dest.EmergencyStatusText, opt => opt.Ignore())
@@ -99,8 +107,6 @@ public class HealthEventMappingProfile : Profile
             .ForMember(dest => dest.UsedBy, opt => opt.Ignore());
 
         CreateMap<HealthEventMedicalItem, HealthEventMedicalItemResponse>()
-            .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.StudentName))
-            .ForMember(dest => dest.StudentClass, opt => opt.MapFrom(src => src.StudentClass))
             .ForMember(dest => dest.NurseName, opt => opt.MapFrom(src => src.NurseName))
             .ForMember(dest => dest.MedicationName, opt => opt.MapFrom(src => src.MedicationName))
             .ForMember(dest => dest.MedicationQuantity, opt => opt.MapFrom(src => src.MedicationQuantity))
