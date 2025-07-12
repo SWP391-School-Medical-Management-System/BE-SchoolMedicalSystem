@@ -321,14 +321,10 @@ public class StudentMedicationMappingProfile : Profile
     {
         return timeOfDay switch
         {
-            MedicationTimeOfDay.Morning => "Buổi sáng sớm (7:00)",
-            MedicationTimeOfDay.AfterBreakfast => "Sau bữa sáng (8:30)",
-            MedicationTimeOfDay.MidMorning => "Giữa buổi sáng (10:00)",
-            MedicationTimeOfDay.BeforeLunch => "Trước bữa trưa (11:30)",
-            MedicationTimeOfDay.AfterLunch => "Sau bữa trưa (13:00)",
-            MedicationTimeOfDay.MidAfternoon => "Giữa buổi chiều (14:30)",
-            MedicationTimeOfDay.LateAfternoon => "Cuối buổi chiều (16:00)",
-            MedicationTimeOfDay.BeforeDismissal => "Trước khi tan học (16:30)",
+            MedicationTimeOfDay.Morning => "Buổi sáng ",
+            MedicationTimeOfDay.Noon => "Buổi trưa ",
+            MedicationTimeOfDay.Afternoon => "Buổi chiều ",
+            MedicationTimeOfDay.Evening => "Buổi tối ",
             _ => timeOfDay.ToString()
         };
     }

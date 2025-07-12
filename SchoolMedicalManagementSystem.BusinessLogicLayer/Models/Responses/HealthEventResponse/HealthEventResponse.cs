@@ -21,6 +21,7 @@ public class HealthEventResponse
     public bool CanTakeOwnership { get; set; }
     public bool CanComplete { get; set; }
     public string StudentName { get; set; }
+    public string StudentClass { get; set; }
     public string StudentCode { get; set; }
     public string HandledByName { get; set; }
     public string RelatedMedicalConditionName { get; set; }
@@ -31,8 +32,6 @@ public class HealthEventResponse
 }
 public class HealthEventMedicalItemResponse
 {
-    public string StudentName { get; set; }
-    public string StudentClass { get; set; }
     public string? NurseName { get; set; }
     public string? MedicationName { get; set; }
     public double? MedicationQuantity { get; set; }

@@ -155,7 +155,7 @@ public class StudentMedicationController : ControllerBase
 
     [HttpPost]
     [Authorize(Roles = "PARENT")]
-    [Route("api/student-medications/bulk")]
+    [Route("bulk")]
     public async Task<ActionResult<BaseListResponse<StudentMedicationResponse>>> CreateBulkStudentMedications(
     [FromBody] CreateBulkStudentMedicationRequest request)
     {

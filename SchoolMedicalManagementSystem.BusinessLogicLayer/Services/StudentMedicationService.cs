@@ -285,7 +285,8 @@ public class StudentMedicationService : IStudentMedicationService
         }
     }
 
-    public async Task<BaseListResponse<StudentMedicationResponse>> CreateBulkStudentMedicationsAsync(CreateBulkStudentMedicationRequest request)
+    public async Task<BaseListResponse<StudentMedicationResponse>> CreateBulkStudentMedicationsAsync(
+        CreateBulkStudentMedicationRequest request)
     {
         try
         {
@@ -329,6 +330,9 @@ public class StudentMedicationService : IStudentMedicationService
                 medication.SubmittedAt = DateTime.Now;
                 medication.CreatedBy = parentRoleName;
                 medication.CreatedDate = DateTime.Now;
+
+                // Tạo mã Code tự động
+                medication.Code = await GenerateStudentMedicationCodeAsync();
 
                 // Xử lý TimesOfDay và SpecificTimes
                 if (medicationDetails.TimesOfDay != null && medicationDetails.TimesOfDay.Count > 0)
@@ -1516,6 +1520,30 @@ public class StudentMedicationService : IStudentMedicationService
     #endregion
 
     #region Helper Methods
+
+    private async Task<string> GenerateStudentMedicationCodeAsync()
+    {
+        var today = DateTime.Now.ToString("yyyyMMdd");
+        var prefix = "SM-"; // Prefix cho Student Medication
+        var repo = _unitOfWork.GetRepositoryByEntity<StudentMedication>();
+        var lastCode = await repo.GetQueryable()
+            .Where(m => m.Code != null && m.Code.StartsWith(prefix + today))
+            .OrderByDescending(m => m.Code)
+            .Select(m => m.Code)
+            .FirstOrDefaultAsync();
+
+        int sequenceNumber = 1;
+        if (!string.IsNullOrEmpty(lastCode))
+        {
+            var numberPart = lastCode.Substring(lastCode.Length - 4); 
+            if (int.TryParse(numberPart, out int lastNumber))
+            {
+                sequenceNumber = lastNumber + 1;
+            }
+        }
+
+        return $"{prefix}{today}-{sequenceNumber:D4}"; 
+    }
 
     private Guid GetCurrentUserId()
     {
