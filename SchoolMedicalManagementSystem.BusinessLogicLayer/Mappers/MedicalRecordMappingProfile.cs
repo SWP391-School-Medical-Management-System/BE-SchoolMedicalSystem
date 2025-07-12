@@ -104,6 +104,17 @@ public class MedicalRecordMappingProfile : Profile
     private void CreateVaccinationMappings()
     {
         CreateMap<VaccinationRecord, VaccinationRecordResponse>()
-            .ForMember(dest => dest.VaccinationTypeName, opt => opt.MapFrom(src => src.VaccinationType.Name));
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+            .ForMember(dest => dest.VaccinationTypeId, opt => opt.MapFrom(src => src.VaccinationTypeId)) // Chỉ lấy Id từ VaccinationType nếu tồn tại
+            .ForMember(dest => dest.VaccinationTypeName, opt => opt.MapFrom(src => src.VaccinationType != null ? src.VaccinationType.Name : null)) // Chỉ lấy Name từ VaccinationType
+            .ForMember(dest => dest.DoseNumber, opt => opt.MapFrom(src => src.DoseNumber))
+            .ForMember(dest => dest.AdministeredDate, opt => opt.MapFrom(src => src.AdministeredDate))
+            .ForMember(dest => dest.AdministeredBy, opt => opt.MapFrom(src => src.AdministeredBy))
+            .ForMember(dest => dest.BatchNumber, opt => opt.MapFrom(src => src.BatchNumber))
+            .ForMember(dest => dest.Notes, opt => opt.MapFrom(src => src.Notes))
+            .ForMember(dest => dest.NoteAfterSession, opt => opt.MapFrom(src => src.NoteAfterSession))
+            .ForMember(dest => dest.VaccinationStatus, opt => opt.MapFrom(src => src.VaccinationStatus))
+            .ForMember(dest => dest.Symptoms, opt => opt.MapFrom(src => src.Symptoms))
+            .ForAllMembers(opt => opt.Condition((src, dest, member) => member != null));
     }
 }

@@ -19,7 +19,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseListResponse<MedicalRecordResponse>>> GetMedicalRecords(
         [FromQuery] int pageIndex = 1,
         [FromQuery] int pageSize = 10,
@@ -53,7 +52,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> GetMedicalRecordById(Guid id)
     {
         try
@@ -71,7 +69,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpGet("student/{studentId}")]
-    [Authorize(Roles = "SCHOOLNURSE,PARENT")]
     public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> GetMedicalRecordByStudentId(
         Guid studentId)
     {
@@ -90,7 +87,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> CreateMedicalRecord(
         [FromBody] CreateMedicalRecordRequest model)
     {
@@ -112,7 +108,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> UpdateMedicalRecord(
         Guid id, [FromBody] UpdateMedicalRecordRequest model)
     {
@@ -133,7 +128,6 @@ public class MedicalRecordController : ControllerBase
         }
     }
 
-    [Authorize(Roles = "PARENT")]
     [HttpPut("{studentId}/update-by-parent")]
     public async Task<IActionResult> UpdateMedicalRecordByParent(Guid studentId, [FromBody] UpdateMedicalRecordByParentRequest model)
     {
@@ -157,7 +151,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE,MANAGER")]
     public async Task<ActionResult<BaseResponse<bool>>> DeleteMedicalRecord(Guid id)
     {
         try

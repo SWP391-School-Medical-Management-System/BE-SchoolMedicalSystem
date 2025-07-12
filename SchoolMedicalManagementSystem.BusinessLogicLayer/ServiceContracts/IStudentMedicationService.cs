@@ -41,6 +41,16 @@ public interface IStudentMedicationService
 
     Task<BaseResponse<bool>> DeleteStudentMedicationAsync(Guid medicationId);
 
+    Task<BaseListResponse<StudentMedicationRequestResponse>> GetAllStudentMedicationRequestAsync(
+    int pageIndex,
+    int pageSize,
+    Guid? studentId = null,
+    Guid? parentId = null,
+    StudentMedicationStatus? status = null,
+    CancellationToken cancellationToken = default);
+
+    Task<BaseResponse<StudentMedicationRequestDetailResponse>> GetStudentMedicationRequestByIdAsync(Guid requestId);
+
     // Approval Workflow
     Task<BaseResponse<StudentMedicationResponse>> ApproveStudentMedicationAsync(Guid medicationId,
         ApproveStudentMedicationRequest request);

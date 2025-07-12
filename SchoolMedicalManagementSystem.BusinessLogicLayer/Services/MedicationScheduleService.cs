@@ -1349,13 +1349,9 @@ public class MedicationScheduleService : IMedicationScheduleService
         return timeOfDay switch
         {
             MedicationTimeOfDay.Morning => new List<TimeSpan> { new TimeSpan(7, 0, 0) },
-            MedicationTimeOfDay.AfterBreakfast => new List<TimeSpan> { new TimeSpan(8, 30, 0) },
-            MedicationTimeOfDay.MidMorning => new List<TimeSpan> { new TimeSpan(10, 0, 0) },
-            MedicationTimeOfDay.BeforeLunch => new List<TimeSpan> { new TimeSpan(11, 30, 0) },
-            MedicationTimeOfDay.AfterLunch => new List<TimeSpan> { new TimeSpan(13, 0, 0) },
-            MedicationTimeOfDay.MidAfternoon => new List<TimeSpan> { new TimeSpan(14, 30, 0) },
-            MedicationTimeOfDay.LateAfternoon => new List<TimeSpan> { new TimeSpan(16, 0, 0) },
-            MedicationTimeOfDay.BeforeDismissal => new List<TimeSpan> { new TimeSpan(16, 30, 0) },
+            MedicationTimeOfDay.Noon => new List<TimeSpan> { new TimeSpan(11, 0, 0) },
+            MedicationTimeOfDay.Afternoon => new List<TimeSpan> { new TimeSpan(14, 0, 0) },
+            MedicationTimeOfDay.Evening => new List<TimeSpan> { new TimeSpan(18, 0, 0) },          
             _ => new List<TimeSpan> { new TimeSpan(7, 0, 0) } // Default to Morning
         };
     }

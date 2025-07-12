@@ -106,14 +106,10 @@ public class MedicationScheduleMappingProfile : Profile
     {
         return timeOfDay switch
         {
-            MedicationTimeOfDay.Morning => "Buổi sáng sớm (7:00)",
-            MedicationTimeOfDay.AfterBreakfast => "Sau bữa sáng (8:30)",
-            MedicationTimeOfDay.MidMorning => "Giữa buổi sáng (10:00)",
-            MedicationTimeOfDay.BeforeLunch => "Trước bữa trưa (11:30)",
-            MedicationTimeOfDay.AfterLunch => "Sau bữa trưa (13:00)",
-            MedicationTimeOfDay.MidAfternoon => "Giữa buổi chiều (14:30)",
-            MedicationTimeOfDay.LateAfternoon => "Cuối buổi chiều (16:00)",
-            MedicationTimeOfDay.BeforeDismissal => "Trước khi tan học (16:30)",
+            MedicationTimeOfDay.Morning => "Buổi sáng",
+            MedicationTimeOfDay.Noon => "Buổi trưa",
+            MedicationTimeOfDay.Afternoon => "Buổi chiều",
+            MedicationTimeOfDay.Evening => "Buổi tối",
             _ => timeOfDay.ToString()
         };
     }
@@ -136,21 +132,14 @@ public class MedicationScheduleMappingProfile : Profile
 
     private static MedicationTimeOfDay GetTimeOfDayFromScheduledTime(TimeSpan scheduledTime)
     {
-        if (scheduledTime >= TimeSpan.FromHours(7) && scheduledTime < TimeSpan.FromHours(8.5))
+        if (scheduledTime >= TimeSpan.FromHours(7) && scheduledTime < TimeSpan.FromHours(11))
             return MedicationTimeOfDay.Morning;
-        if (scheduledTime >= TimeSpan.FromHours(8.5) && scheduledTime < TimeSpan.FromHours(10))
-            return MedicationTimeOfDay.AfterBreakfast;
-        if (scheduledTime >= TimeSpan.FromHours(10) && scheduledTime < TimeSpan.FromHours(11.5))
-            return MedicationTimeOfDay.MidMorning;
-        if (scheduledTime >= TimeSpan.FromHours(11.5) && scheduledTime < TimeSpan.FromHours(13))
-            return MedicationTimeOfDay.BeforeLunch;
-        if (scheduledTime >= TimeSpan.FromHours(13) && scheduledTime < TimeSpan.FromHours(14.5))
-            return MedicationTimeOfDay.AfterLunch;
-        if (scheduledTime >= TimeSpan.FromHours(14.5) && scheduledTime < TimeSpan.FromHours(16))
-            return MedicationTimeOfDay.MidAfternoon;
-        if (scheduledTime >= TimeSpan.FromHours(16) && scheduledTime < TimeSpan.FromHours(16.5))
-            return MedicationTimeOfDay.LateAfternoon;
-        return MedicationTimeOfDay.BeforeDismissal;
+        if (scheduledTime >= TimeSpan.FromHours(11) && scheduledTime < TimeSpan.FromHours(14))
+            return MedicationTimeOfDay.Noon;
+        if (scheduledTime >= TimeSpan.FromHours(14) && scheduledTime < TimeSpan.FromHours(18))
+            return MedicationTimeOfDay.Afternoon;
+        
+        return MedicationTimeOfDay.Evening;
     }
 
     #endregion
