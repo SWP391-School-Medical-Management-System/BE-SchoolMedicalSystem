@@ -1,5 +1,4 @@
-﻿using SchoolMedicalManagementSystem.DataAccessLayer.Entities;
-using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
+﻿using SchoolMedicalManagementSystem.DataAccessLayer.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.StudentMedicationResponse
 {
-    public class StudentMedicationRequestDetailResponse
+    public class StudentMedicationRequestResponse
     {
         public Guid Id { get; set; }
         public Guid StudentId { get; set; }
@@ -23,6 +22,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
         public DateTime? SubmittedAt { get; set; }
         public DateTime? ApprovedAt { get; set; }
         public string Code { get; set; }
-        public List<StudentMedicationResponseForRequest> Medications { get; set; }
+        public int MedicationCount { get; set; }
     }
 }
