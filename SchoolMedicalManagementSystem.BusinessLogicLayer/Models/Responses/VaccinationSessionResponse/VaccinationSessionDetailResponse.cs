@@ -31,7 +31,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Vacc
     {
         public Guid ClassId { get; set; }
         public string ClassName { get; set; }
-        public Guid NurseId { get; set; }
+        public Guid? NurseId { get; set; }
         public string NurseName { get; set; }
     }
 }

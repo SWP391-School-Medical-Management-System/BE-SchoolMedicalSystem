@@ -27,7 +27,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Medic
         // PhysicalRecord
         public decimal? Height { get; set; } // Chiều cao
         public decimal? Weight { get; set; } // Cân nặng
-        public decimal? BMI { get; set; } // Chỉ số BMI
         public DateTime? CheckDatePhysical { get; set; } // Ngày kiểm tra thể chất
         public string CommentsPhysical { get; set; } // Ghi chú thể chất
     }
