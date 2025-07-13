@@ -156,13 +156,14 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.RequestId, opt => opt.MapFrom(src => src.StudentMedicationRequestId))
             .ForMember(dest => dest.MedicationName, opt => opt.MapFrom(src => src.MedicationName))
             .ForMember(dest => dest.Dosage, opt => opt.MapFrom(src => src.Dosage))
-            .ForMember(dest => dest.Purpose, opt => opt.MapFrom(src => src.Purpose))
             .ForMember(dest => dest.ExpiryDate, opt => opt.MapFrom(src => src.ExpiryDate))
             .ForMember(dest => dest.QuantitySent, opt => opt.MapFrom(src => src.QuantitySent))
-            .ForMember(dest => dest.QuantityUnit, opt => opt.MapFrom(src => src.QuantityUnit))
-            .ForMember(dest => dest.RejectionReason, opt => opt.MapFrom(src => src.RejectionReason))
             .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority))
-            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()));
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
+            .ForMember(dest => dest.Instructions, opt => opt.MapFrom(src => src.ManagementNotes ?? "Không có hướng dẫn"))
+            .ForMember(dest => dest.Frequency, opt => opt.MapFrom(src => src.Frequency ?? "Không xác định"))
+            .ForMember(dest => dest.SpecialNotes, opt => opt.MapFrom(src => src.SpecialNotes ?? "Không có ghi chú"))
+            .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => GetTimesOfDayDisplayNames(src.TimesOfDay)));
 
         CreateMap<StudentMedicationRequest, StudentMedicationRequestResponse>()
             .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => src.Status.ToString()))
@@ -290,6 +291,52 @@ public class StudentMedicationMappingProfile : Profile
             MedicationPriority.Critical => "Rất quan trọng",
             _ => priority.ToString()
         };
+    }
+
+    private static List<string> GetTimesOfDayDisplayNames(string? timesOfDayJson)
+    {
+        if (string.IsNullOrEmpty(timesOfDayJson))
+            return new List<string> { "Chưa thiết lập" };
+
+        try
+        {
+            // Thử deserialize dưới dạng integers (giá trị enum)
+            var timeOfDayInts = JsonSerializer.Deserialize<List<int>>(timesOfDayJson);
+            if (timeOfDayInts != null && timeOfDayInts.Any())
+            {
+                var displayNames = new List<string>();
+                foreach (var timeOfDayInt in timeOfDayInts)
+                {
+                    if (Enum.IsDefined(typeof(MedicationTimeOfDay), timeOfDayInt))
+                    {
+                        var timeOfDay = (MedicationTimeOfDay)timeOfDayInt;
+                        displayNames.Add(GetTimeOfDayDisplayName(timeOfDay));
+                    }
+                }
+                return displayNames.Any() ? displayNames : new List<string> { "Chưa thiết lập" };
+            }
+
+            // Thử deserialize dưới dạng strings
+            var timeOfDayStrings = JsonSerializer.Deserialize<List<string>>(timesOfDayJson);
+            if (timeOfDayStrings != null && timeOfDayStrings.Any())
+            {
+                var displayNames = new List<string>();
+                foreach (var timeOfDayString in timeOfDayStrings)
+                {
+                    if (Enum.TryParse<MedicationTimeOfDay>(timeOfDayString, out var timeOfDay))
+                    {
+                        displayNames.Add(GetTimeOfDayDisplayName(timeOfDay));
+                    }
+                }
+                return displayNames.Any() ? displayNames : new List<string> { "Chưa thiết lập" };
+            }
+
+            return new List<string> { "Chưa thiết lập" };
+        }
+        catch
+        {
+            return new List<string> { "Chưa thiết lập" };
+        }
     }
 
     private static string GetTimesOfDayDisplayName(string? timesOfDayJson)

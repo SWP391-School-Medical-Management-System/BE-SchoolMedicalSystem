@@ -11,7 +11,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Vacc
         public Guid NurseId { get; set; }
         public string NurseName { get; set; }
         public bool IsAssigned { get; set; }
-        public Guid? AssignedClassId { get; set; }
-        public string AssignedClassName { get; set; }
+        public List<Guid> AssignedClassIds { get; set; } = new List<Guid>();
+        // Thay đổi từ string thành List<string>
+        public List<string> AssignedClassNames { get; set; } = new List<string>();
     }
 }
