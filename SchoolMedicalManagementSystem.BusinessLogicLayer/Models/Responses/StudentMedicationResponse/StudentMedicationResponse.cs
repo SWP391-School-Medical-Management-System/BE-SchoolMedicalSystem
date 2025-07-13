@@ -5,6 +5,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
 public class StudentMedicationResponse
 {
     public Guid Id { get; set; }
+    public Guid RequestId { get; set; }
     public Guid StudentId { get; set; }
     public Guid ParentId { get; set; }
     public Guid? ApprovedById { get; set; }
@@ -32,4 +33,5 @@ public class StudentMedicationResponse
     
     public DateTime CreatedDate { get; set; }
     public DateTime? LastUpdatedDate { get; set; }
+    public string Code { get; set; }
 }

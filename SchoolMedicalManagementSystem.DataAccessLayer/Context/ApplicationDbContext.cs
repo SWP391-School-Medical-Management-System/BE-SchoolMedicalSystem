@@ -56,6 +56,9 @@ public class ApplicationDbContext : DbContext
     // Medical Records
     public DbSet<MedicalRecord> MedicalRecords { get; set; }
     public DbSet<MedicalCondition> MedicalConditions { get; set; }
+    public DbSet<VisionRecord> VisionRecords { get; set; }
+    public DbSet<HearingRecord> HearingRecords { get; set; }
+    public DbSet<PhysicalRecord> PhysicalRecords { get; set; }
 
     // Health Checks
     public DbSet<HealthCheck> HealthChecks { get; set; }
@@ -197,6 +200,42 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(v => v.MedicalRecordId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<MedicalRecord>()
+            .HasMany(m => m.VisionRecords)
+            .WithOne(v => v.MedicalRecord)
+            .HasForeignKey(v => v.MedicalRecordId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MedicalRecord>()
+            .HasMany(m => m.HearingRecords)
+            .WithOne(h => h.MedicalRecord)
+            .HasForeignKey(h => h.MedicalRecordId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MedicalRecord>()
+            .HasMany(m => m.PhysicalRecords)
+            .WithOne(p => p.MedicalRecord)
+            .HasForeignKey(p => p.MedicalRecordId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<VisionRecord>()
+            .HasOne(v => v.RecordedByUser)
+            .WithMany()
+            .HasForeignKey(v => v.RecordedBy)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<HearingRecord>()
+            .HasOne(h => h.RecordedByUser)
+            .WithMany()
+            .HasForeignKey(h => h.RecordedBy)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<PhysicalRecord>()
+            .HasOne(p => p.RecordedByUser)
+            .WithMany()
+            .HasForeignKey(p => p.RecordedBy)
+            .OnDelete(DeleteBehavior.NoAction);
+
         #endregion
 
         #region HealthCheck Relationships
@@ -318,6 +357,47 @@ public class ApplicationDbContext : DbContext
             .WithOne(ma => ma.StudentMedication)
             .HasForeignKey(ma => ma.StudentMedicationId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        #endregion
+
+        #region StudentMedicationRequest
+
+        modelBuilder.Entity<StudentMedicationRequest>(entity =>
+        {
+            // Khóa chính
+            entity.HasKey(e => e.Id);
+
+            // Ràng buộc khóa ngoại cho StudentId
+            entity.HasOne(r => r.Student)
+                .WithMany()
+                .HasForeignKey(r => r.StudentId)
+                .OnDelete(DeleteBehavior.NoAction); // Thay đổi thành NoAction
+
+            // Ràng buộc khóa ngoại cho ParentId
+            entity.HasOne(r => r.Parent)
+                .WithMany()
+                .HasForeignKey(r => r.ParentId)
+                .OnDelete(DeleteBehavior.NoAction); // Thay đổi thành NoAction
+
+            // Ràng buộc khóa ngoại cho ApprovedById (nullable, không cần CASCADE)
+            entity.HasOne(r => r.ApprovedBy)
+                .WithMany()
+                .HasForeignKey(r => r.ApprovedById)
+                .OnDelete(DeleteBehavior.NoAction)
+                .IsRequired(false); // ApprovedById là nullable
+
+            // Quan hệ 1-n với StudentMedication
+            entity.HasMany(r => r.MedicationsDetails)
+                .WithOne(m => m.Request)
+                .HasForeignKey(m => m.StudentMedicationRequestId)
+                .OnDelete(DeleteBehavior.Cascade); // Giữ Cascade cho quan hệ này
+
+            // Các thuộc tính khác
+            entity.Property(e => e.StudentName).IsRequired();
+            entity.Property(e => e.StudentCode).IsRequired();
+            entity.Property(e => e.ParentName).IsRequired();
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+        });
 
         #endregion
 

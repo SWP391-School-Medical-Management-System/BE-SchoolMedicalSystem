@@ -11,9 +11,6 @@ public class MedicalRecordResponse
     
     // Basic Medical Information
     public string BloodType { get; set; }
-    public double Height { get; set; }
-    public double Weight { get; set; }
-    public double? BMI { get; set; }
     public string EmergencyContact { get; set; }
     public string EmergencyContactPhone { get; set; }
     

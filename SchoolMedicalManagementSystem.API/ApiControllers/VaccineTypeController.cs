@@ -21,7 +21,6 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpGet]
-        [Authorize(Roles = "SCHOOLNURSE")]
         public async Task<ActionResult<BaseListResponse<VaccinationTypeResponse>>> GetVaccinationTypes(
             [FromQuery] int pageIndex = 1,
             [FromQuery] int pageSize = 10,

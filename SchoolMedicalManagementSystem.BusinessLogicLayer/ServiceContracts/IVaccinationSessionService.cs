@@ -76,6 +76,11 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
             MarkStudentVaccinatedRequest request,
             CancellationToken cancellationToken = default);
 
+        Task<BaseResponse<bool>> MarkStudentNotVaccinatedAsync(
+            Guid sessionId,
+            MarkStudentNotVaccinatedRequest request,
+            CancellationToken cancellationToken = default);
+
         Task<BaseListResponse<ClassStudentConsentStatusResponse>> GetClassStudentConsentStatusAsync(
             Guid sessionId,
             Guid classId,
@@ -97,7 +102,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
 
         Task<BaseResponse<bool>> ReassignNurseToSessionAsync(
             Guid sessionId,
-            AssignNurseToSessionRequest request,
+            ReAssignNurseToSessionRequest request,
             CancellationToken cancellationToken = default);
 
         #endregion

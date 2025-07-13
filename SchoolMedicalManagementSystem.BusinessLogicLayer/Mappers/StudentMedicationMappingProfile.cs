@@ -51,6 +51,38 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.Schedules, opt => opt.Ignore())
             .ForMember(dest => dest.StockHistory, opt => opt.Ignore());
 
+        CreateMap<CreateBulkStudentMedicationRequest.BulkMedicationDetails, StudentMedication>()
+             .ForMember(dest => dest.Id, opt => opt.Ignore())
+             .ForMember(dest => dest.StudentId, opt => opt.Ignore())
+             .ForMember(dest => dest.ParentId, opt => opt.Ignore())
+             .ForMember(dest => dest.ApprovedById, opt => opt.Ignore())
+             .ForMember(dest => dest.Status, opt => opt.MapFrom(src => StudentMedicationStatus.PendingApproval))
+             .ForMember(dest => dest.RejectionReason, opt => opt.Ignore())
+             .ForMember(dest => dest.ApprovedAt, opt => opt.Ignore())
+             .ForMember(dest => dest.SubmittedAt, opt => opt.Ignore())
+             .ForMember(dest => dest.TotalDoses, opt => opt.MapFrom(src => 0))
+             .ForMember(dest => dest.RemainingDoses, opt => opt.MapFrom(src => 0))
+             .ForMember(dest => dest.MinStockThreshold, opt => opt.MapFrom(src => 3))
+             .ForMember(dest => dest.LowStockAlertSent, opt => opt.MapFrom(src => false))
+             .ForMember(dest => dest.AutoGenerateSchedule, opt => opt.MapFrom(src => true))
+             .ForMember(dest => dest.RequireNurseConfirmation, opt => opt.MapFrom(src => false))
+             .ForMember(dest => dest.SkipOnAbsence, opt => opt.MapFrom(src => true))
+             .ForMember(dest => dest.SkipWeekends, opt => opt.MapFrom(src => false))
+             .ForMember(dest => dest.ManagementNotes, opt => opt.Ignore())
+             .ForMember(dest => dest.SkipDates, opt => opt.Ignore())
+             .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
+             .ForMember(dest => dest.CreatedDate, opt => opt.Ignore())
+             .ForMember(dest => dest.LastUpdatedBy, opt => opt.Ignore())
+             .ForMember(dest => dest.LastUpdatedDate, opt => opt.Ignore())
+             .ForMember(dest => dest.IsDeleted, opt => opt.Ignore())
+             .ForMember(dest => dest.Student, opt => opt.Ignore())
+             .ForMember(dest => dest.Parent, opt => opt.Ignore())
+             .ForMember(dest => dest.ApprovedBy, opt => opt.Ignore())
+             .ForMember(dest => dest.Administrations, opt => opt.Ignore())
+             .ForMember(dest => dest.Schedules, opt => opt.Ignore())
+             .ForMember(dest => dest.StockHistory, opt => opt.Ignore())
+             .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => SerializeTimesOfDay(src.TimesOfDay)));
+
         CreateMap<UpdateStudentMedicationRequest, StudentMedication>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
@@ -118,7 +150,34 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
             .ForMember(dest => dest.DaysWaiting, opt => opt.MapFrom(src => src.SubmittedAt.HasValue ? 
                 (int)(DateTime.Now - src.SubmittedAt.Value).TotalDays : 0));
+
+        CreateMap<StudentMedication, StudentMedicationResponseForRequest>()
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+            .ForMember(dest => dest.RequestId, opt => opt.MapFrom(src => src.StudentMedicationRequestId))
+            .ForMember(dest => dest.MedicationName, opt => opt.MapFrom(src => src.MedicationName))
+            .ForMember(dest => dest.Dosage, opt => opt.MapFrom(src => src.Dosage))
+            .ForMember(dest => dest.Purpose, opt => opt.MapFrom(src => src.Purpose))
+            .ForMember(dest => dest.ExpiryDate, opt => opt.MapFrom(src => src.ExpiryDate))
+            .ForMember(dest => dest.QuantitySent, opt => opt.MapFrom(src => src.QuantitySent))
+            .ForMember(dest => dest.QuantityUnit, opt => opt.MapFrom(src => src.QuantityUnit))
+            .ForMember(dest => dest.RejectionReason, opt => opt.MapFrom(src => src.RejectionReason))
+            .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority))
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()));
+
+        CreateMap<StudentMedicationRequest, StudentMedicationRequestResponse>()
+            .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => src.Status.ToString()))
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
+            .ForMember(dest => dest.Code, opt => opt.MapFrom(src => src.Code))
+            .ForMember(dest => dest.MedicationCount, opt => opt.MapFrom(src => src.MedicationsDetails.Count));
+
+        CreateMap<StudentMedicationRequest, StudentMedicationRequestDetailResponse>()
+            .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => src.Status.ToString()))
+            .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
+            .ForMember(dest => dest.Code, opt => opt.MapFrom(src => src.Code))
+            .ForMember(dest => dest.Medications, opt => opt.MapFrom(src => src.MedicationsDetails));
+      
     }
+
     
     private void ConfigureMedicationStockMappings()
     {
@@ -287,14 +346,10 @@ public class StudentMedicationMappingProfile : Profile
     {
         return timeOfDay switch
         {
-            MedicationTimeOfDay.Morning => "Buổi sáng sớm (7:00)",
-            MedicationTimeOfDay.AfterBreakfast => "Sau bữa sáng (8:30)",
-            MedicationTimeOfDay.MidMorning => "Giữa buổi sáng (10:00)",
-            MedicationTimeOfDay.BeforeLunch => "Trước bữa trưa (11:30)",
-            MedicationTimeOfDay.AfterLunch => "Sau bữa trưa (13:00)",
-            MedicationTimeOfDay.MidAfternoon => "Giữa buổi chiều (14:30)",
-            MedicationTimeOfDay.LateAfternoon => "Cuối buổi chiều (16:00)",
-            MedicationTimeOfDay.BeforeDismissal => "Trước khi tan học (16:30)",
+            MedicationTimeOfDay.Morning => "Buổi sáng ",
+            MedicationTimeOfDay.Noon => "Buổi trưa ",
+            MedicationTimeOfDay.Afternoon => "Buổi chiều ",
+            MedicationTimeOfDay.Evening => "Buổi tối ",
             _ => timeOfDay.ToString()
         };
     }
@@ -307,6 +362,16 @@ public class StudentMedicationMappingProfile : Profile
             .Where(a => !a.IsDeleted)
             .OrderByDescending(a => a.AdministeredAt)
             .FirstOrDefault()?.AdministeredAt;
+    }
+
+    private string SerializeTimesOfDay(List<MedicationTimeOfDay>? timesOfDay)
+    {
+        return timesOfDay != null && timesOfDay.Any() ? JsonSerializer.Serialize(timesOfDay) : null;
+    }
+
+    private string SerializeSpecificTimes(List<TimeSpan>? specificTimes)
+    {
+        return specificTimes != null && specificTimes.Any() ? JsonSerializer.Serialize(specificTimes) : null;
     }
 
     #endregion

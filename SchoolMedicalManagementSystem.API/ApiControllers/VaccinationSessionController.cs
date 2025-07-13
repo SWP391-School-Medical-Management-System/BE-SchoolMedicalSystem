@@ -238,6 +238,27 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             }
         }
 
+        [HttpPost("{sessionId}/mark-student-not-vaccinated")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<bool>>> MarkStudentNotVaccinated(
+            Guid sessionId,
+            [FromBody] MarkStudentNotVaccinatedRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var response = await _vaccinationSessionService.MarkStudentNotVaccinatedAsync(sessionId, request, cancellationToken);
+                if (!response.Success)
+                    return BadRequest(response);
+
+                return Ok(response);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
         [HttpPost("assign-nurse")]
         [Authorize(Roles = "MANAGER")]
         public async Task<ActionResult<BaseResponse<bool>>> AssignNurseToSession([FromBody] AssignNurseToSessionRequest request)
@@ -298,7 +319,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         [Authorize(Roles = "MANAGER")]
         public async Task<ActionResult<BaseResponse<bool>>> ReassignNurseToSession(
             Guid sessionId, 
-            [FromBody] AssignNurseToSessionRequest request, 
+            [FromBody] ReAssignNurseToSessionRequest request, 
             CancellationToken cancellationToken = default)
         {
             try

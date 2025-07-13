@@ -144,6 +144,9 @@ public class HealthEventService : IHealthEventService
             var eventRepo = _unitOfWork.GetRepositoryByEntity<HealthEvent>();
             var healthEvent = await eventRepo.GetQueryable()
                 .Include(he => he.Student)
+                        .ThenInclude(s => s.StudentClasses)
+                          .ThenInclude(sc => sc.SchoolClass)
+
                 .Include(he => he.HandledBy)
                 .Include(he => he.RelatedMedicalCondition)
                 .Include(he => he.HealthEventMedicalItems)
@@ -398,17 +401,16 @@ public class HealthEventService : IHealthEventService
             healthEvent.CreatedDate = DateTime.Now;
             healthEvent.Code = await GenerateHealthEventCodeAsync();
 
+            healthEvent.HandledById = currentUserId;
             if (model.IsEmergency)
             {
-                healthEvent.HandledById = currentUserId;
                 _logger.LogInformation("Emergency event {Code} auto-assigned to current nurse {UserId}",
                     healthEvent.Code, currentUserId);
             }
             else
             {
-                healthEvent.HandledById = null;
-                _logger.LogInformation("Normal event {Code} created for background processing",
-                    healthEvent.Code);
+                _logger.LogInformation("Normal event {Code} created and assigned to current nurse {UserId}",
+                    healthEvent.Code, currentUserId);
             }
 
             var eventRepo = _unitOfWork.GetRepositoryByEntity<HealthEvent>();
@@ -1461,7 +1463,7 @@ public class HealthEventService : IHealthEventService
         if (healthEvent.Student != null)
         {
             response.StudentName = healthEvent.Student.FullName;
-            response.StudentCode = healthEvent.Student.StudentCode;
+            response.StudentCode = healthEvent.Student.StudentCode;         
         }
 
         if (healthEvent.HandledBy != null)

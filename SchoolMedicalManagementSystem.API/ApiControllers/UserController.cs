@@ -54,7 +54,6 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("staff/{id}")]
-    [Authorize(Roles = "ADMIN")]
     public async Task<ActionResult<BaseResponse<StaffUserResponse>>> GetStaffUserById(Guid id)
     {
         try
@@ -425,7 +424,6 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("students/{id}")]
-    [Authorize(Roles = "MANAGER, PARENT, SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<StudentResponse>>> GetStudentById(Guid id)
     {
         try
@@ -443,7 +441,6 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("parents/{parentId}/students")]
-    [Authorize(Roles = "MANAGER, PARENT, SCHOOLNURSE")]
     public async Task<ActionResult<BaseListResponse<StudentResponse>>> GetStudentsByParentId(
     Guid parentId,
     [FromQuery] int pageIndex = 1,
@@ -473,16 +470,25 @@ public class UserController : ControllerBase
 
     [HttpPost("students")]
     [Authorize(Roles = "MANAGER")]
-    public async Task<ActionResult<BaseResponse<StudentResponse>>> CreateStudent([FromBody] CreateStudentRequest model)
+    public async Task<IActionResult> CreateStudent([FromBody] CreateStudentRequest model)
     {
-        var result = await _userService.CreateStudentAsync(model);
-
-        if (!result.Success)
+        var userId = User.FindFirst("uid")?.Value;
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out Guid currentUserId))
         {
-            return BadRequest(result);
+            return BadRequest(new BaseResponse<StudentResponse>
+            {
+                Success = false,
+                Message = "Không thể xác định người dùng hiện tại."
+            });
         }
 
-        return CreatedAtAction(nameof(GetStudentById), new { id = result.Data.Id }, result);
+        var response = await _userService.CreateStudentAsync(model, currentUserId);
+        if (!response.Success)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
     }
 
     [HttpPut("students/{id}")]
@@ -551,7 +557,6 @@ public class UserController : ControllerBase
     }
 
     [HttpGet("parents/{id}")]
-    [Authorize(Roles = "MANAGER")]
     public async Task<ActionResult<BaseResponse<ParentResponse>>> GetParentById(Guid id)
     {
         try

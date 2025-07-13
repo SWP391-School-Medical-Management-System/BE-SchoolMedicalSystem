@@ -19,7 +19,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseListResponse<MedicalRecordResponse>>> GetMedicalRecords(
         [FromQuery] int pageIndex = 1,
         [FromQuery] int pageSize = 10,
@@ -53,7 +52,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> GetMedicalRecordById(Guid id)
     {
         try
@@ -71,7 +69,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpGet("student/{studentId}")]
-    [Authorize(Roles = "SCHOOLNURSE,PARENT")]
     public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> GetMedicalRecordByStudentId(
         Guid studentId)
     {
@@ -90,7 +87,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> CreateMedicalRecord(
         [FromBody] CreateMedicalRecordRequest model)
     {
@@ -112,7 +108,6 @@ public class MedicalRecordController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<MedicalRecordDetailResponse>>> UpdateMedicalRecord(
         Guid id, [FromBody] UpdateMedicalRecordRequest model)
     {
@@ -133,8 +128,29 @@ public class MedicalRecordController : ControllerBase
         }
     }
 
+    [HttpPut("{studentId}/update-by-parent")]
+    public async Task<IActionResult> UpdateMedicalRecordByParent(Guid studentId, [FromBody] UpdateMedicalRecordByParentRequest model)
+    {
+        var parentId = User.FindFirst("uid")?.Value; // Lấy uid từ token
+        if (string.IsNullOrEmpty(parentId) || !Guid.TryParse(parentId, out Guid currentParentId))
+        {
+            return BadRequest(new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = "Không thể xác định phụ huynh hiện tại."
+            });
+        }
+
+        var response = await _medicalRecordService.UpdateMedicalRecordByParentAsync(studentId, model, currentParentId);
+        if (!response.Success)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
+
     [HttpDelete("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE,MANAGER")]
     public async Task<ActionResult<BaseResponse<bool>>> DeleteMedicalRecord(Guid id)
     {
         try

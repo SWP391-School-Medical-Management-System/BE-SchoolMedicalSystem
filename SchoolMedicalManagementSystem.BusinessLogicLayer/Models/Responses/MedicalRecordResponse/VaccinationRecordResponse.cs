@@ -3,6 +3,7 @@
 public class VaccinationRecordResponse
 {
     public Guid Id { get; set; }
+    public Guid VaccinationTypeId { get; set; }
     public string VaccinationTypeName { get; set; }
     public int DoseNumber { get; set; }
     public DateTime? AdministeredDate { get; set; }
