@@ -383,9 +383,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseListResponse<ClassStudentConsentStatusResponse>> GetClassStudentConsentStatusAsync(
-            Guid sessionId,
-            Guid classId,
-            CancellationToken cancellationToken = default)
+         Guid sessionId,
+         Guid classId,
+         CancellationToken cancellationToken = default)
         {
             try
             {
@@ -405,50 +405,60 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     return BaseListResponse<ClassStudentConsentStatusResponse>.ErrorResult("Lớp không thuộc buổi tiêm này.");
                 }
 
+                // Lấy danh sách consents liên quan đến buổi tiêm
                 var consents = await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().GetQueryable()
                     .Include(c => c.Student)
+                    .ThenInclude(s => s.StudentClasses) // Đảm bảo tải StudentClasses
                     .Include(c => c.Session)
                     .Where(c => c.SessionId == sessionId && !c.IsDeleted)
                     .ToListAsync(cancellationToken);
 
-                var classStudents = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                    .Where(u => u.StudentClasses.Any(sc => sc.ClassId == classId) &&
-                               u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
-                    .ToListAsync(cancellationToken);
+                // Lọc danh sách consents dựa trên học sinh thuộc classId, với kiểm tra null
+                var classConsents = consents
+                    .Where(c => c.Student != null && c.Student.StudentClasses != null && c.Student.StudentClasses.Any(sc => sc.ClassId == classId))
+                    .ToList();
 
                 var vaccinationRecords = await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().GetQueryable()
                     .Where(vr => vr.SessionId == sessionId && !vr.IsDeleted)
                     .ToDictionaryAsync(vr => vr.UserId, vr => vr.VaccinationStatus, cancellationToken);
 
-                var responses = new List<ClassStudentConsentStatusResponse>();
+                var studentStatuses = new List<StudentConsentStatusResponse>();
                 var classInfo = session.Classes.First(c => c.ClassId == classId).SchoolClass;
-                var studentStatuses = (from student in classStudents
-                                       join consent in consents on student.Id equals consent.StudentId into gj
-                                       from consent in gj.DefaultIfEmpty()
-                                       let vaccinationStatus = consent?.Status == "Confirmed" && vaccinationRecords.ContainsKey(student.Id)
-                                           ? vaccinationRecords[student.Id] ?? "InProgress"
-                                           : "InProgress"
-                                       select new StudentConsentStatusResponse
-                                       {
-                                           StudentId = student.Id,
-                                           StudentName = student.FullName,
-                                           Status = consent?.Status ?? "Pending",
-                                           ResponseDate = consent?.ResponseDate,
-                                           VaccinationStatus = vaccinationStatus
-                                       }).ToList();
+
+                foreach (var consent in classConsents)
+                {
+                    if (consent.Student == null)
+                    {
+                        _logger.LogWarning("Consent {ConsentId} has null Student for session {SessionId}", consent.Id, sessionId);
+                        continue; // Bỏ qua nếu Student là null
+                    }
+
+                    var vaccinationStatus = consent.Status == "Confirmed" && vaccinationRecords.ContainsKey(consent.StudentId)
+                        ? vaccinationRecords[consent.StudentId] ?? "InProgress"
+                        : "InProgress";
+
+                    studentStatuses.Add(new StudentConsentStatusResponse
+                    {
+                        StudentId = consent.StudentId,
+                        StudentName = consent.Student.FullName ?? "Unknown Student",
+                        Status = consent.Status ?? "Pending",
+                        ResponseDate = consent.ResponseDate,
+                        VaccinationStatus = vaccinationStatus
+                    });
+                }
 
                 var response = new ClassStudentConsentStatusResponse
                 {
                     ClassId = classId,
                     ClassName = classInfo.Name,
-                    TotalStudents = classStudents.Count,
+                    TotalStudents = studentStatuses.Count, // Sử dụng số lượng consents hợp lệ
                     PendingCount = studentStatuses.Count(s => s.Status == "Pending"),
                     ConfirmedCount = studentStatuses.Count(s => s.Status == "Confirmed"),
                     DeclinedCount = studentStatuses.Count(s => s.Status == "Declined"),
                     Students = studentStatuses
                 };
 
-                responses.Add(response);
+                var responses = new List<ClassStudentConsentStatusResponse> { response };
 
                 return BaseListResponse<ClassStudentConsentStatusResponse>.SuccessResult(
                     responses,
