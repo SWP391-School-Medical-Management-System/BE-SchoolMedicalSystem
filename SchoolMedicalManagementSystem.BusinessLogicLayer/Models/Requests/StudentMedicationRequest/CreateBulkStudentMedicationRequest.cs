@@ -21,8 +21,10 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Stude
             public string Frequency { get; set; }
             public DateTime ExpiryDate { get; set; }
             public int QuantitySent { get; set; }
+            public QuantityUnitEnum QuantityUnit { get; set; } 
             public string SpecialNotes { get; set; }
             public List<MedicationTimeOfDay> TimesOfDay { get; set; } = new();
+            public DateTime? StartDate { get; set; } 
         }
     }
 }

@@ -169,4 +169,70 @@ public class MedicalRecordController : ControllerBase
             return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
         }
     }
+
+    [HttpPost("{studentId}/vision-record")]
+    public async Task<IActionResult> CreateVisionRecordByParent(Guid studentId, [FromBody] CreateVisionRecordRequest model)
+    {
+        var parentId = User.FindFirst("uid")?.Value;
+        if (string.IsNullOrEmpty(parentId) || !Guid.TryParse(parentId, out Guid currentParentId))
+        {
+            return BadRequest(new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = "Không thể xác định phụ huynh hiện tại."
+            });
+        }
+
+        var response = await _medicalRecordService.CreateVisionRecordByParentAsync(studentId, model, currentParentId);
+        if (!response.Success)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
+
+    [HttpPost("{studentId}/hearing-record")]
+    public async Task<IActionResult> CreateHearingRecordByParent(Guid studentId, [FromBody] CreateHearingRecordRequest model)
+    {
+        var parentId = User.FindFirst("uid")?.Value;
+        if (string.IsNullOrEmpty(parentId) || !Guid.TryParse(parentId, out Guid currentParentId))
+        {
+            return BadRequest(new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = "Không thể xác định phụ huynh hiện tại."
+            });
+        }
+
+        var response = await _medicalRecordService.CreateHearingRecordByParentAsync(studentId, model, currentParentId);
+        if (!response.Success)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
+
+    [HttpPost("{studentId}/physical-record")]
+    public async Task<IActionResult> CreatePhysicalRecordByParent(Guid studentId, [FromBody] CreatePhysicalRecordRequest model)
+    {
+        var parentId = User.FindFirst("uid")?.Value;
+        if (string.IsNullOrEmpty(parentId) || !Guid.TryParse(parentId, out Guid currentParentId))
+        {
+            return BadRequest(new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = "Không thể xác định phụ huynh hiện tại."
+            });
+        }
+
+        var response = await _medicalRecordService.CreatePhysicalRecordByParentAsync(studentId, model, currentParentId);
+        if (!response.Success)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
 }

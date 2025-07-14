@@ -593,6 +593,344 @@ public class MedicalRecordService : IMedicalRecordService
         }
     }
 
+    public async Task<BaseResponse<MedicalRecordDetailResponse>> CreateVisionRecordByParentAsync(
+    Guid studentId,
+    CreateVisionRecordRequest model,
+    Guid currentUserId)
+    {
+        try
+        {
+            // Xác thực người dùng
+            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var currentUser = await userRepo.GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == currentUserId && !u.IsDeleted);
+
+            if (currentUser == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không thể xác định người dùng hiện tại."
+                };
+            }
+
+            var student = await userRepo.GetQueryable()
+                .Include(u => u.Parent)
+                .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted);
+
+            if (student == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy học sinh."
+                };
+            }
+
+            // Kiểm tra quyền
+            bool isParent = currentUser.UserRoles.Any(ur => ur.Role.Name == "PARENT" && student.ParentId == currentUserId);
+            bool isSchoolNurse = currentUser.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE");
+
+            if (!isParent && !isSchoolNurse)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Bạn không có quyền chỉnh sửa hồ sơ y tế của học sinh này."
+                };
+            }
+
+            // Lấy MedicalRecord
+            var recordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
+            var medicalRecord = await recordRepo.GetQueryable()
+                .FirstOrDefaultAsync(mr => mr.UserId == studentId && !mr.IsDeleted);
+
+            if (medicalRecord == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy hồ sơ y tế cho học sinh này."
+                };
+            }
+
+            medicalRecord.LastUpdatedBy = isParent ? "PARENT" : "SCHOOLNURSE";
+            medicalRecord.LastUpdatedDate = DateTime.Now;
+
+            // Tạo mới VisionRecord
+            var visionRecord = new VisionRecord
+            {
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                LeftEye = model.LeftEye ?? 0,
+                RightEye = model.RightEye ?? 0,
+                CheckDate = model.CheckDate ?? DateTime.Now,
+                Comments = model.Comments,
+                RecordedBy = currentUserId,
+                CreatedDate = DateTime.Now,
+                LastUpdatedDate = DateTime.Now
+            };
+            await _unitOfWork.GetRepositoryByEntity<VisionRecord>().AddAsync(visionRecord);
+
+            await _unitOfWork.SaveChangesAsync();
+            await InvalidateAllCachesAsync();
+
+            // Lấy lại dữ liệu để trả về response
+            medicalRecord = await recordRepo.GetQueryable()
+                .Include(mr => mr.Student)
+                .Include(mr => mr.VisionRecords.Where(vr => !vr.IsDeleted))
+                .FirstOrDefaultAsync(mr => mr.Id == medicalRecord.Id);
+
+            var recordResponse = MapToMedicalRecordDetailResponse(medicalRecord);
+
+            return new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = true,
+                Data = recordResponse,
+                Message = "Cập nhật bản ghi thị lực thành công."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating vision record by parent for student: {StudentId}", studentId);
+            return new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = $"Lỗi tạo bản ghi thị lực: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<BaseResponse<MedicalRecordDetailResponse>> CreateHearingRecordByParentAsync(
+    Guid studentId,
+    CreateHearingRecordRequest model,
+    Guid currentUserId)
+    {
+        try
+        {
+            // Xác thực người dùng
+            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var currentUser = await userRepo.GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == currentUserId && !u.IsDeleted);
+
+            if (currentUser == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không thể xác định người dùng hiện tại."
+                };
+            }
+
+            var student = await userRepo.GetQueryable()
+                .Include(u => u.Parent)
+                .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted);
+
+            if (student == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy học sinh."
+                };
+            }
+
+            // Kiểm tra quyền
+            bool isParent = currentUser.UserRoles.Any(ur => ur.Role.Name == "PARENT" && student.ParentId == currentUserId);
+            bool isSchoolNurse = currentUser.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE");
+
+            if (!isParent && !isSchoolNurse)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Bạn không có quyền chỉnh sửa hồ sơ y tế của học sinh này."
+                };
+            }
+
+            // Lấy MedicalRecord
+            var recordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
+            var medicalRecord = await recordRepo.GetQueryable()
+                .FirstOrDefaultAsync(mr => mr.UserId == studentId && !mr.IsDeleted);
+
+            if (medicalRecord == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy hồ sơ y tế cho học sinh này."
+                };
+            }
+
+            medicalRecord.LastUpdatedBy = isParent ? "PARENT" : "SCHOOLNURSE";
+            medicalRecord.LastUpdatedDate = DateTime.Now;
+
+            // Tạo mới HearingRecord
+            var hearingRecord = new HearingRecord
+            {
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                LeftEar = model.LeftEar ?? "Not recorded",
+                RightEar = model.RightEar ?? "Not recorded",
+                CheckDate = model.CheckDateHearing ?? DateTime.Now,
+                Comments = model.CommentsHearing,
+                RecordedBy = currentUserId,
+                CreatedDate = DateTime.Now,
+                LastUpdatedDate = DateTime.Now
+            };
+            await _unitOfWork.GetRepositoryByEntity<HearingRecord>().AddAsync(hearingRecord);
+
+            await _unitOfWork.SaveChangesAsync();
+            await InvalidateAllCachesAsync();
+
+            // Lấy lại dữ liệu để trả về response
+            medicalRecord = await recordRepo.GetQueryable()
+                .Include(mr => mr.Student)
+                .Include(mr => mr.HearingRecords.Where(hr => !hr.IsDeleted))
+                .FirstOrDefaultAsync(mr => mr.Id == medicalRecord.Id);
+
+            var recordResponse = MapToMedicalRecordDetailResponse(medicalRecord);
+
+            return new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = true,
+                Data = recordResponse,
+                Message = "Cập nhật bản ghi thính lực thành công."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating hearing record by parent for student: {StudentId}", studentId);
+            return new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = $"Lỗi tạo bản ghi thính lực: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<BaseResponse<MedicalRecordDetailResponse>> CreatePhysicalRecordByParentAsync(
+    Guid studentId,
+    CreatePhysicalRecordRequest model,
+    Guid currentUserId)
+    {
+        try
+        {
+            // Xác thực người dùng
+            var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+            var currentUser = await userRepo.GetQueryable()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == currentUserId && !u.IsDeleted);
+
+            if (currentUser == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không thể xác định người dùng hiện tại."
+                };
+            }
+
+            var student = await userRepo.GetQueryable()
+                .Include(u => u.Parent)
+                .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted);
+
+            if (student == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy học sinh."
+                };
+            }
+
+            // Kiểm tra quyền
+            bool isParent = currentUser.UserRoles.Any(ur => ur.Role.Name == "PARENT" && student.ParentId == currentUserId);
+            bool isSchoolNurse = currentUser.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE");
+
+            if (!isParent && !isSchoolNurse)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Bạn không có quyền chỉnh sửa hồ sơ y tế của học sinh này."
+                };
+            }
+
+            // Lấy MedicalRecord
+            var recordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
+            var medicalRecord = await recordRepo.GetQueryable()
+                .FirstOrDefaultAsync(mr => mr.UserId == studentId && !mr.IsDeleted);
+
+            if (medicalRecord == null)
+            {
+                return new BaseResponse<MedicalRecordDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy hồ sơ y tế cho học sinh này."
+                };
+            }
+
+            medicalRecord.LastUpdatedBy = isParent ? "PARENT" : "SCHOOLNURSE";
+            medicalRecord.LastUpdatedDate = DateTime.Now;
+
+            // Tạo mới PhysicalRecord với BMI được tính tự động
+            decimal bmi = 0;
+            if (model.Height.HasValue && model.Weight.HasValue && model.Height.Value > 0)
+            {
+                decimal heightInMeters = model.Height.Value / 100; // Chuyển từ cm sang m
+                bmi = model.Weight.Value / (heightInMeters * heightInMeters); // BMI = Weight / (Height²)
+            }
+
+            var physicalRecord = new PhysicalRecord
+            {
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                Height = model.Height ?? 0,
+                Weight = model.Weight ?? 0,
+                BMI = bmi,
+                CheckDate = model.CheckDate ?? DateTime.Now,
+                Comments = model.Comments,
+                RecordedBy = currentUserId,
+                CreatedDate = DateTime.Now,
+                LastUpdatedDate = DateTime.Now
+            };
+            await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().AddAsync(physicalRecord);
+
+            await _unitOfWork.SaveChangesAsync();
+            await InvalidateAllCachesAsync();
+
+            // Lấy lại dữ liệu để trả về response
+            medicalRecord = await recordRepo.GetQueryable()
+                .Include(mr => mr.Student)
+                .Include(mr => mr.PhysicalRecords.Where(pr => !pr.IsDeleted))
+                .FirstOrDefaultAsync(mr => mr.Id == medicalRecord.Id);
+
+            var recordResponse = MapToMedicalRecordDetailResponse(medicalRecord);
+
+            return new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = true,
+                Data = recordResponse,
+                Message = "Cập nhật bản ghi thể chất thành công."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating physical record by parent for student: {StudentId}", studentId);
+            return new BaseResponse<MedicalRecordDetailResponse>
+            {
+                Success = false,
+                Message = $"Lỗi tạo bản ghi thể chất: {ex.Message}"
+            };
+        }
+    }
+
     public async Task<BaseResponse<bool>> DeleteMedicalRecordAsync(Guid recordId)
     {
         try

@@ -31,8 +31,9 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public string? Hospital { get; set; }           // Bệnh viện/Phòng khám
         public DateTime? PrescriptionDate { get; set; } // Ngày kê đơn
         public string? PrescriptionNumber { get; set; } // Số đơn thuốc
+        public DateTime? StartDate { get; set; }         // Ngày bắt đầu dùng thuốc
         public int QuantitySent { get; set; }           // Số lượng Parent gửi
-        public string? QuantityUnit { get; set; }       // Đơn vị (viên, chai, gói)
+        public QuantityUnitEnum? QuantityUnit { get; set; }       // Đơn vị (viên, chai, gói)
         public string? SpecialNotes { get; set; }       // Ghi chú từ Parent
         public string? EmergencyContactInstructions { get; set; } // Hướng dẫn khẩn cấp
 
@@ -49,6 +50,8 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public string? SpecificTimes { get; set; }         // JSON: ["08:00", "12:00", "18:00"]
         public string? TimesOfDay { get; set; }            // JSON: ["Morning", "AfterLunch", "LateAfternoon"]
         public string? SkipDates { get; set; }             // JSON: ["2024-12-25", "2024-01-01"]
+        public ReceivedMedication Received { get; set; }    // Trạng thái nhận thuốc từ Parent
+        public int QuantityReceive { get; set; } = 0;      // Nhận được bao nhiêu thuốc từ Parent
 
         public StudentMedicationStatus Status { get; set; } // Trạng thái
         public string? RejectionReason { get; set; }    // Lý do từ chối (nếu có)
@@ -68,5 +71,6 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public virtual ICollection<MedicationAdministration> Administrations { get; set; } // Lịch sử cho uống thuốc
         public virtual ICollection<MedicationSchedule> Schedules { get; set; } = new List<MedicationSchedule>(); // Lịch trình uống thuốc
         public virtual ICollection<MedicationStock> StockHistory { get; set; } = new List<MedicationStock>(); // Lịch sử gửi thuốc
+        public virtual ICollection<StudentMedicationUsageHistory> UsageHistory { get; set; } = new List<StudentMedicationUsageHistory>();
     }
 }

@@ -20,5 +20,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Vacc
         public string Notes { get; set; }
         public string VaccinationStatus { get; set; } // Scheduled, Completed, Missed, NotAdministered
         public string Symptoms { get; set; }
+        public string NoteAfterSession { get; set; } 
+        public string ClassName { get; set; } 
     }
 }

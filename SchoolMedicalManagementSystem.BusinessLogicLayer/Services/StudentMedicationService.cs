@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Helpers;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.StudentMedicationRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
@@ -357,6 +358,8 @@ public class StudentMedicationService : IStudentMedicationService
                 medication.CreatedBy = parentRoleName;
                 medication.CreatedDate = DateTime.Now;
                 medication.StudentMedicationRequestId = medicationRequest.Id; // Liên kết với request
+                medication.QuantityUnit = medicationDetails.QuantityUnit; // Ánh xạ QuantityUnit
+                medication.StartDate = medicationDetails.StartDate; // Ánh xạ StartDate
 
                 // Tạo mã Code tự động cho StudentMedication (nếu cần)
                 // Lưu ý: Nếu chỉ cần Code từ StudentMedicationRequest, có thể bỏ dòng này
@@ -371,13 +374,12 @@ public class StudentMedicationService : IStudentMedicationService
                 await medicationRepo.AddAsync(medication);
                 medications.Add(medication);
 
-                // Tạo bản ghi stock ban đầu
                 var initialStock = new MedicationStock
                 {
                     Id = Guid.NewGuid(),
                     StudentMedicationId = medication.Id,
                     QuantityAdded = medicationDetails.QuantitySent,
-                    QuantityUnit = "viên",
+                    QuantityUnit = medicationDetails.QuantityUnit, 
                     ExpiryDate = medicationDetails.ExpiryDate,
                     DateAdded = DateTime.Now,
                     Notes = "Thuốc ban đầu từ phụ huynh",
@@ -385,7 +387,6 @@ public class StudentMedicationService : IStudentMedicationService
                     CreatedBy = parentRoleName,
                     CreatedDate = DateTime.Now
                 };
-                await stockRepo.AddAsync(initialStock);
 
                 // Tính toán TotalDoses ban đầu
                 var totalDoses = CalculateTotalDosesFromDosage(medicationDetails.Dosage, medicationDetails.QuantitySent);
@@ -424,6 +425,7 @@ public class StudentMedicationService : IStudentMedicationService
             return BaseListResponse<StudentMedicationResponse>.ErrorResult($"Lỗi gửi yêu cầu thuốc hàng loạt: {ex.Message}");
         }
     }
+
 
     public async Task<BaseResponse<StudentMedicationResponse>> UpdateStudentMedicationAsync(
         Guid medicationId, UpdateStudentMedicationRequest model)
@@ -505,7 +507,17 @@ public class StudentMedicationService : IStudentMedicationService
             }
 
             if (!string.IsNullOrEmpty(model.QuantityUnit))
-                medication.QuantityUnit = model.QuantityUnit;
+            {
+                if (Enum.TryParse<QuantityUnitEnum>(model.QuantityUnit, true, out var unit))
+                {
+                    medication.QuantityUnit = unit;
+                }
+                else
+                {
+                    return BaseResponse<StudentMedicationResponse>.ErrorResult("Đơn vị số lượng không hợp lệ.");
+                }
+            }
+            await UpdateStockRecordAsync(medication, model.QuantitySent ?? medication.QuantitySent);
 
             if (model.SpecialNotes != null)
                 medication.SpecialNotes = model.SpecialNotes;
@@ -588,7 +600,7 @@ public class StudentMedicationService : IStudentMedicationService
                 Id = Guid.NewGuid(),
                 StudentMedicationId = medication.Id,
                 QuantityAdded = request.AdditionalQuantity,
-                QuantityUnit = medication.QuantityUnit,
+                QuantityUnit = medication.QuantityUnit ?? QuantityUnitEnum.Tablet, 
                 ExpiryDate = request.NewExpiryDate,
                 DateAdded = DateTime.Now,
                 Notes = request.Notes,
@@ -892,7 +904,7 @@ public class StudentMedicationService : IStudentMedicationService
     #region Approval Workflow
 
     public async Task<BaseResponse<StudentMedicationResponse>> ApproveStudentMedicationAsync(
-     Guid medicationId, ApproveStudentMedicationRequest request)
+ Guid medicationId, ApproveStudentMedicationRequest request)
     {
         try
         {
@@ -967,6 +979,7 @@ public class StudentMedicationService : IStudentMedicationService
                     var currentDateTime = DateTime.Now;
                     var currentDate = currentDateTime.Date;
 
+                    // Nếu StartDate và EndDate là DateTime? (nullable)
                     if (medication.StartDate.HasValue && medication.EndDate.HasValue)
                     {
                         var medicationStartDate = medication.StartDate.Value.Date;
@@ -1738,26 +1751,30 @@ public class StudentMedicationService : IStudentMedicationService
 
     private async Task<string> GenerateStudentMedicationRequestCodeAsync()
     {
-        var today = DateTime.Now.ToString("yyyyMMdd");
-        var prefix = "SMR-"; // Prefix cho Student Medication Request
-        var repo = _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>();
-        var lastCode = await repo.GetQueryable()
-            .Where(m => m.Code != null && m.Code.StartsWith(prefix + today))
-            .OrderByDescending(m => m.Code)
-            .Select(m => m.Code)
-            .FirstOrDefaultAsync();
-
-        int sequenceNumber = 1;
-        if (!string.IsNullOrEmpty(lastCode))
+        try
         {
-            var numberPart = lastCode.Substring(lastCode.Length - 4); // Giả định 4 chữ số cuối là số thứ tự
-            if (int.TryParse(numberPart, out int lastNumber))
-            {
-                sequenceNumber = lastNumber + 1;
-            }
-        }
+            _logger.LogDebug("Generating StudentMedicationRequest code");
+            var lastRequest = await _unitOfWork.GetRepositoryByEntity<StudentMedicationRequest>()
+                .GetQueryable()
+                .OrderByDescending(r => r.CreatedDate)
+                .FirstOrDefaultAsync();
 
-        return $"{prefix}{today}-{sequenceNumber:D4}"; // Ví dụ: SMR-20250712-0001
+            if (lastRequest == null)
+            {
+                _logger.LogDebug("No existing request found, returning default code REQ-000001");
+                return "REQ-000001"; // Mã mặc định cho request đầu tiên
+            }
+
+            var lastCodeNumber = int.Parse(lastRequest.Code.Split('-')[1]);
+            var newCode = $"REQ-{lastCodeNumber + 1:D6}";
+            _logger.LogDebug("Generated new code: {NewCode}", newCode);
+            return newCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating StudentMedicationRequest code");
+            throw; // Ném lại exception để xử lý ở cấp cao hơn
+        }
     }
 
     private Guid GetCurrentUserId()
@@ -1843,7 +1860,7 @@ public class StudentMedicationService : IStudentMedicationService
                 Id = Guid.NewGuid(),
                 StudentMedicationId = medication.Id,
                 QuantityAdded = medication.QuantitySent,
-                QuantityUnit = medication.QuantityUnit,
+                QuantityUnit = medication.QuantityUnit ?? QuantityUnitEnum.Tablet, // Giá trị mặc định nếu null
                 ExpiryDate = medication.ExpiryDate,
                 DateAdded = DateTime.Now,
                 Notes = "Thuốc ban đầu từ phụ huynh",
