@@ -2335,9 +2335,9 @@ public class UserService : IUserService
     }
 
     public async Task<BaseResponse<StudentParentCombinedImportResult>> ImportStudentParentCombinedFromExcelAsync(
-        IFormFile file)
+    IFormFile file)
     {
-        var executionStrategy = _unitOfWork.CreateExecutionStrategy(); 
+        var executionStrategy = _unitOfWork.CreateExecutionStrategy();
 
         return await executionStrategy.ExecuteAsync(async () =>
         {
@@ -2367,9 +2367,6 @@ public class UserService : IUserService
                 var roleRepo = _unitOfWork.GetRepositoryByEntity<Role>();
                 var classRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
                 var medicalRecordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
-                var visionRecordRepo = _unitOfWork.GetRepositoryByEntity<VisionRecord>();
-                var hearingRecordRepo = _unitOfWork.GetRepositoryByEntity<HearingRecord>();
-                var physicalRecordRepo = _unitOfWork.GetRepositoryByEntity<PhysicalRecord>();
 
                 var studentRole = await roleRepo.GetQueryable().FirstOrDefaultAsync(r => r.Name == "STUDENT");
                 var parentRole = await roleRepo.GetQueryable().FirstOrDefaultAsync(r => r.Name == "PARENT");
@@ -2412,7 +2409,7 @@ public class UserService : IUserService
                         if (!duplicateCheck.IsValid)
                         {
                             failedImports.Add($"Học sinh {data.StudentUsername}: {duplicateCheck.Message}");
-                            throw new InvalidOperationException($"Lỗi: {duplicateCheck.Message}"); 
+                            throw new InvalidOperationException($"Lỗi: {duplicateCheck.Message}");
                         }
 
                         var classValidationResult = await ValidateAndResolveClasses(data, classLookup);
@@ -2478,7 +2475,7 @@ public class UserService : IUserService
 
                         var student = createStudentResult.Data;
 
-                        // Tạo MedicalRecord, VisionRecord, HearingRecord, PhysicalRecord
+                        // Tạo MedicalRecord với các danh sách rỗng
                         var medicalRecord = new MedicalRecord
                         {
                             Id = Guid.NewGuid(),
@@ -2495,49 +2492,6 @@ public class UserService : IUserService
                             PhysicalRecords = new List<PhysicalRecord>()
                         };
                         await medicalRecordRepo.AddAsync(medicalRecord);
-
-                        var visionRecord = new VisionRecord
-                        {
-                            Id = Guid.NewGuid(),
-                            MedicalRecordId = medicalRecord.Id,
-                            LeftEye = 0,
-                            RightEye = 0,
-                            CheckDate = DateTime.Now,
-                            Comments = "Not recorded",
-                            RecordedBy = parentId ?? Guid.Empty,
-                            CreatedDate = DateTime.Now,
-                            LastUpdatedDate = DateTime.Now
-                        };
-                        await visionRecordRepo.AddAsync(visionRecord);
-
-                        var hearingRecord = new HearingRecord
-                        {
-                            Id = Guid.NewGuid(),
-                            MedicalRecordId = medicalRecord.Id,
-                            LeftEar = "Not recorded",
-                            RightEar = "Not recorded",
-                            CheckDate = DateTime.Now,
-                            Comments = null,
-                            RecordedBy = parentId ?? Guid.Empty,
-                            CreatedDate = DateTime.Now,
-                            LastUpdatedDate = DateTime.Now
-                        };
-                        await hearingRecordRepo.AddAsync(hearingRecord);
-
-                        var physicalRecord = new PhysicalRecord
-                        {
-                            Id = Guid.NewGuid(),
-                            MedicalRecordId = medicalRecord.Id,
-                            Height = 0,
-                            Weight = 0,
-                            BMI = 0,
-                            CheckDate = DateTime.Now,
-                            Comments = "Not recorded",
-                            RecordedBy = parentId ?? Guid.Empty,
-                            CreatedDate = DateTime.Now,
-                            LastUpdatedDate = DateTime.Now
-                        };
-                        await physicalRecordRepo.AddAsync(physicalRecord);
 
                         if (parentId.HasValue)
                         {
@@ -2622,7 +2576,7 @@ public class UserService : IUserService
                     }
                 }
 
-                await _unitOfWork.SaveChangesAsync(); 
+                await _unitOfWork.SaveChangesAsync();
 
                 await _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX);
                 _logger.LogDebug("Đã xóa cache danh sách học sinh với prefix: {Prefix}", STUDENT_LIST_PREFIX);
