@@ -78,6 +78,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<MedicationAdministration> StudentMedicationAdministrations { get; set; }
     public DbSet<MedicationSchedule> MedicationSchedules { get; set; }
     public DbSet<MedicationStock> MedicationStocks { get; set; }
+    public DbSet<StudentMedicationRequest> StudentMedicationRequest { get; set; }
+    public DbSet<StudentMedicationUsageHistory> StudentMedicationUsageHistories { get; set; }
 
     // Vaccinations
     public DbSet<VaccinationType> VaccinationTypes { get; set; }
@@ -360,7 +362,7 @@ public class ApplicationDbContext : DbContext
 
         #endregion
 
-        #region StudentMedicationRequest
+        #region StudentMedicationRequest Relationship
 
         modelBuilder.Entity<StudentMedicationRequest>(entity =>
         {
@@ -398,6 +400,28 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.ParentName).IsRequired();
             entity.Property(e => e.IsDeleted).HasDefaultValue(false);
         });
+
+        #endregion
+
+        #region StudentMedicationUsageHistory Relationship
+
+        modelBuilder.Entity<StudentMedicationUsageHistory>()
+            .HasOne(smuh => smuh.StudentMedications)
+            .WithMany(sm => sm.UsageHistory)
+            .HasForeignKey(smuh => smuh.StudentMedicationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<StudentMedicationUsageHistory>()
+            .HasOne(smuh => smuh.Student)
+            .WithMany()
+            .HasForeignKey(smuh => smuh.StudentId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<StudentMedicationUsageHistory>()
+            .HasOne(smuh => smuh.Nurse)
+            .WithMany()
+            .HasForeignKey(smuh => smuh.AdministeredBy)
+            .OnDelete(DeleteBehavior.NoAction);
 
         #endregion
 

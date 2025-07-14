@@ -90,7 +90,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.AdministeredBy, opt => opt.MapFrom(src => src.AdministeredByUser != null ? src.AdministeredByUser.FullName : src.AdministeredBy ?? "Không xác định"))
                 .ForMember(dest => dest.Notes, opt => opt.MapFrom(src => src.Notes))
                 .ForMember(dest => dest.VaccinationStatus, opt => opt.MapFrom(src => src.VaccinationStatus))
-                .ForMember(dest => dest.Symptoms, opt => opt.MapFrom(src => src.Symptoms));
+                .ForMember(dest => dest.Symptoms, opt => opt.MapFrom(src => src.Symptoms))
+                .ForMember(dest => dest.NoteAfterSession, opt => opt.MapFrom(src => src.NoteAfterSession)) 
+                .ForMember(dest => dest.ClassName, opt => opt.Ignore());
 
         }
     }
