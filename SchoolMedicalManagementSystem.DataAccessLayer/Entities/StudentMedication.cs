@@ -16,12 +16,12 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
 
         // Thông tin thuốc cơ bản
         public string MedicationName { get; set; }      // Tên thuốc
-        public string Dosage { get; set; }              // Liều lượng
+        public string Dosage { get; set; }              // Liều lượng (1 viên, 100ml)
         public string Instructions { get; set; }        // Hướng dẫn sử dụng
-        public string Frequency { get; set; }           // Tần suất uống thuốc
-        public int? FrequencyCount { get; set; }        // 3, 2 - số lần uống/ngày
-        public string? FrequencyUnit { get; set; }      // "lần/ngày", "lần/tuần"
-        public DateTime ExpiryDate { get; set; }        // Ngày hết hạn thuốc
+        public string Frequency { get; set; }           // Số ngày cần dùng
+        public int? FrequencyCount { get; set; }        // 3, 2 - số lần uống/ngày   3 lần 
+        public string? FrequencyUnit { get; set; }      // "lần/ngày"
+        public DateTime ExpiryDate { get; set; }        // Ngày hết hạn thuốc        
         public string? Purpose { get; set; }            // Mục đích sử dụng
         public string? SideEffects { get; set; }        // Tác dụng phụ
         public string? StorageInstructions { get; set; } // Hướng dẫn bảo quản
@@ -32,7 +32,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public DateTime? PrescriptionDate { get; set; } // Ngày kê đơn
         public string? PrescriptionNumber { get; set; } // Số đơn thuốc
         public DateTime? StartDate { get; set; }         // Ngày bắt đầu dùng thuốc
-        public int QuantitySent { get; set; }           // Số lượng Parent gửi
+        public int QuantitySent { get; set; }           // Số lượng Parent gửi        9
         public QuantityUnitEnum? QuantityUnit { get; set; }       // Đơn vị (viên, chai, gói)
         public string? SpecialNotes { get; set; }       // Ghi chú từ Parent
         public string? EmergencyContactInstructions { get; set; } // Hướng dẫn khẩn cấp

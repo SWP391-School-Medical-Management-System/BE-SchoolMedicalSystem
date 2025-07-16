@@ -81,11 +81,7 @@ public class AuthService : IAuthService
             if (!validationResult.IsValid)
             {
                 string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                return new BaseResponse<LoginResponse>
-                {
-                    Success = false,
-                    Message = errors
-                };
+                return new BaseResponse<LoginResponse> { Success = false, Message = errors };
             }
 
             string userCacheKey = _cacheService.GenerateCacheKey(USER_CACHE_PREFIX, model.Username.ToLower());
@@ -95,29 +91,23 @@ public class AuthService : IAuthService
             var cachedUserInfo = await _cacheService.GetAsync<CachedUserInfo>(userCacheKey);
             if (cachedUserInfo != null)
             {
-                _logger.LogDebug("User info found in cache for: {Username}", model.Username);
+                _logger.LogDebug("User info found in cache for: {Username}, ProfileImageUrl: {ProfileImageUrl}",
+                    model.Username, cachedUserInfo.ProfileImageUrl);
 
                 if (!VerifyPassword(model.Password, cachedUserInfo.PasswordHash))
                 {
-                    return new BaseResponse<LoginResponse>
-                    {
-                        Success = false,
-                        Message = "Mật khẩu không chính xác."
-                    };
+                    return new BaseResponse<LoginResponse> { Success = false, Message = "Mật khẩu không chính xác." };
                 }
 
-                if (cachedUserInfo.IsDeleted || !cachedUserInfo.IsActive)
+                if (cachedUserInfo.IsDeleted || !cachedUserInfo.IsActive || cachedUserInfo.ProfileImageUrl == null)
                 {
+                    _logger.LogDebug("Invalid cache (deleted, inactive, or null ProfileImageUrl), removing cache: {CacheKey}", userCacheKey);
                     await _cacheService.RemoveAsync(userCacheKey);
                     user = await GetUserFromDatabase(model.Username);
 
                     if (user == null || user.IsDeleted || !user.IsActive)
                     {
-                        return new BaseResponse<LoginResponse>
-                        {
-                            Success = false,
-                            Message = "Tài khoản không tồn tại hoặc đã bị vô hiệu hóa."
-                        };
+                        return new BaseResponse<LoginResponse> { Success = false, Message = "Tài khoản không tồn tại hoặc đã bị vô hiệu hóa." };
                     }
 
                     roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
@@ -132,7 +122,8 @@ public class AuthService : IAuthService
                         FullName = cachedUserInfo.FullName,
                         PasswordHash = cachedUserInfo.PasswordHash,
                         IsActive = cachedUserInfo.IsActive,
-                        IsDeleted = cachedUserInfo.IsDeleted
+                        IsDeleted = cachedUserInfo.IsDeleted,
+                        ProfileImageUrl = cachedUserInfo.ProfileImageUrl
                     };
                     roles = cachedUserInfo.Roles;
                 }
@@ -140,34 +131,21 @@ public class AuthService : IAuthService
             else
             {
                 _logger.LogDebug("User info not in cache, querying database for: {Username}", model.Username);
-
                 user = await GetUserFromDatabase(model.Username);
 
                 if (user == null)
                 {
-                    return new BaseResponse<LoginResponse>
-                    {
-                        Success = false,
-                        Message = "Tài khoản không tồn tại."
-                    };
+                    return new BaseResponse<LoginResponse> { Success = false, Message = "Tài khoản không tồn tại." };
                 }
 
                 if (user.IsDeleted || !user.IsActive)
                 {
-                    return new BaseResponse<LoginResponse>
-                    {
-                        Success = false,
-                        Message = "Tài khoản đã bị vô hiệu hóa."
-                    };
+                    return new BaseResponse<LoginResponse> { Success = false, Message = "Tài khoản đã bị vô hiệu hóa." };
                 }
 
                 if (!VerifyPassword(model.Password, user.PasswordHash))
                 {
-                    return new BaseResponse<LoginResponse>
-                    {
-                        Success = false,
-                        Message = "Mật khẩu không chính xác."
-                    };
+                    return new BaseResponse<LoginResponse> { Success = false, Message = "Mật khẩu không chính xác." };
                 }
 
                 roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
@@ -181,11 +159,13 @@ public class AuthService : IAuthService
                     PasswordHash = user.PasswordHash,
                     IsActive = user.IsActive,
                     IsDeleted = user.IsDeleted,
+                    ProfileImageUrl = user.ProfileImageUrl,
                     Roles = roles
                 };
 
                 await _cacheService.SetAsync(userCacheKey, cacheData, TimeSpan.FromMinutes(5));
                 await _cacheService.AddToTrackingSetAsync(userCacheKey, USER_CACHE_SET);
+                _logger.LogDebug("Cached user info with ProfileImageUrl: {ProfileImageUrl}", cacheData.ProfileImageUrl);
             }
 
             var token = GenerateJwtToken(user, roles);
@@ -201,8 +181,12 @@ public class AuthService : IAuthService
                 FullName = user.FullName,
                 Role = roles.FirstOrDefault(),
                 Token = token,
-                RefreshToken = refreshToken
+                RefreshToken = refreshToken,
+                ProfileImageUrl = user.ProfileImageUrl ?? "https://yourdomain.com/images/default.jpg"
             };
+
+            _logger.LogDebug("Login response for {Username}, ProfileImageUrl: {ProfileImageUrl}",
+                model.Username, loginResponse.ProfileImageUrl);
 
             return new BaseResponse<LoginResponse>
             {
@@ -214,11 +198,7 @@ public class AuthService : IAuthService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during login for user: {Username}", model.Username);
-            return new BaseResponse<LoginResponse>
-            {
-                Success = false,
-                Message = $"Lỗi hệ thống: {ex.Message}"
-            };
+            return new BaseResponse<LoginResponse> { Success = false, Message = $"Lỗi hệ thống: {ex.Message}" };
         }
     }
 
