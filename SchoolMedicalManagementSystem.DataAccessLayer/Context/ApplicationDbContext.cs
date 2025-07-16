@@ -406,7 +406,7 @@ public class ApplicationDbContext : DbContext
         #region StudentMedicationUsageHistory Relationship
 
         modelBuilder.Entity<StudentMedicationUsageHistory>()
-            .HasOne(smuh => smuh.StudentMedications)
+            .HasOne(smuh => smuh.StudentMedication)
             .WithMany(sm => sm.UsageHistory)
             .HasForeignKey(smuh => smuh.StudentMedicationId)
             .OnDelete(DeleteBehavior.Restrict);

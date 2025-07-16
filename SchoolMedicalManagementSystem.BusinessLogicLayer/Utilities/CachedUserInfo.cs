@@ -10,5 +10,6 @@ public class CachedUserInfo
     public bool IsActive { get; set; }
     public bool IsDeleted { get; set; }
     public List<string> Roles { get; set; }
+    public string ProfileImageUrl { get; set; }
     public DateTime CachedAt { get; set; } = DateTime.UtcNow;
 }

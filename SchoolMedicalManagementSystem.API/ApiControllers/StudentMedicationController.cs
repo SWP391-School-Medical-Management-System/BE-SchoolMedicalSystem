@@ -141,6 +141,36 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
+    [HttpPatch("student-medical-requests/{requestId}/quantity-received")]
+    [Authorize(Roles = "SCHOOLNURSE")]
+    public async Task<ActionResult<BaseResponse<List<StudentMedicationResponse>>>> UpdateQuantityReceived(
+    Guid requestId,
+    [FromBody] UpdateQuantityReceivedRequest request,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _studentMedicationService.UpdateQuantityReceivedAsync(requestId, request, cancellationToken);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi cập nhật QuantityReceived cho yêu cầu {RequestId}", requestId);
+            return StatusCode(500, BaseResponse<List<StudentMedicationResponse>>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
     /// <summary>
     /// Lấy lịch sử stock thuốc của một medication cụ thể (Parent view)
     /// </summary>
@@ -170,6 +200,36 @@ public class StudentMedicationController : ControllerBase
         {
             _logger.LogError(ex, "Error getting medication stocks for: {Id}", id);
             return StatusCode(500, BaseListResponse<MedicationStockResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpGet("by-nurse-or-student")]
+    [Authorize(Roles = "SCHOOLNURSE,PARENT,STUDENT")]
+    public async Task<ActionResult<BaseListResponse<StudentMedicationListResponse>>> GetAllMedicationsByNurseOrStudent(
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] Guid? nurseId = null,
+    [FromQuery] Guid? studentId = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<StudentMedicationRequestResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var result = await _studentMedicationService.GetAllMedicationsByNurseOrStudentAsync(
+                pageIndex, pageSize, nurseId, studentId, cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all student medication requests");
+            return StatusCode(500, BaseListResponse<StudentMedicationRequestResponse>.ErrorResult("Lỗi hệ thống."));
         }
     }
 
@@ -620,6 +680,36 @@ public class StudentMedicationController : ControllerBase
         {
             _logger.LogError(ex, "Error getting administration history: {Id}", id);
             return StatusCode(500, BaseListResponse<MedicationAdministrationResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpPost("{id}/administer")]
+    [Authorize(Roles = "SCHOOLNURSE")]
+    public async Task<ActionResult<BaseResponse<StudentMedicationUsageHistoryResponse>>> AdministerMedication(
+            Guid id,
+            [FromBody] AdministerMedicationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _studentMedicationService.AdministerMedicationAsync(id, request, cancellationToken);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error administering medication {Id}", id);
+            return StatusCode(500, BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Lỗi hệ thống."));
         }
     }
 

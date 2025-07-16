@@ -16,11 +16,12 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
         #region CRUD Vaccination Session
 
         Task<BaseListResponse<VaccinationSessionResponse>> GetVaccinationSessionsAsync(
-            int pageIndex,
-            int pageSize,
-            string searchTerm,
-            string orderBy,
-            CancellationToken cancellationToken = default);
+         int pageIndex,
+         int pageSize,
+         string searchTerm,
+         string orderBy,
+         Guid? nurseId = null, // Thêm nurseId
+         CancellationToken cancellationToken = default);
 
         Task<BaseListResponse<VaccinationSessionResponse>> GetSessionsByStudentIdAsync(
         Guid studentId,

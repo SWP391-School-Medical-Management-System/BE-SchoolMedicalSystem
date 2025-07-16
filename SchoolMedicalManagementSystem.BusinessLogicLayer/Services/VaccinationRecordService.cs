@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using FluentValidation;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.VaccineRecordRequest;
@@ -16,6 +17,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ICacheService _cacheService;
+        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<VaccinationRecordService> _logger;
         private readonly IValidator<CreateVaccinationRecordRequest> _createVaccinationRecordValidator;
         private readonly IValidator<UpdateVaccinationRecordRequest> _updateVaccinationRecordValidator;
@@ -29,6 +31,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             IUnitOfWork unitOfWork,
             ICacheService cacheService,
             ILogger<VaccinationRecordService> logger,
+            IHttpContextAccessor httpContextAccessor,
             IValidator<CreateVaccinationRecordRequest> createVaccinationRecordValidator,
             IValidator<UpdateVaccinationRecordRequest> updateVaccinationRecordValidator)
         {
@@ -36,6 +39,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             _unitOfWork = unitOfWork;
             _cacheService = cacheService;
             _logger = logger;
+            _httpContextAccessor = httpContextAccessor;
             _createVaccinationRecordValidator = createVaccinationRecordValidator;
             _updateVaccinationRecordValidator = updateVaccinationRecordValidator;
         }
@@ -121,17 +125,15 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         {
             try
             {
+                // Validate request
                 var validationResult = await _createVaccinationRecordValidator.ValidateAsync(model);
                 if (!validationResult.IsValid)
                 {
                     string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-                    return new BaseResponse<VaccinationRecordResponse>
-                    {
-                        Success = false,
-                        Message = errors
-                    };
+                    return BaseResponse<VaccinationRecordResponse>.ErrorResult(errors);
                 }
 
+                // Check medical record
                 var recordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
                 var medicalRecord = await recordRepo.GetQueryable()
                     .Include(mr => mr.Student)
@@ -139,108 +141,111 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 if (medicalRecord == null)
                 {
-                    _logger.LogWarning("Không tìm thấy hồ sơ y tế với ID: {MedicalRecordId}", medicalRecordId);
-                    return new BaseResponse<VaccinationRecordResponse>
-                    {
-                        Success = false,
-                        Message = "Không tìm thấy hồ sơ y tế."
-                    };
+                    _logger.LogWarning("Medical record not found with ID: {MedicalRecordId}", medicalRecordId);
+                    return BaseResponse<VaccinationRecordResponse>.ErrorResult("Medical record not found.");
                 }
 
                 if (medicalRecord.Student == null || medicalRecord.Student.Id == Guid.Empty)
                 {
-                    _logger.LogWarning("Hồ sơ y tế {MedicalRecordId} không liên kết với học sinh hợp lệ.", medicalRecordId);
-                    return new BaseResponse<VaccinationRecordResponse>
-                    {
-                        Success = false,
-                        Message = "Hồ sơ y tế không liên kết với học sinh."
-                    };
+                    _logger.LogWarning("Medical record {MedicalRecordId} is not linked to a valid student.", medicalRecordId);
+                    return BaseResponse<VaccinationRecordResponse>.ErrorResult("Medical record is not linked to a student.");
                 }
 
+                // Check vaccination type
                 var vaccinationTypeRepo = _unitOfWork.GetRepositoryByEntity<VaccinationType>();
                 var vaccinationType = await vaccinationTypeRepo.GetQueryable()
                     .FirstOrDefaultAsync(vt => vt.Id == model.VaccinationTypeId && !vt.IsDeleted);
 
                 if (vaccinationType == null)
                 {
-                    _logger.LogWarning("Không tìm thấy loại vaccine với ID: {VaccinationTypeId}", model.VaccinationTypeId);
-                    return new BaseResponse<VaccinationRecordResponse>
-                    {
-                        Success = false,
-                        Message = "Không tìm thấy loại vaccine."
-                    };
+                    _logger.LogWarning("Vaccination type not found with ID: {VaccinationTypeId}", model.VaccinationTypeId);
+                    return BaseResponse<VaccinationRecordResponse>.ErrorResult("Vaccination type not found.");
                 }
 
+                // Map to entity
                 var vaccinationRecord = _mapper.Map<VaccinationRecord>(model);
                 vaccinationRecord.Id = Guid.NewGuid();
                 vaccinationRecord.MedicalRecordId = medicalRecordId;
                 vaccinationRecord.UserId = medicalRecord.Student.Id;
-                vaccinationRecord.CreatedBy = "SCHOOLNURSE";
                 vaccinationRecord.CreatedDate = DateTime.UtcNow;
                 vaccinationRecord.IsDeleted = false;
                 vaccinationRecord.Code = $"VACREC-{Guid.NewGuid().ToString().Substring(0, 8)}";
 
-                _logger.LogDebug("VaccinationRecord trước khi lưu: {Entity}", System.Text.Json.JsonSerializer.Serialize(vaccinationRecord));
+                // Determine CreatedBy and AdministeredBy logic
+                var isSchoolNurse = _httpContextAccessor.HttpContext?.User.IsInRole("SCHOOLNURSE") == true;
+                vaccinationRecord.CreatedBy = isSchoolNurse ? "SCHOOLNURSE" : "PARENT";
 
+                if (isSchoolNurse && model.SessionId.HasValue)
+                {
+                    // For SCHOOLNURSE with session, use AdministeredByUserId
+                    vaccinationRecord.SessionId = model.SessionId;
+                    vaccinationRecord.AdministeredByUserId = model.AdministeredByUserId;
+
+                    // Fetch user to set AdministeredBy as FullName
+                    var userRepo = _unitOfWork.GetRepositoryByEntity<ApplicationUser>();
+                    var administeredByUser = await userRepo.GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == model.AdministeredByUserId && !u.IsDeleted);
+                    if (administeredByUser != null)
+                    {
+                        vaccinationRecord.AdministeredBy = administeredByUser.FullName;
+                    }
+                }
+                else if (!isSchoolNurse)
+                {
+                    // For PARENT, ensure AdministeredByUserId is null
+                    vaccinationRecord.AdministeredByUserId = null;
+                    vaccinationRecord.SessionId = null;
+                }
+
+                _logger.LogDebug("VaccinationRecord before saving: {Entity}", System.Text.Json.JsonSerializer.Serialize(vaccinationRecord));
+
+                // Save to database
                 var recordRepoVac = _unitOfWork.GetRepositoryByEntity<VaccinationRecord>();
                 await recordRepoVac.AddAsync(vaccinationRecord);
                 await _unitOfWork.SaveChangesAsync();
 
-                // Xóa cache cụ thể cho danh sách vaccination records và vaccination record detail
+                // Clear cache
                 var recordCacheKey = _cacheService.GenerateCacheKey(VACCINATION_RECORD_CACHE_PREFIX, vaccinationRecord.Id.ToString());
                 await _cacheService.RemoveAsync(recordCacheKey);
-                _logger.LogDebug("Đã xóa cache cụ thể cho vaccination record detail: {CacheKey}", recordCacheKey);
+                _logger.LogDebug("Cleared cache for vaccination record detail: {CacheKey}", recordCacheKey);
                 await _cacheService.RemoveByPrefixAsync(VACCINATION_RECORD_LIST_PREFIX);
-                _logger.LogDebug("Đã xóa cache danh sách vaccination records với prefix: {Prefix}", VACCINATION_RECORD_LIST_PREFIX);
-                // Xóa cache student_vaccination_result liên quan
-                var vaccinationResultCacheKey = _cacheService.GenerateCacheKey("student_vaccination_result", vaccinationRecord.SessionId?.ToString() ?? "", vaccinationRecord.UserId.ToString());
+                _logger.LogDebug("Cleared cache for vaccination records list with prefix: {Prefix}", VACCINATION_RECORD_LIST_PREFIX);
+
+                var vaccinationResultCacheKey = _cacheService.GenerateCacheKey(
+                    "student_vaccination_result",
+                    vaccinationRecord.SessionId?.ToString() ?? "",
+                    vaccinationRecord.UserId.ToString());
                 await _cacheService.RemoveAsync(vaccinationResultCacheKey);
-                _logger.LogDebug("Đã xóa cache student vaccination result: {CacheKey}", vaccinationResultCacheKey);
+                _logger.LogDebug("Cleared cache for student vaccination result: {CacheKey}", vaccinationResultCacheKey);
 
                 await InvalidateAllCachesAsync();
 
+                // Retrieve saved record
                 vaccinationRecord = await recordRepoVac.GetQueryable()
                     .Include(vr => vr.VaccinationType)
                     .FirstOrDefaultAsync(vr => vr.Id == vaccinationRecord.Id);
 
                 if (vaccinationRecord == null)
                 {
-                    _logger.LogError("Không thể lấy lại hồ sơ tiêm chủng vừa tạo với ID: {VaccinationRecordId}", vaccinationRecord.Id);
-                    return new BaseResponse<VaccinationRecordResponse>
-                    {
-                        Success = false,
-                        Message = "Lỗi khi lấy dữ liệu hồ sơ tiêm chủng."
-                    };
+                    _logger.LogError("Failed to retrieve created vaccination record with ID: {VaccinationRecordId}", vaccinationRecord.Id);
+                    return BaseResponse<VaccinationRecordResponse>.ErrorResult("Failed to retrieve vaccination record data.");
                 }
 
-                var response = MapToVaccinationRecordResponse(vaccinationRecord);
+                var response = _mapper.Map<VaccinationRecordResponse>(vaccinationRecord);
 
-                _logger.LogInformation("Tạo hồ sơ tiêm chủng thành công với ID: {VaccinationRecordId}", vaccinationRecord.Id);
-                return new BaseResponse<VaccinationRecordResponse>
-                {
-                    Success = true,
-                    Data = response,
-                    Message = "Tạo hồ sơ tiêm chủng thành công."
-                };
+                _logger.LogInformation("Successfully created vaccination record with ID: {VaccinationRecordId}", vaccinationRecord.Id);
+                return BaseResponse<VaccinationRecordResponse>.SuccessResult(response, "Vaccination record created successfully.");
             }
             catch (DbUpdateException ex)
             {
                 var innerException = ex.InnerException?.Message ?? ex.Message;
-                _logger.LogError(ex, "Lỗi lưu hồ sơ tiêm chủng cho hồ sơ y tế {MedicalRecordId}: {Error}", medicalRecordId, innerException);
-                return new BaseResponse<VaccinationRecordResponse>
-                {
-                    Success = false,
-                    Message = $"Lỗi tạo hồ sơ tiêm chủng: {innerException}"
-                };
+                _logger.LogError(ex, "Error saving vaccination record for medical record {MedicalRecordId}: {Error}", medicalRecordId, innerException);
+                return BaseResponse<VaccinationRecordResponse>.ErrorResult($"Failed to create vaccination record: {innerException}");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi tạo hồ sơ tiêm chủng cho hồ sơ y tế {MedicalRecordId}: {Error}", medicalRecordId, ex.Message);
-                return new BaseResponse<VaccinationRecordResponse>
-                {
-                    Success = false,
-                    Message = $"Lỗi tạo hồ sơ tiêm chủng: {ex.Message}"
-                };
+                _logger.LogError(ex, "Error creating vaccination record for medical record {MedicalRecordId}: {Error}", medicalRecordId, ex.Message);
+                return BaseResponse<VaccinationRecordResponse>.ErrorResult($"Failed to create vaccination record: {ex.Message}");
             }
         }
 
