@@ -59,6 +59,7 @@ public class UserService : IUserService
     private const string CLASS_ENROLLMENT_PREFIX = "class_enrollment";
     private const string CLASS_ENROLLMENT_CACHE_SET = "class_enrollment_cache_keys";
     private const string USER_PROFILE_PREFIX = "user_profile";
+    private const string USER_CACHE_PREFIX = "user_cache";
 
     public UserService(
         IMapper mapper,
@@ -111,26 +112,23 @@ public class UserService : IUserService
 
             if (user == null)
             {
-                return new BaseResponse<UserResponses>
-                {
-                    Success = false,
-                    Message = "Người dùng không tồn tại."
-                };
+                return new BaseResponse<UserResponses> { Success = false, Message = "Người dùng không tồn tại." };
             }
 
             string profileImageUrl = null;
             if (model.ProfileImage != null)
             {
                 profileImageUrl = await ProcessProfileImage(model.ProfileImage);
+                _logger.LogDebug("Processed ProfileImageUrl: {ProfileImageUrl}", profileImageUrl);
+                if (profileImageUrl == null)
+                {
+                    return new BaseResponse<UserResponses> { Success = false, Message = "Lỗi khi xử lý ảnh đại diện." };
+                }
             }
 
             if (model.DateOfBirth.HasValue && model.DateOfBirth.Value > DateTime.Now)
             {
-                return new BaseResponse<UserResponses>
-                {
-                    Success = false,
-                    Message = "Ngày sinh không hợp lệ."
-                };
+                return new BaseResponse<UserResponses> { Success = false, Message = "Ngày sinh không hợp lệ." };
             }
 
             user.FullName = model.FullName ?? user.FullName;
@@ -141,29 +139,32 @@ public class UserService : IUserService
             if (profileImageUrl != null)
             {
                 user.ProfileImageUrl = profileImageUrl;
+                _logger.LogDebug("Updated user ProfileImageUrl: {ProfileImageUrl}", user.ProfileImageUrl);
             }
 
             user.LastUpdatedBy = user.Username;
             user.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
+            _logger.LogDebug("Saved user to DB: {UserId}, ProfileImageUrl: {ProfileImageUrl}", user.Id, user.ProfileImageUrl);
 
-            // Xóa cache cụ thể sau khi cập nhật thông tin người dùng
+            // Xóa cache với USER_PROFILE_PREFIX
             var userCacheKey = _cacheService.GenerateCacheKey(USER_PROFILE_PREFIX, userId.ToString());
             await _cacheService.RemoveAsync(userCacheKey);
             _logger.LogDebug("Đã xóa cache thông tin người dùng: {CacheKey}", userCacheKey);
 
-            // Xóa cache liên quan đến danh sách học sinh, phụ huynh và liên kết lớp học
+            // Xóa cache với USER_CACHE_PREFIX (dùng trong LoginAsync)
+            var loginCacheKey = _cacheService.GenerateCacheKey(USER_CACHE_PREFIX, user.Username.ToLower());
+            await _cacheService.RemoveAsync(loginCacheKey);
+            _logger.LogDebug("Đã xóa cache đăng nhập: {CacheKey}", loginCacheKey);
+
+            // Xóa cache danh sách liên quan
             await _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX);
-            _logger.LogDebug("Đã xóa cache danh sách học sinh với prefix: {Prefix}", STUDENT_LIST_PREFIX);
             await _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX);
-            _logger.LogDebug("Đã xóa cache danh sách phụ huynh với prefix: {Prefix}", PARENT_LIST_PREFIX);
             await _cacheService.RemoveByPrefixAsync(CLASS_ENROLLMENT_PREFIX);
-            _logger.LogDebug("Đã xóa cache liên kết lớp học với prefix: {Prefix}", CLASS_ENROLLMENT_PREFIX);
 
-            // Gọi InvalidateAllCachesAsync để xóa các cache liên quan
-            await InvalidateAllCachesAsync();
-
+            // Xóa cache người dùng qua InvalidateUserCacheAsync
+            await _authService.InvalidateUserCacheAsync(user.Username, user.Email, user.Id);
             var userResponse = _mapper.Map<UserResponses>(user);
             userResponse.Role = user.UserRoles.FirstOrDefault()?.Role.Name;
 
@@ -177,11 +178,7 @@ public class UserService : IUserService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating user profile for userId: {UserId}", userId);
-            return new BaseResponse<UserResponses>
-            {
-                Success = false,
-                Message = $"Lỗi cập nhật thông tin: {ex.Message}"
-            };
+            return new BaseResponse<UserResponses> { Success = false, Message = $"Lỗi cập nhật thông tin: {ex.Message}" };
         }
     }
 
@@ -4205,7 +4202,8 @@ public class UserService : IUserService
                 _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX),
                 _cacheService.RemoveByPrefixAsync(PARENT_CACHE_PREFIX),
                 _cacheService.RemoveByPrefixAsync(USER_PROFILE_PREFIX),
-                _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX)
+                _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX),
+                _cacheService.RemoveByPrefixAsync(USER_CACHE_PREFIX) // Thêm dòng này
             );
 
             await Task.Delay(100);

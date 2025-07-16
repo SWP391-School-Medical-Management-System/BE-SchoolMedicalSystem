@@ -13,6 +13,8 @@ public class StudentMedicationResponse
     public string MedicationName { get; set; }
     public string Dosage { get; set; }
     public string Purpose { get; set; }
+    public string Frequency { get; set; } = string.Empty;
+    public int? FrequencyCount { get; set; }
     public DateTime ExpiryDate { get; set; }
     public int QuantitySent { get; set; }
     public string QuantityUnit { get; set; }

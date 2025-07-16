@@ -26,6 +26,13 @@ public interface IStudentMedicationService
 
     Task<BaseResponse<StudentMedicationDetailResponse>> GetStudentMedicationByIdAsync(Guid medicationId);
 
+    Task<BaseListResponse<StudentMedicationListResponse>> GetAllMedicationsByNurseOrStudentAsync(
+        int pageIndex,
+        int pageSize,
+        Guid? nurseId = null,
+        Guid? studentId = null,
+        CancellationToken cancellationToken = default);
+
     Task<BaseResponse<StudentMedicationResponse>> CreateStudentMedicationAsync(CreateStudentMedicationRequest model);
 
     Task<BaseListResponse<StudentMedicationResponse>> CreateBulkStudentMedicationsAsync(CreateBulkStudentMedicationRequest request);
@@ -66,6 +73,12 @@ public interface IStudentMedicationService
     );
 
     // Status Management
+
+    Task<BaseResponse<List<StudentMedicationResponse>>> UpdateQuantityReceivedAsync(
+            Guid requestId,
+            UpdateQuantityReceivedRequest request,
+            CancellationToken cancellationToken = default);
+
     Task<BaseResponse<StudentMedicationResponse>> UpdateMedicationStatusAsync(Guid medicationId,
         UpdateMedicationStatusRequest request);
 
@@ -127,4 +140,10 @@ public interface IStudentMedicationService
         int pageSize,
         CancellationToken cancellationToken = default
     );
+
+    Task<BaseResponse<StudentMedicationUsageHistoryResponse>> AdministerMedicationAsync(
+        Guid medicationId,
+        AdministerMedicationRequest request,
+        CancellationToken cancellationToken = default);
+
 }

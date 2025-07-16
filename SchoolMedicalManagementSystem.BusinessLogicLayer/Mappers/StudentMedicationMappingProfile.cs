@@ -52,38 +52,39 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.StockHistory, opt => opt.Ignore());
 
         CreateMap<CreateBulkStudentMedicationRequest.BulkMedicationDetails, StudentMedication>()
-        .ForMember(dest => dest.Id, opt => opt.Ignore())
-        .ForMember(dest => dest.StudentId, opt => opt.Ignore())
-        .ForMember(dest => dest.ParentId, opt => opt.Ignore())
-        .ForMember(dest => dest.ApprovedById, opt => opt.Ignore())
-        .ForMember(dest => dest.Status, opt => opt.MapFrom(src => StudentMedicationStatus.PendingApproval))
-        .ForMember(dest => dest.RejectionReason, opt => opt.Ignore())
-        .ForMember(dest => dest.ApprovedAt, opt => opt.Ignore())
-        .ForMember(dest => dest.SubmittedAt, opt => opt.Ignore())
-        .ForMember(dest => dest.TotalDoses, opt => opt.MapFrom(src => 0))
-        .ForMember(dest => dest.RemainingDoses, opt => opt.MapFrom(src => 0))
-        .ForMember(dest => dest.MinStockThreshold, opt => opt.MapFrom(src => 3))
-        .ForMember(dest => dest.LowStockAlertSent, opt => opt.MapFrom(src => false))
-        .ForMember(dest => dest.AutoGenerateSchedule, opt => opt.MapFrom(src => true))
-        .ForMember(dest => dest.RequireNurseConfirmation, opt => opt.MapFrom(src => false))
-        .ForMember(dest => dest.SkipOnAbsence, opt => opt.MapFrom(src => true))
-        .ForMember(dest => dest.SkipWeekends, opt => opt.MapFrom(src => false))
-        .ForMember(dest => dest.ManagementNotes, opt => opt.Ignore())
-        .ForMember(dest => dest.SkipDates, opt => opt.Ignore())
-        .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
-        .ForMember(dest => dest.CreatedDate, opt => opt.Ignore())
-        .ForMember(dest => dest.LastUpdatedBy, opt => opt.Ignore())
-        .ForMember(dest => dest.LastUpdatedDate, opt => opt.Ignore())
-        .ForMember(dest => dest.IsDeleted, opt => opt.Ignore())
-        .ForMember(dest => dest.Student, opt => opt.Ignore())
-        .ForMember(dest => dest.Parent, opt => opt.Ignore())
-        .ForMember(dest => dest.ApprovedBy, opt => opt.Ignore())
-        .ForMember(dest => dest.Administrations, opt => opt.Ignore())
-        .ForMember(dest => dest.Schedules, opt => opt.Ignore())
-        .ForMember(dest => dest.StockHistory, opt => opt.Ignore())
-        .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => SerializeTimesOfDay(src.TimesOfDay)))
-        .ForMember(dest => dest.QuantityUnit, opt => opt.MapFrom(src => src.QuantityUnit)) 
-        .ForMember(dest => dest.StartDate, opt => opt.MapFrom(src => src.StartDate));
+                .ForMember(dest => dest.Id, opt => opt.Ignore())
+                .ForMember(dest => dest.StudentId, opt => opt.Ignore())
+                .ForMember(dest => dest.ParentId, opt => opt.Ignore())
+                .ForMember(dest => dest.ApprovedById, opt => opt.Ignore())
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => StudentMedicationStatus.PendingApproval))
+                .ForMember(dest => dest.RejectionReason, opt => opt.Ignore())
+                .ForMember(dest => dest.ApprovedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.SubmittedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.TotalDoses, opt => opt.MapFrom(src => 0))
+                .ForMember(dest => dest.RemainingDoses, opt => opt.MapFrom(src => 0))
+                .ForMember(dest => dest.MinStockThreshold, opt => opt.MapFrom(src => 3))
+                .ForMember(dest => dest.LowStockAlertSent, opt => opt.MapFrom(src => false))
+                .ForMember(dest => dest.AutoGenerateSchedule, opt => opt.MapFrom(src => true))
+                .ForMember(dest => dest.RequireNurseConfirmation, opt => opt.MapFrom(src => false))
+                .ForMember(dest => dest.SkipOnAbsence, opt => opt.MapFrom(src => true))
+                .ForMember(dest => dest.SkipWeekends, opt => opt.MapFrom(src => false))
+                .ForMember(dest => dest.ManagementNotes, opt => opt.Ignore())
+                .ForMember(dest => dest.SkipDates, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedDate, opt => opt.Ignore())
+                .ForMember(dest => dest.LastUpdatedBy, opt => opt.Ignore())
+                .ForMember(dest => dest.LastUpdatedDate, opt => opt.Ignore())
+                .ForMember(dest => dest.IsDeleted, opt => opt.Ignore())
+                .ForMember(dest => dest.Student, opt => opt.Ignore())
+                .ForMember(dest => dest.Parent, opt => opt.Ignore())
+                .ForMember(dest => dest.ApprovedBy, opt => opt.Ignore())
+                .ForMember(dest => dest.Administrations, opt => opt.Ignore())
+                .ForMember(dest => dest.Schedules, opt => opt.Ignore())
+                .ForMember(dest => dest.StockHistory, opt => opt.Ignore())
+                .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => SerializeTimesOfDay(src.TimesOfDay)))
+                .ForMember(dest => dest.QuantityUnit, opt => opt.MapFrom(src => src.QuantityUnit))
+                .ForMember(dest => dest.StartDate, opt => opt.MapFrom(src => src.StartDate))
+                .ForMember(dest => dest.FrequencyCount, opt => opt.MapFrom(src => src.FrequencyCount));
 
         CreateMap<UpdateStudentMedicationRequest, StudentMedication>()
             .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
@@ -132,7 +133,8 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : ""))
             .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""))
             .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
-            .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : null));
+            .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : null))
+            .ForMember(dest => dest.FrequencyCount, opt => opt.MapFrom(src => src.FrequencyCount));
 
         CreateMap<StudentMedication, ParentMedicationResponse>()
             .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => GetStatusDisplayName(src.Status)))
@@ -177,7 +179,13 @@ public class StudentMedicationMappingProfile : Profile
             .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
             .ForMember(dest => dest.Code, opt => opt.MapFrom(src => src.Code))
             .ForMember(dest => dest.Medications, opt => opt.MapFrom(src => src.MedicationsDetails));
-      
+
+        CreateMap<StudentMedicationUsageHistory, StudentMedicationUsageHistoryResponse>()
+                .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student.FullName))
+                .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student.StudentCode))
+                .ForMember(dest => dest.AdministeredByName, opt => opt.MapFrom(src => src.Nurse.FullName))
+                .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => src.Status.ToString()))
+                .ForMember(dest => dest.QuantityReceive, opt => opt.MapFrom(src => src.StudentMedication.QuantityReceive));
     }
 
     

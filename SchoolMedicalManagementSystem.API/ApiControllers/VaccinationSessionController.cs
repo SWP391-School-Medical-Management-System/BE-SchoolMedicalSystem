@@ -32,14 +32,15 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             [FromQuery] int pageSize = 10,
             [FromQuery] string searchTerm = "",
             [FromQuery] string orderBy = null,
-            CancellationToken cancellationToken = default)
+            [FromQuery] Guid? nurseId = null, // Thêm nurseId
+            CancellationToken cancellationToken = default)  
         {
             try
             {
                 if (pageIndex < 1 || pageSize < 1)
                     return BadRequest(BaseListResponse<VaccinationSessionResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
 
-                var response = await _vaccinationSessionService.GetVaccinationSessionsAsync(pageIndex, pageSize, searchTerm, orderBy, cancellationToken);
+                var response = await _vaccinationSessionService.GetVaccinationSessionsAsync(pageIndex, pageSize, searchTerm, orderBy, nurseId, cancellationToken);
                 if (!response.Success)
                     return NotFound(response);
 

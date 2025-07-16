@@ -9,6 +9,6 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Enums
     public enum ReceivedMedication
     {
         NotReceive,
-        Receive
+        Received
     }
 }

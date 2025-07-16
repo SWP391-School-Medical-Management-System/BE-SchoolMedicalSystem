@@ -19,6 +19,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Stude
             public string Dosage { get; set; }
             public string Instructions { get; set; }
             public string Frequency { get; set; }
+            public int? FrequencyCount { get; set; }
             public DateTime ExpiryDate { get; set; }
             public int QuantitySent { get; set; }
             public QuantityUnitEnum QuantityUnit { get; set; } 
