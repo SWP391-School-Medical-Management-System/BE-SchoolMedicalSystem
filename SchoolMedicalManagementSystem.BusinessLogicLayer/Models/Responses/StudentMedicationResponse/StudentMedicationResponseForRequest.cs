@@ -14,14 +14,13 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
 
         public string MedicationName { get; set; }  // Tên thuốc
         public string Dosage { get; set; }          // Liều lượng
-        public string? Purpose { get; set; }        // Mục đích sử dụng
         public DateTime ExpiryDate { get; set; }    // Ngày hết hạn
         public int QuantitySent { get; set; }       // Số lượng gửi
-        public string? QuantityUnit { get; set; }   // Đơn vị số lượng
-
-        public string? RejectionReason { get; set; } // Lý do từ chối (nếu có)
-
         public MedicationPriority Priority { get; set; } // Ưu tiên
         public string PriorityDisplayName { get; set; }  // Hiển thị tên ưu tiên
+        public string Instructions { get; set; }    // Hướng dẫn sử dụng
+        public string Frequency { get; set; }       // Tần suất
+        public string SpecialNotes { get; set; }    // Ghi chú đặc biệt
+        public List<string> TimesOfDay { get; set; } // Thời gian trong ngày (danh sách chuỗi)
     }
 }

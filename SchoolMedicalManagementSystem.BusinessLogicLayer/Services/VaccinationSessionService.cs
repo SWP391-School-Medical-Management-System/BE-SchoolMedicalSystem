@@ -245,25 +245,42 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .Where(c => c.SessionId == sessionId && !c.IsDeleted)
                     .ToListAsync(cancellationToken);
 
+                // Lấy tất cả các phân công từ VaccinationAssignment
+                var assignments = await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().GetQueryable()
+                    .Include(va => va.Nurse)
+                    .Include(va => va.SchoolClass)
+                    .Where(va => va.SessionId == sessionId && !va.IsDeleted)
+                    .ToListAsync(cancellationToken);
+
                 var classNurseAssignments = new List<ClassNurseAssignment>();
-                if (session.Assignments != null)
+                if (session.Classes != null && assignments.Any())
                 {
-                    classNurseAssignments = session.Assignments
-                        .GroupBy(a => a.ClassId)
-                        .Select(g =>
+                    foreach (var classEntry in session.Classes.Where(c => !c.IsDeleted))
+                    {
+                        var classId = classEntry.ClassId;
+                        var className = classEntry.SchoolClass?.Name ?? "Unknown Class";
+                        var nurseAssignment = assignments.FirstOrDefault(a => a.ClassId == classId);
+                        if (nurseAssignment != null)
                         {
-                            var classAssignment = session.Classes.FirstOrDefault(c => c.ClassId == g.Key);
-                            string className = classAssignment != null && classAssignment.SchoolClass != null ? classAssignment.SchoolClass.Name : "Unknown Class";
-                            var nurse = g.First().Nurse;
-                            string nurseName = nurse != null ? nurse.FullName : "Unknown Nurse";
-                            return new ClassNurseAssignment
+                            classNurseAssignments.Add(new ClassNurseAssignment
                             {
-                                ClassId = g.Key,
+                                ClassId = classId,
                                 ClassName = className,
-                                NurseId = g.First().NurseId,
-                                NurseName = nurseName
-                            };
-                        }).ToList();
+                                NurseId = nurseAssignment.NurseId,
+                                NurseName = nurseAssignment.Nurse?.FullName ?? "Unknown Nurse"
+                            });
+                        }
+                        else
+                        {
+                            classNurseAssignments.Add(new ClassNurseAssignment
+                            {
+                                ClassId = classId,
+                                ClassName = className,
+                                NurseId = null,
+                                NurseName = "Chưa phân công"
+                            });
+                        }
+                    }
                 }
 
                 var response = new VaccinationSessionDetailResponse
@@ -393,9 +410,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseListResponse<ClassStudentConsentStatusResponse>> GetClassStudentConsentStatusAsync(
-            Guid sessionId,
-            Guid classId,
-            CancellationToken cancellationToken = default)
+         Guid sessionId,
+         Guid classId,
+         CancellationToken cancellationToken = default)
         {
             try
             {
@@ -415,50 +432,60 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     return BaseListResponse<ClassStudentConsentStatusResponse>.ErrorResult("Lớp không thuộc buổi tiêm này.");
                 }
 
+                // Lấy danh sách consents liên quan đến buổi tiêm
                 var consents = await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().GetQueryable()
                     .Include(c => c.Student)
+                    .ThenInclude(s => s.StudentClasses) // Đảm bảo tải StudentClasses
                     .Include(c => c.Session)
                     .Where(c => c.SessionId == sessionId && !c.IsDeleted)
                     .ToListAsync(cancellationToken);
 
-                var classStudents = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                    .Where(u => u.StudentClasses.Any(sc => sc.ClassId == classId) &&
-                               u.UserRoles.Any(ur => ur.Role.Name == "STUDENT"))
-                    .ToListAsync(cancellationToken);
+                // Lọc danh sách consents dựa trên học sinh thuộc classId, với kiểm tra null
+                var classConsents = consents
+                    .Where(c => c.Student != null && c.Student.StudentClasses != null && c.Student.StudentClasses.Any(sc => sc.ClassId == classId))
+                    .ToList();
 
                 var vaccinationRecords = await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().GetQueryable()
                     .Where(vr => vr.SessionId == sessionId && !vr.IsDeleted)
                     .ToDictionaryAsync(vr => vr.UserId, vr => vr.VaccinationStatus, cancellationToken);
 
-                var responses = new List<ClassStudentConsentStatusResponse>();
+                var studentStatuses = new List<StudentConsentStatusResponse>();
                 var classInfo = session.Classes.First(c => c.ClassId == classId).SchoolClass;
-                var studentStatuses = (from student in classStudents
-                                       join consent in consents on student.Id equals consent.StudentId into gj
-                                       from consent in gj.DefaultIfEmpty()
-                                       let vaccinationStatus = consent?.Status == "Confirmed" && vaccinationRecords.ContainsKey(student.Id)
-                                           ? vaccinationRecords[student.Id] ?? "InProgress"
-                                           : "InProgress"
-                                       select new StudentConsentStatusResponse
-                                       {
-                                           StudentId = student.Id,
-                                           StudentName = student.FullName,
-                                           Status = consent?.Status ?? "Pending",
-                                           ResponseDate = consent?.ResponseDate,
-                                           VaccinationStatus = vaccinationStatus
-                                       }).ToList();
+
+                foreach (var consent in classConsents)
+                {
+                    if (consent.Student == null)
+                    {
+                        _logger.LogWarning("Consent {ConsentId} has null Student for session {SessionId}", consent.Id, sessionId);
+                        continue; // Bỏ qua nếu Student là null
+                    }
+
+                    var vaccinationStatus = consent.Status == "Confirmed" && vaccinationRecords.ContainsKey(consent.StudentId)
+                        ? vaccinationRecords[consent.StudentId] ?? "InProgress"
+                        : "InProgress";
+
+                    studentStatuses.Add(new StudentConsentStatusResponse
+                    {
+                        StudentId = consent.StudentId,
+                        StudentName = consent.Student.FullName ?? "Unknown Student",
+                        Status = consent.Status ?? "Pending",
+                        ResponseDate = consent.ResponseDate,
+                        VaccinationStatus = vaccinationStatus
+                    });
+                }
 
                 var response = new ClassStudentConsentStatusResponse
                 {
                     ClassId = classId,
                     ClassName = classInfo.Name,
-                    TotalStudents = classStudents.Count,
+                    TotalStudents = studentStatuses.Count, // Sử dụng số lượng consents hợp lệ
                     PendingCount = studentStatuses.Count(s => s.Status == "Pending"),
                     ConfirmedCount = studentStatuses.Count(s => s.Status == "Confirmed"),
                     DeclinedCount = studentStatuses.Count(s => s.Status == "Declined"),
                     Students = studentStatuses
                 };
 
-                responses.Add(response);
+                var responses = new List<ClassStudentConsentStatusResponse> { response };
 
                 return BaseListResponse<ClassStudentConsentStatusResponse>.SuccessResult(
                     responses,
@@ -1191,8 +1218,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseResponse<bool>> AssignNurseToSessionAsync(
-            AssignNurseToSessionRequest request,
-            CancellationToken cancellationToken = default)
+    AssignNurseToSessionRequest request,
+    CancellationToken cancellationToken = default)
         {
             try
             {
@@ -1218,6 +1245,11 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             Message = "Buổi tiêm không tồn tại."
                         };
                     }
+
+                    // Lấy tất cả các phân công hiện tại
+                    var existingAssignments = await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().GetQueryable()
+                        .Where(a => a.SessionId == request.SessionId && !a.IsDeleted)
+                        .ToListAsync(cancellationToken);
 
                     foreach (var assignmentRequest in request.Assignments)
                     {
@@ -1247,42 +1279,47 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             };
                         }
 
-                        var existingAssignment = await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().GetQueryable()
-                            .FirstOrDefaultAsync(a => a.SessionId == request.SessionId && a.ClassId == assignmentRequest.ClassId && !a.IsDeleted, cancellationToken);
-
+                        // Kiểm tra và cập nhật hoặc thêm phân công
+                        var existingAssignment = existingAssignments.FirstOrDefault(a => a.ClassId == assignmentRequest.ClassId);
                         if (existingAssignment != null)
                         {
-                            return new BaseResponse<bool>
+                            // Cập nhật phân công hiện tại
+                            existingAssignment.NurseId = assignmentRequest.NurseId;
+                            existingAssignment.AssignedDate = DateTime.UtcNow;
+                            existingAssignment.LastUpdatedDate = DateTime.UtcNow;
+                            await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().UpdateAsync(existingAssignment);
+                        }
+                        else
+                        {
+                            // Thêm phân công mới
+                            var newAssignment = new VaccinationAssignment
                             {
-                                Success = false,
-                                Message = $"Lớp {assignmentRequest.ClassId} đã được phân công y tá."
+                                Id = Guid.NewGuid(),
+                                SessionId = request.SessionId,
+                                ClassId = assignmentRequest.ClassId,
+                                NurseId = assignmentRequest.NurseId,
+                                AssignedDate = DateTime.UtcNow,
+                                CreatedDate = DateTime.UtcNow,
+                                IsDeleted = false
                             };
+                            await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().AddAsync(newAssignment);
                         }
 
-                        var assignment = new VaccinationAssignment
-                        {
-                            Id = Guid.NewGuid(),
-                            SessionId = request.SessionId,
-                            ClassId = assignmentRequest.ClassId,
-                            NurseId = assignmentRequest.NurseId,
-                            AssignedDate = DateTime.UtcNow,
-                            CreatedDate = DateTime.UtcNow,
-                            IsDeleted = false
-                        };
-
-                        await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().AddAsync(assignment);
                         _logger.LogInformation("Phân công y tá {NurseId} cho lớp {ClassId} trong buổi tiêm {SessionId}",
                             assignmentRequest.NurseId, assignmentRequest.ClassId, request.SessionId);
                     }
 
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-                    // Xóa cache cụ thể cho session detail và danh sách sessions
+                    // Xóa cache cụ thể
                     var sessionCacheKey = _cacheService.GenerateCacheKey("session_detail", request.SessionId.ToString());
                     await _cacheService.RemoveAsync(sessionCacheKey);
                     _logger.LogDebug("Đã xóa cache cụ thể cho session detail: {CacheKey}", sessionCacheKey);
                     await _cacheService.RemoveByPrefixAsync(SESSION_LIST_PREFIX);
                     _logger.LogDebug("Đã xóa cache danh sách sessions với prefix: {Prefix}", SESSION_LIST_PREFIX);
+                    var nurseAssignmentCacheKey = _cacheService.GenerateCacheKey("nurse_assignment_status", request.SessionId.ToString());
+                    await _cacheService.RemoveAsync(nurseAssignmentCacheKey);
+                    _logger.LogDebug("Đã xóa cache nurse assignment statuses: {CacheKey}", nurseAssignmentCacheKey);
 
                     await InvalidateAllCachesAsync();
 
@@ -1306,7 +1343,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 };
             }
         }
-
         public async Task<BaseResponse<bool>> ReassignNurseToSessionAsync(
             Guid sessionId,
             ReAssignNurseToSessionRequest request,
@@ -1337,19 +1373,12 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         };
                     }
 
-                    // Xóa các phân công y tá hiện tại cho buổi tiêm này
+                    // Lấy tất cả các phân công hiện tại
                     var existingAssignments = await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().GetQueryable()
                         .Where(a => a.SessionId == sessionId && !a.IsDeleted)
                         .ToListAsync(cancellationToken);
 
-                    foreach (var assignment in existingAssignments)
-                    {
-                        assignment.IsDeleted = true;
-                        assignment.LastUpdatedDate = DateTime.UtcNow;
-                        await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().UpdateAsync(assignment);
-                    }
-
-                    // Thêm các phân công mới
+                    // Xử lý các phân công mới từ request
                     foreach (var assignmentRequest in request.Assignments)
                     {
                         var classExists = await _unitOfWork.GetRepositoryByEntity<VaccinationSessionClass>().GetQueryable()
@@ -1378,25 +1407,39 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             };
                         }
 
-                        var newAssignment = new VaccinationAssignment
+                        // Kiểm tra xem phân công đã tồn tại chưa
+                        var existingAssignment = existingAssignments.FirstOrDefault(a => a.ClassId == assignmentRequest.ClassId);
+                        if (existingAssignment != null)
                         {
-                            Id = Guid.NewGuid(),
-                            SessionId = sessionId,
-                            ClassId = assignmentRequest.ClassId,
-                            NurseId = assignmentRequest.NurseId,
-                            AssignedDate = DateTime.UtcNow,
-                            CreatedDate = DateTime.UtcNow,
-                            IsDeleted = false
-                        };
+                            // Cập nhật phân công hiện tại
+                            existingAssignment.NurseId = assignmentRequest.NurseId;
+                            existingAssignment.AssignedDate = DateTime.UtcNow;
+                            existingAssignment.LastUpdatedDate = DateTime.UtcNow;
+                            await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().UpdateAsync(existingAssignment);
+                        }
+                        else
+                        {
+                            // Thêm phân công mới
+                            var newAssignment = new VaccinationAssignment
+                            {
+                                Id = Guid.NewGuid(),
+                                SessionId = sessionId,
+                                ClassId = assignmentRequest.ClassId,
+                                NurseId = assignmentRequest.NurseId,
+                                AssignedDate = DateTime.UtcNow,
+                                CreatedDate = DateTime.UtcNow,
+                                IsDeleted = false
+                            };
+                            await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().AddAsync(newAssignment);
+                        }
 
-                        await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().AddAsync(newAssignment);
                         _logger.LogInformation("Tái phân công y tá {NurseId} cho lớp {ClassId} trong buổi tiêm {SessionId}",
                             assignmentRequest.NurseId, assignmentRequest.ClassId, sessionId);
                     }
 
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-                    // Xóa cache cụ thể cho session detail, danh sách sessions và nurse assignment statuses
+                    // Xóa cache cụ thể
                     var sessionCacheKey = _cacheService.GenerateCacheKey("session_detail", sessionId.ToString());
                     await _cacheService.RemoveAsync(sessionCacheKey);
                     _logger.LogDebug("Đã xóa cache cụ thể cho session detail: {CacheKey}", sessionCacheKey);
@@ -1406,6 +1449,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     await _cacheService.RemoveAsync(nurseAssignmentCacheKey);
                     _logger.LogDebug("Đã xóa cache nurse assignment statuses: {CacheKey}", nurseAssignmentCacheKey);
 
+                    // Làm mới toàn bộ cache
                     await InvalidateAllCachesAsync();
 
                     return new BaseResponse<bool>
@@ -1968,8 +2012,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseListResponse<NurseAssignmentStatusResponse>> GetNurseAssignmentStatusesAsync(
-            Guid sessionId,
-            CancellationToken cancellationToken = default)
+    Guid sessionId,
+    CancellationToken cancellationToken = default)
         {
             try
             {
@@ -2003,13 +2047,17 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .Where(a => a.SessionId == sessionId && !a.IsDeleted)
                     .ToListAsync(cancellationToken);
 
-                var responses = nurses.Select(nurse => new NurseAssignmentStatusResponse
+                var responses = nurses.Select(nurse =>
                 {
-                    NurseId = nurse.Id,
-                    NurseName = nurse.FullName,
-                    IsAssigned = assignments.Any(a => a.NurseId == nurse.Id),
-                    AssignedClassId = assignments.FirstOrDefault(a => a.NurseId == nurse.Id)?.ClassId,
-                    AssignedClassName = assignments.FirstOrDefault(a => a.NurseId == nurse.Id)?.SchoolClass?.Name ?? "Chưa phân công"
+                    var nurseAssignments = assignments.Where(a => a.NurseId == nurse.Id).ToList();
+                    return new NurseAssignmentStatusResponse
+                    {
+                        NurseId = nurse.Id,
+                        NurseName = nurse.FullName,
+                        IsAssigned = nurseAssignments.Any(),
+                        AssignedClassIds = nurseAssignments.Select(a => a.ClassId).ToList(),
+                        AssignedClassNames = nurseAssignments.Select(a => a.SchoolClass?.Name ?? "Chưa phân công").ToList()
+                    };
                 }).ToList();
 
                 var result = BaseListResponse<NurseAssignmentStatusResponse>.SuccessResult(

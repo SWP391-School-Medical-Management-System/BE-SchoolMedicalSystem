@@ -10,6 +10,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.UserR
 {
     public class UpdateUserProfileRequest : BaseUserUpdateRequest
     {
-        public IFormFile ProfileImage { get; set; }
+        public IFormFile? ProfileImage { get; set; }
     }
 }

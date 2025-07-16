@@ -478,88 +478,58 @@ public class MedicalRecordService : IMedicalRecordService
             medicalRecord.LastUpdatedBy = "PARENT"; // Hoặc lấy từ một nguồn khác nếu cần
             medicalRecord.LastUpdatedDate = DateTime.Now;
 
-            // Cập nhật VisionRecord (tạo hoặc cập nhật bản ghi mới nhất)
-            var visionRecord = medicalRecord.VisionRecords.OrderByDescending(vr => vr.CreatedDate).FirstOrDefault();
-            if (visionRecord != null)
+            // Tạo mới VisionRecord
+            var visionRecord = new VisionRecord
             {
-                if (model.LeftEye.HasValue) visionRecord.LeftEye = model.LeftEye.Value;
-                if (model.RightEye.HasValue) visionRecord.RightEye = model.RightEye.Value;
-                if (model.CheckDate.HasValue) visionRecord.CheckDate = model.CheckDate.Value;
-                if (!string.IsNullOrEmpty(model.Comments)) visionRecord.Comments = model.Comments;
-                visionRecord.LastUpdatedDate = DateTime.Now;
-            }
-            else
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                LeftEye = model.LeftEye ?? 0,
+                RightEye = model.RightEye ?? 0,
+                CheckDate = model.CheckDate ?? DateTime.Now,
+                Comments = model.Comments,
+                RecordedBy = parentId,
+                CreatedDate = DateTime.Now,
+                LastUpdatedDate = DateTime.Now
+            };
+            await _unitOfWork.GetRepositoryByEntity<VisionRecord>().AddAsync(visionRecord);
+
+            // Tạo mới HearingRecord
+            var hearingRecord = new HearingRecord
             {
-                visionRecord = new VisionRecord
-                {
-                    Id = Guid.NewGuid(),
-                    MedicalRecordId = medicalRecord.Id,
-                    LeftEye = model.LeftEye ?? 0,
-                    RightEye = model.RightEye ?? 0,
-                    CheckDate = model.CheckDate ?? DateTime.Now,
-                    Comments = model.Comments,
-                    RecordedBy = parentId, // Gán parentId làm RecordedBy
-                    CreatedDate = DateTime.Now,
-                    LastUpdatedDate = DateTime.Now
-                };
-                await _unitOfWork.GetRepositoryByEntity<VisionRecord>().AddAsync(visionRecord);
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                LeftEar = model.LeftEar ?? "Not recorded",
+                RightEar = model.RightEar ?? "Not recorded",
+                CheckDate = model.CheckDateHearing ?? DateTime.Now,
+                Comments = model.CommentsHearing,
+                RecordedBy = parentId,
+                CreatedDate = DateTime.Now,
+                LastUpdatedDate = DateTime.Now
+            };
+            await _unitOfWork.GetRepositoryByEntity<HearingRecord>().AddAsync(hearingRecord);
+
+            // Tạo mới PhysicalRecord với BMI được tính tự động
+            decimal bmi = 0;
+            if (model.Height.HasValue && model.Weight.HasValue && model.Height.Value > 0)
+            {
+                decimal heightInMeters = model.Height.Value / 100; // Chuyển từ cm sang m
+                bmi = model.Weight.Value / (heightInMeters * heightInMeters); // BMI = Weight / (Height²)
             }
 
-            // Cập nhật HearingRecord
-            var hearingRecord = medicalRecord.HearingRecords.OrderByDescending(hr => hr.CreatedDate).FirstOrDefault();
-            if (hearingRecord != null)
+            var physicalRecord = new PhysicalRecord
             {
-                if (!string.IsNullOrEmpty(model.LeftEar)) hearingRecord.LeftEar = model.LeftEar;
-                if (!string.IsNullOrEmpty(model.RightEar)) hearingRecord.RightEar = model.RightEar;
-                if (model.CheckDateHearing.HasValue) hearingRecord.CheckDate = model.CheckDateHearing.Value;
-                if (!string.IsNullOrEmpty(model.CommentsHearing)) hearingRecord.Comments = model.CommentsHearing;
-                hearingRecord.LastUpdatedDate = DateTime.Now;
-            }
-            else
-            {
-                hearingRecord = new HearingRecord
-                {
-                    Id = Guid.NewGuid(),
-                    MedicalRecordId = medicalRecord.Id,
-                    LeftEar = model.LeftEar ?? "Not recorded",
-                    RightEar = model.RightEar ?? "Not recorded",
-                    CheckDate = model.CheckDateHearing ?? DateTime.Now,
-                    Comments = model.CommentsHearing,
-                    RecordedBy = parentId,
-                    CreatedDate = DateTime.Now,
-                    LastUpdatedDate = DateTime.Now
-                };
-                await _unitOfWork.GetRepositoryByEntity<HearingRecord>().AddAsync(hearingRecord);
-            }
-
-            // Cập nhật PhysicalRecord
-            var physicalRecord = medicalRecord.PhysicalRecords.OrderByDescending(pr => pr.CreatedDate).FirstOrDefault();
-            if (physicalRecord != null)
-            {
-                if (model.Height.HasValue) physicalRecord.Height = model.Height.Value;
-                if (model.Weight.HasValue) physicalRecord.Weight = model.Weight.Value;
-                if (model.BMI.HasValue) physicalRecord.BMI = model.BMI.Value;
-                if (model.CheckDatePhysical.HasValue) physicalRecord.CheckDate = model.CheckDatePhysical.Value;
-                if (!string.IsNullOrEmpty(model.CommentsPhysical)) physicalRecord.Comments = model.CommentsPhysical;
-                physicalRecord.LastUpdatedDate = DateTime.Now;
-            }
-            else
-            {
-                physicalRecord = new PhysicalRecord
-                {
-                    Id = Guid.NewGuid(),
-                    MedicalRecordId = medicalRecord.Id,
-                    Height = model.Height ?? 0,
-                    Weight = model.Weight ?? 0,
-                    BMI = model.BMI ?? 0,
-                    CheckDate = model.CheckDatePhysical ?? DateTime.Now,
-                    Comments = model.CommentsPhysical,
-                    RecordedBy = parentId,
-                    CreatedDate = DateTime.Now,
-                    LastUpdatedDate = DateTime.Now
-                };
-                await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().AddAsync(physicalRecord);
-            }
+                Id = Guid.NewGuid(),
+                MedicalRecordId = medicalRecord.Id,
+                Height = model.Height ?? 0,
+                Weight = model.Weight ?? 0,
+                BMI = bmi, // Gán BMI đã tính
+                CheckDate = model.CheckDatePhysical ?? DateTime.Now,
+                Comments = model.CommentsPhysical,
+                RecordedBy = parentId,
+                CreatedDate = DateTime.Now,
+                LastUpdatedDate = DateTime.Now
+            };
+            await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().AddAsync(physicalRecord);
 
             await _unitOfWork.SaveChangesAsync();
             await InvalidateAllCachesAsync();

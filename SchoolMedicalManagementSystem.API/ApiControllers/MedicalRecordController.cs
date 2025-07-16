@@ -128,7 +128,7 @@ public class MedicalRecordController : ControllerBase
         }
     }
 
-    [HttpPut("{studentId}/update-by-parent")]
+    [HttpPost("{studentId}/update-by-parent")]
     public async Task<IActionResult> UpdateMedicalRecordByParent(Guid studentId, [FromBody] UpdateMedicalRecordByParentRequest model)
     {
         var parentId = User.FindFirst("uid")?.Value; // Lấy uid từ token
