@@ -41,5 +41,7 @@ public class ApplicationUser : BaseEntity
     public virtual ICollection<VaccinationConsent> VaccinationConsents { get; set; }    //  Xin phép phụ huynh 
     public virtual ICollection<VaccinationConsent> ParentVaccinationConsents { get; set; }  // Sự đồng thuận của phụ huynh
     public virtual ICollection<VaccinationAssignment> VaccinationAssignments { get; set; }  // Phân công nhân viên y tế
+    public virtual ICollection<HealthCheckConsent> HealthCheckConsents { get; set; }        // Xin phép phụ huynh
+    public virtual ICollection<HealthCheckConsent> ParentHealthCheckConsents { get; set; }  // Sự đồng thuận của phụ huynh
 
 }

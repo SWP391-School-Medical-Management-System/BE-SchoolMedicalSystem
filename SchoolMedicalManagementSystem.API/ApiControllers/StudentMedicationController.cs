@@ -210,6 +210,7 @@ public class StudentMedicationController : ControllerBase
     [FromQuery] int pageSize = 10,
     [FromQuery] Guid? nurseId = null,
     [FromQuery] Guid? studentId = null,
+    [FromQuery] StudentMedicationStatus? status = null,
     CancellationToken cancellationToken = default)
     {
         try
@@ -219,7 +220,7 @@ public class StudentMedicationController : ControllerBase
                     BaseListResponse<StudentMedicationRequestResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
 
             var result = await _studentMedicationService.GetAllMedicationsByNurseOrStudentAsync(
-                pageIndex, pageSize, nurseId, studentId, cancellationToken);
+                pageIndex, pageSize, nurseId, studentId, status, cancellationToken);
 
             if (!result.Success)
                 return NotFound(result);
@@ -710,6 +711,39 @@ public class StudentMedicationController : ControllerBase
         {
             _logger.LogError(ex, "Error administering medication {Id}", id);
             return StatusCode(500, BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpGet("students/{studentId}/usage-history")]
+    [Authorize(Roles = "SCHOOLNURSE,ADMIN,MANAGER,PARENT,STUDENT")]
+    public async Task<ActionResult<BaseListResponse<StudentMedicationUsageHistoryResponse>>> GetStudentMedicationUsageHistory(
+    Guid studentId,
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] DateTime? fromDate = null,
+    [FromQuery] DateTime? toDate = null,
+    [FromQuery] StatusUsage? status = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                        "Thông tin phân trang không hợp lệ."));
+
+            var result = await _studentMedicationService.GetStudentMedicationUsageHistoryAsync(
+                studentId, pageIndex, pageSize, fromDate, toDate, status, cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting administration history: {Id}", studentId);
+            return StatusCode(500, BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Lỗi hệ thống."));
         }
     }
 
