@@ -60,6 +60,7 @@ public class UserService : IUserService
     private const string CLASS_ENROLLMENT_CACHE_SET = "class_enrollment_cache_keys";
     private const string USER_PROFILE_PREFIX = "user_profile";
     private const string USER_CACHE_PREFIX = "user_cache";
+    private const string MEDICATION_LIST_PREFIX = "medication_cache";
 
     public UserService(
         IMapper mapper,
@@ -131,6 +132,7 @@ public class UserService : IUserService
                 return new BaseResponse<UserResponses> { Success = false, Message = "Ngày sinh không hợp lệ." };
             }
 
+            // Cập nhật thông tin người dùng
             user.FullName = model.FullName ?? user.FullName;
             user.PhoneNumber = model.PhoneNumber ?? user.PhoneNumber;
             user.Address = model.Address ?? user.Address;
@@ -148,23 +150,9 @@ public class UserService : IUserService
             await _unitOfWork.SaveChangesAsync();
             _logger.LogDebug("Saved user to DB: {UserId}, ProfileImageUrl: {ProfileImageUrl}", user.Id, user.ProfileImageUrl);
 
-            // Xóa cache với USER_PROFILE_PREFIX
-            var userCacheKey = _cacheService.GenerateCacheKey(USER_PROFILE_PREFIX, userId.ToString());
-            await _cacheService.RemoveAsync(userCacheKey);
-            _logger.LogDebug("Đã xóa cache thông tin người dùng: {CacheKey}", userCacheKey);
+            // Làm mới tất cả cache liên quan đến người dùng
+            await InvalidateUserRelatedCachesAsync(user);
 
-            // Xóa cache với USER_CACHE_PREFIX (dùng trong LoginAsync)
-            var loginCacheKey = _cacheService.GenerateCacheKey(USER_CACHE_PREFIX, user.Username.ToLower());
-            await _cacheService.RemoveAsync(loginCacheKey);
-            _logger.LogDebug("Đã xóa cache đăng nhập: {CacheKey}", loginCacheKey);
-
-            // Xóa cache danh sách liên quan
-            await _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX);
-            await _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX);
-            await _cacheService.RemoveByPrefixAsync(CLASS_ENROLLMENT_PREFIX);
-
-            // Xóa cache người dùng qua InvalidateUserCacheAsync
-            await _authService.InvalidateUserCacheAsync(user.Username, user.Email, user.Id);
             var userResponse = _mapper.Map<UserResponses>(user);
             userResponse.Role = user.UserRoles.FirstOrDefault()?.Role.Name;
 
@@ -4129,6 +4117,54 @@ public class UserService : IUserService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error invalidating staff cache");
+        }
+    }
+
+    private async Task InvalidateUserRelatedCachesAsync(ApplicationUser user)
+    {
+        try
+        {
+            // Xóa cache hồ sơ người dùng
+            var userCacheKey = _cacheService.GenerateCacheKey(USER_PROFILE_PREFIX, user.Id.ToString());
+            await _cacheService.RemoveAsync(userCacheKey);
+            _logger.LogDebug("Đã xóa cache hồ sơ người dùng: {CacheKey}", userCacheKey);
+
+            // Xóa cache đăng nhập
+            var loginCacheKey = _cacheService.GenerateCacheKey(USER_CACHE_PREFIX, user.Username.ToLower());
+            await _cacheService.RemoveAsync(loginCacheKey);
+            _logger.LogDebug("Đã xóa cache đăng nhập: {CacheKey}", loginCacheKey);
+
+            // Xóa cache danh sách liên quan
+            var cacheTasks = new List<Task>
+        {
+            _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX),
+            _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX),
+            _cacheService.RemoveByPrefixAsync(CLASS_ENROLLMENT_PREFIX)
+        };
+
+            // Nếu người dùng là y tá, xóa cache liên quan đến y tá
+            if (user.UserRoles.Any(ur => ur.Role.Name.ToUpper() == "SCHOOLNURSE"))
+            {
+                cacheTasks.Add(_cacheService.RemoveByPrefixAsync("nurse_list"));
+            }
+
+            // Nếu người dùng là học sinh hoặc phụ huynh, xóa cache liên quan
+            if (user.UserRoles.Any(ur => ur.Role.Name.ToUpper() == "STUDENT" || ur.Role.Name.ToUpper() == "PARENT"))
+            {
+                cacheTasks.Add(_cacheService.RemoveByPrefixAsync(MEDICATION_LIST_PREFIX));
+            }
+
+            // Thực hiện tất cả các lệnh xóa cache đồng thời
+            await Task.WhenAll(cacheTasks);
+
+            // Gọi InvalidateUserCacheAsync từ AuthService để đảm bảo làm mới các cache liên quan
+            await _authService.InvalidateUserCacheAsync(user.Username, user.Email, user.Id);
+
+            _logger.LogInformation("Đã làm mới tất cả cache liên quan đến người dùng: {UserId}", user.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi làm mới cache cho người dùng: {UserId}", user.Id);
         }
     }
 

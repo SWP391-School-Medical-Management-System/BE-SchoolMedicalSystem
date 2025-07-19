@@ -65,6 +65,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<HealthCheckItem> HealthCheckItems { get; set; }
     public DbSet<HealthCheckResult> HealthCheckResults { get; set; }
     public DbSet<HealthCheckResultItem> HealthCheckResultItems { get; set; }
+    public DbSet<HealthCheckConsent> HealthCheckConsents { get; set; }
+    public DbSet<HealthCheckClass> HealthCheckClasses { get; set; }
+    public DbSet<HealthCheckAssignment> HealthCheckAssignments { get; set; }
 
     // Health Events
     public DbSet<HealthEvent> HealthEvents { get; set; }
@@ -220,6 +223,30 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(p => p.MedicalRecordId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<PhysicalRecord>()
+            .HasOne(p => p.HealthCheck)
+            .WithMany(h => h.PhysicalRecords)
+            .HasForeignKey(p => p.HealthCheckId)
+            .IsRequired(false);
+
+        modelBuilder.Entity<VisionRecord>()
+            .HasOne(v => v.HealthCheck)
+            .WithMany(h => h.VisionRecords)
+            .HasForeignKey(v => v.HealthCheckId)
+            .IsRequired(false);
+
+        modelBuilder.Entity<HearingRecord>()
+            .HasOne(h => h.HealthCheck)
+            .WithMany(h => h.HearingRecords)
+            .HasForeignKey(h => h.HealthCheckId)
+            .IsRequired(false);
+
+        modelBuilder.Entity<MedicalCondition>()
+            .HasOne(m => m.HealthCheck)
+            .WithMany(h => h.MedicalConditions)
+            .HasForeignKey(m => m.HealthCheckId)
+            .IsRequired(false);
+
         modelBuilder.Entity<VisionRecord>()
             .HasOne(v => v.RecordedByUser)
             .WithMany()
@@ -252,12 +279,52 @@ public class ApplicationDbContext : DbContext
             .HasMany(c => c.CheckItems)
             .WithOne(i => i.HealthCheck)
             .HasForeignKey(i => i.HealthCheckId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.NoAction);
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.Results)
             .WithOne(r => r.HealthCheck)
             .HasForeignKey(r => r.HealthCheckId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthCheck>()
+            .HasMany(c => c.HealthCheckConsents)
+            .WithOne(hcc => hcc.HealthCheck)
+            .HasForeignKey(hcc => hcc.HealthCheckId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthCheck>()
+            .HasMany(c => c.HealthCheckClasses)
+            .WithOne(hcc => hcc.HealthCheck)
+            .HasForeignKey(hcc => hcc.HealthCheckId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthCheck>()
+            .HasMany(c => c.HealthCheckAssignments)
+            .WithOne(hca => hca.HealthCheck)
+            .HasForeignKey(hca => hca.HealthCheckId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        #endregion
+
+        #region HealthCheckConsent Relationships
+
+        modelBuilder.Entity<HealthCheckConsent>()
+            .HasOne(hcc => hcc.Student)
+            .WithMany(u => u.HealthCheckConsents)
+            .HasForeignKey(hcc => hcc.StudentId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<HealthCheckConsent>()
+            .HasOne(hcc => hcc.Parent)
+            .WithMany(u => u.ParentHealthCheckConsents)
+            .HasForeignKey(hcc => hcc.ParentId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<HealthCheckConsent>()
+            .HasOne(hcc => hcc.HealthCheck)
+            .WithMany(hc => hc.HealthCheckConsents)
+            .HasForeignKey(hcc => hcc.HealthCheckId)
             .OnDelete(DeleteBehavior.Cascade);
 
         #endregion
@@ -809,9 +876,6 @@ public class ApplicationDbContext : DbContext
         // BlogComment defaults
         modelBuilder.Entity<BlogComment>().Property(bc => bc.IsApproved).HasDefaultValue(false);
 
-        // HealthCheck defaults
-        modelBuilder.Entity<HealthCheck>().Property(hc => hc.IsCompleted).HasDefaultValue(false);
-
         // HealthCheckResult defaults
         modelBuilder.Entity<HealthCheckResult>().Property(hcr => hcr.HasAbnormality).HasDefaultValue(false);
 
@@ -904,12 +968,17 @@ public class ApplicationDbContext : DbContext
         // HealthCheck indexes
         modelBuilder.Entity<HealthCheck>().HasIndex(hc => hc.ScheduledDate);
         modelBuilder.Entity<HealthCheck>().HasIndex(hc => hc.ConductedById);
-        modelBuilder.Entity<HealthCheck>().HasIndex(hc => hc.IsCompleted);
 
         // HealthCheckResult indexes
         modelBuilder.Entity<HealthCheckResult>().HasIndex(hcr => hcr.UserId);
         modelBuilder.Entity<HealthCheckResult>().HasIndex(hcr => hcr.HealthCheckId);
         modelBuilder.Entity<HealthCheckResult>().HasIndex(hcr => hcr.HasAbnormality);
+
+        // HealthCheckConsent indexes
+        modelBuilder.Entity<HealthCheckConsent>().HasIndex(hcc => hcc.StudentId);
+        modelBuilder.Entity<HealthCheckConsent>().HasIndex(hcc => hcc.ParentId);
+        modelBuilder.Entity<HealthCheckConsent>().HasIndex(hcc => hcc.HealthCheckId);
+        modelBuilder.Entity<HealthCheckConsent>().HasIndex(hcc => hcc.Status);
 
         // VaccinationRecord indexes
         modelBuilder.Entity<VaccinationRecord>().HasIndex(vr => vr.UserId);
@@ -966,6 +1035,11 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => ms.AdministrationId);
         modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => new { ms.ScheduledDate, ms.Status });
         modelBuilder.Entity<MedicationSchedule>().HasIndex(ms => new { ms.StudentMedicationId, ms.ScheduledDate });
+
+        //Physical,Vision, Hearing indexes
+        modelBuilder.Entity<PhysicalRecord>().HasIndex(p => p.HealthCheckId);
+        modelBuilder.Entity<VisionRecord>().HasIndex(v => v.HealthCheckId);
+        modelBuilder.Entity<HearingRecord>().HasIndex(h => h.HealthCheckId);
     }
 
     #endregion
