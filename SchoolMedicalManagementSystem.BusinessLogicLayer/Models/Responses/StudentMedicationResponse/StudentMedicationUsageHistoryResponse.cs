@@ -24,5 +24,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
         public string AdministeredByName { get; set; }
         public DateTime? CreatedAt { get; set; }
         public int QuantityReceive { get; set; } // Số lượng thuốc còn lại      
+        public string MedicationName { get; set; }
     }
 }

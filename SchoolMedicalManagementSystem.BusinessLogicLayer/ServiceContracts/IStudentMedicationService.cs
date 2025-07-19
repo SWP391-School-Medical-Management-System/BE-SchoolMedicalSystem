@@ -31,6 +31,7 @@ public interface IStudentMedicationService
         int pageSize,
         Guid? nurseId = null,
         Guid? studentId = null,
+        StudentMedicationStatus? status = null,
         CancellationToken cancellationToken = default);
 
     Task<BaseResponse<StudentMedicationResponse>> CreateStudentMedicationAsync(CreateStudentMedicationRequest model);
@@ -144,6 +145,15 @@ public interface IStudentMedicationService
     Task<BaseResponse<StudentMedicationUsageHistoryResponse>> AdministerMedicationAsync(
         Guid medicationId,
         AdministerMedicationRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<BaseListResponse<StudentMedicationUsageHistoryResponse>> GetStudentMedicationUsageHistoryAsync(
+        Guid studentId,
+        int pageIndex,
+        int pageSize,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        StatusUsage? status = null,
         CancellationToken cancellationToken = default);
 
 }

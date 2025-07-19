@@ -18,7 +18,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public string MedicationName { get; set; }      // Tên thuốc
         public string Dosage { get; set; }              // Liều lượng (1 viên, 100ml)
         public string Instructions { get; set; }        // Hướng dẫn sử dụng
-        public string Frequency { get; set; }           // Số ngày cần dùng
+        public string? Frequency { get; set; }           // Số ngày cần dùng
         public int? FrequencyCount { get; set; }        // 3, 2 - số lần uống/ngày   3 lần 
         public string? FrequencyUnit { get; set; }      // "lần/ngày"
         public DateTime ExpiryDate { get; set; }        // Ngày hết hạn thuốc        

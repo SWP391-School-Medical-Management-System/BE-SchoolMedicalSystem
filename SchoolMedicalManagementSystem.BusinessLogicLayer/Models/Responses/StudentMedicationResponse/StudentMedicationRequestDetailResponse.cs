@@ -13,6 +13,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
         public Guid Id { get; set; }
         public Guid StudentId { get; set; }
         public Guid ParentId { get; set; }
+        public Guid? ApprovedById { get; set; }
         public string StudentName { get; set; }
         public string StudentCode { get; set; }
         public string ParentName { get; set; }
