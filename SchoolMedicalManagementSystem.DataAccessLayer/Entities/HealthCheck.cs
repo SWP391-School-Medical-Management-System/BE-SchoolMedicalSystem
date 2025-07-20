@@ -21,7 +21,7 @@ public class HealthCheck : BaseEntity
     public string Notes { get; set; }           // Ghi chú
     
     public virtual ApplicationUser ConductedBy { get; set; }            // Y tá thực hiện kiểm tra
-    public virtual ICollection<HealthCheckItem> CheckItems { get; set; } // Các mục kiểm tra
+    public virtual ICollection<HealthCheckItemAssignment> HealthCheckItemAssignments { get; set; }
     public virtual ICollection<HealthCheckResult> Results { get; set; }  // Kết quả kiểm tra
     public virtual ICollection<Notification> Notifications { get; set; } // Thông báo kiểm tra
     public virtual ICollection<PhysicalRecord> PhysicalRecords { get; set; }
