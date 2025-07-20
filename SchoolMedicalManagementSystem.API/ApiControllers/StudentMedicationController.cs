@@ -29,7 +29,7 @@ public class StudentMedicationController : ControllerBase
     #region Basic CRUD Operations
 
     [HttpGet]
-    [Authorize(Roles = "SCHOOLNURSE,PARENT,STUDENT")]
+    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseListResponse<StudentMedicationListResponse>>> GetStudentMedications(
         [FromQuery] int pageIndex = 1,
         [FromQuery] int pageSize = 10,
@@ -71,6 +71,7 @@ public class StudentMedicationController : ControllerBase
     /// </summary>
     [HttpGet("{id}")]
     [Authorize(Roles = "SCHOOLNURSE,PARENT,STUDENT")]
+    [Authorize]
     public async Task<ActionResult<BaseResponse<StudentMedicationDetailResponse>>> GetStudentMedicationById(Guid id)
     {
         try
@@ -92,12 +93,12 @@ public class StudentMedicationController : ControllerBase
     [HttpGet("requests")]
     [Authorize(Roles = "SCHOOLNURSE,PARENT,STUDENT")]
     public async Task<ActionResult<BaseListResponse<StudentMedicationRequestResponse>>> GetAllStudentMedicationRequest(
-        [FromQuery] int pageIndex = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] Guid? studentId = null,
-        [FromQuery] Guid? parentId = null,
-        [FromQuery] StudentMedicationStatus? status = null,
-        CancellationToken cancellationToken = default)
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] Guid? studentId = null,
+    [FromQuery] Guid? parentId = null,
+    [FromQuery] StudentMedicationStatus? status = null,
+    CancellationToken cancellationToken = default)
     {
         try
         {
@@ -140,12 +141,12 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
-    [HttpPatch("requests/{requestId}/quantity-received")]
+    [HttpPatch("student-medical-requests/{requestId}/quantity-received")]
     [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<List<StudentMedicationResponse>>>> UpdateQuantityReceived(
-        Guid requestId,
-        [FromBody] UpdateQuantityReceivedRequest request,
-        CancellationToken cancellationToken = default)
+    Guid requestId,
+    [FromBody] UpdateQuantityReceivedRequest request,
+    CancellationToken cancellationToken = default)
     {
         try
         {
@@ -199,6 +200,37 @@ public class StudentMedicationController : ControllerBase
         {
             _logger.LogError(ex, "Error getting medication stocks for: {Id}", id);
             return StatusCode(500, BaseListResponse<MedicationStockResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpGet("by-nurse-or-student")]
+    [Authorize(Roles = "SCHOOLNURSE,PARENT,STUDENT")]
+    public async Task<ActionResult<BaseListResponse<StudentMedicationListResponse>>> GetAllMedicationsByNurseOrStudent(
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] Guid? nurseId = null,
+    [FromQuery] Guid? studentId = null,
+    [FromQuery] StudentMedicationStatus? status = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<StudentMedicationRequestResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var result = await _studentMedicationService.GetAllMedicationsByNurseOrStudentAsync(
+                pageIndex, pageSize, nurseId, studentId, status, cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all student medication requests");
+            return StatusCode(500, BaseListResponse<StudentMedicationRequestResponse>.ErrorResult("Lỗi hệ thống."));
         }
     }
 
@@ -291,7 +323,7 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
-    [HttpPost("{id}/stocks")]
+    [HttpPost("stocks")]
     [Authorize(Roles = "PARENT")]
     public async Task<ActionResult<BaseResponse<StudentMedicationResponse>>> AddMoreMedication(
         [FromBody] AddMoreMedicationRequest request)
@@ -374,7 +406,7 @@ public class StudentMedicationController : ControllerBase
 
     #region Approval Workflow Endpoints
 
-    [HttpGet("requests/pending")]
+    [HttpGet("pending-approvals")]
     [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseListResponse<PendingApprovalResponse>>> GetPendingApprovals(
         [FromQuery] int pageIndex = 1,
@@ -402,7 +434,7 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
-    [HttpPatch("{id}/status")]
+    [HttpPut("{id}/approve")]
     [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<StudentMedicationResponse>>> ApproveStudentMedication(
         Guid id,
@@ -431,7 +463,7 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
-    [HttpPatch("{id}/status")]
+    [HttpPut("{id}/reject")]
     [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<StudentMedicationResponse>>> RejectStudentMedication(
         Guid id,
@@ -501,6 +533,120 @@ public class StudentMedicationController : ControllerBase
 
     #endregion
 
+    #region Parent Specific Endpoints
+
+    [HttpGet("my-children")]
+    [Authorize(Roles = "PARENT")]
+    public async Task<ActionResult<BaseListResponse<ParentMedicationResponse>>> GetMyChildrenMedications(
+        [FromQuery] int pageIndex = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] StudentMedicationStatus? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<ParentMedicationResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var result = await _studentMedicationService.GetMyChildrenMedicationsAsync(
+                pageIndex, pageSize, status, cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting my children medications");
+            return StatusCode(500, BaseListResponse<ParentMedicationResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    [HttpGet("my-requests")]
+    [Authorize(Roles = "PARENT")]
+    public async Task<ActionResult<BaseListResponse<StudentMedicationResponse>>> GetMyRequests(
+        [FromQuery] int pageIndex = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] string? orderBy = null,
+        [FromQuery] StudentMedicationStatus? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<StudentMedicationResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var currentUserId = Guid.Parse(UserHelper.GetCurrentUserId(HttpContext));
+
+            var result = await _studentMedicationService.GetStudentMedicationsAsync(
+                pageIndex, pageSize, searchTerm, orderBy,
+                studentId: null,
+                parentId: currentUserId,
+                status: status,
+                expiringSoon: null,
+                requiresAdministration: null,
+                cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting my requests");
+            return StatusCode(500, BaseListResponse<StudentMedicationResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    #endregion
+
+    #region Student Specific Endpoints
+
+    [HttpGet("my-medications")]
+    [Authorize(Roles = "STUDENT")]
+    public async Task<ActionResult<BaseListResponse<StudentMedicationResponse>>> GetMyMedications(
+        [FromQuery] int pageIndex = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] StudentMedicationStatus? status = null,
+        [FromQuery] bool? expiringSoon = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<StudentMedicationResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+            var currentUserId = Guid.Parse(UserHelper.GetCurrentUserId(HttpContext));
+
+            var result = await _studentMedicationService.GetStudentMedicationsAsync(
+                pageIndex, pageSize, null, null,
+                studentId: currentUserId,
+                parentId: null,
+                status: status,
+                expiringSoon: expiringSoon,
+                requiresAdministration: null,
+                cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting my medications");
+            return StatusCode(500, BaseListResponse<StudentMedicationResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
+    #endregion
+
     #region Medication Administration
 
     /// <summary>
@@ -538,7 +684,7 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
-    [HttpPost("{id}/administration")]
+    [HttpPost("{id}/administer")]
     [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<StudentMedicationUsageHistoryResponse>>> AdministerMedication(
             Guid id,
@@ -571,13 +717,13 @@ public class StudentMedicationController : ControllerBase
     [HttpGet("students/{studentId}/usage-history")]
     [Authorize(Roles = "SCHOOLNURSE,ADMIN,MANAGER,PARENT,STUDENT")]
     public async Task<ActionResult<BaseListResponse<StudentMedicationUsageHistoryResponse>>> GetStudentMedicationUsageHistory(
-        Guid studentId,
-        [FromQuery] int pageIndex = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] DateTime? fromDate = null,
-        [FromQuery] DateTime? toDate = null,
-        [FromQuery] StatusUsage? status = null,
-        CancellationToken cancellationToken = default)
+    Guid studentId,
+    [FromQuery] int pageIndex = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] DateTime? fromDate = null,
+    [FromQuery] DateTime? toDate = null,
+    [FromQuery] StatusUsage? status = null,
+    CancellationToken cancellationToken = default)
     {
         try
         {
@@ -603,3 +749,4 @@ public class StudentMedicationController : ControllerBase
 
     #endregion
 }
+
