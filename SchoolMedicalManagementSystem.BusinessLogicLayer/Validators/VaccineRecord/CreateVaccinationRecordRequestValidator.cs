@@ -34,12 +34,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.VaccineRec
                 .MaximumLength(100)
                 .WithMessage("Tên người thực hiện tiêm không được vượt quá 100 ký tự.");
 
-            RuleFor(x => x.BatchNumber)
-                .NotEmpty()
-                .WithMessage("Số lô vaccine là bắt buộc.")
-                .MaximumLength(50)
-                .WithMessage("Số lô vaccine không được vượt quá 50 ký tự.");
-
             RuleFor(x => x.Notes)
                 .MaximumLength(500)
                 .WithMessage("Ghi chú không được vượt quá 500 ký tự.");

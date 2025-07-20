@@ -91,6 +91,12 @@ public class UserMappingProfile : Profile
             .ForMember(dest => dest.ParentPhone, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.PhoneNumber : null))
             .ForMember(dest => dest.ParentEmail, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Email : null))
             .ForMember(dest => dest.ParentRelationship, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.Relationship : null))
+            .ForMember(dest => dest.Height, opt => opt.MapFrom(src => src.MedicalRecord != null && src.MedicalRecord.PhysicalRecords.Any()
+            ? src.MedicalRecord.PhysicalRecords.OrderByDescending(pr => pr.CreatedDate).First().Height
+            : (decimal?)null))
+            .ForMember(dest => dest.Weight, opt => opt.MapFrom(src => src.MedicalRecord != null && src.MedicalRecord.PhysicalRecords.Any()
+            ? src.MedicalRecord.PhysicalRecords.OrderByDescending(pr => pr.CreatedDate).First().Weight
+            : (decimal?)null))
             .ForMember(dest => dest.BloodType, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.BloodType : null))
             .ForMember(dest => dest.EmergencyContact, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContact : null))
             .ForMember(dest => dest.EmergencyContactPhone, opt => opt.MapFrom(src => src.MedicalRecord != null ? src.MedicalRecord.EmergencyContactPhone : null));

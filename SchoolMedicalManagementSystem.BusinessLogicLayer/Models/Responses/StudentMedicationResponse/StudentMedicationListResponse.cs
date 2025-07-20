@@ -33,4 +33,13 @@ public class StudentMedicationListResponse
     // Simple flags
     public bool IsExpiringSoon { get; set; }
     public bool IsLowStock { get; set; }
+    public int QuantitySent { get; set; }
+    public int QuantityReceive { get; set; }
+    public string QuantityUnit { get; set; }
+    public int? FrequencyCount { get; set; }
+    public List<string> TimesOfDay { get; set; }
+    public DateTime? StartDate { get; set; }
+    public int TotalDateUsage { get; set; }
+    public string Instructions { get; set; }
+    public string SpecialNotes { get; set; }
 }

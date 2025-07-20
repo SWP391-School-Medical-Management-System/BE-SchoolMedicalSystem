@@ -1063,6 +1063,8 @@ public class UserService : IUserService
                 .Include(u => u.Parent)
                 .Include(u => u.MedicalRecord)
                 .Where(u => !u.IsDeleted && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && u.ParentId == parentId)
+                .Include(u => u.MedicalRecord)
+                .ThenInclude(sc => sc.PhysicalRecords)
                 .AsQueryable();
 
             if (!string.IsNullOrEmpty(searchTerm))

@@ -74,12 +74,12 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         #region CRUD Vaccination Session
 
         public async Task<BaseListResponse<VaccinationSessionResponse>> GetVaccinationSessionsAsync(
-            int pageIndex,
-            int pageSize,
-            string searchTerm,
-            string orderBy,
-            Guid? nurseId = null,
-            CancellationToken cancellationToken = default)
+     int pageIndex,
+     int pageSize,
+     string searchTerm,
+     string orderBy,
+     Guid? nurseId = null,
+     CancellationToken cancellationToken = default)
         {
             try
             {
@@ -103,7 +103,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .Include(vs => vs.VaccineType)
                     .Include(vs => vs.Classes)
                     .ThenInclude(vsc => vsc.SchoolClass)
-                    .ThenInclude(sc => sc.StudentClasses)
                     .Include(vs => vs.Assignments)
                     .Include(vs => vs.Consents)
                     .Where(vs => !vs.IsDeleted)
@@ -131,9 +130,19 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .Take(pageSize)
                     .ToListAsync(cancellationToken);
 
+                var responses = new List<VaccinationSessionResponse>();
                 foreach (var session in sessions)
                 {
-                    _logger.LogDebug("Buổi tiêm {0} có {1} lớp", session.Id, session.Classes?.Count ?? 0);
+                    var response = _mapper.Map<VaccinationSessionResponse>(session);
+
+                    // Tính TotalStudents: Đếm duy nhất mỗi StudentId, không phụ thuộc vào Status của session
+                    response.TotalStudents = session.Consents?.Where(c => !c.IsDeleted).Select(c => c.StudentId).Distinct().Count() ?? 0;
+                    // Tính ApprovedStudents: Đếm duy nhất mỗi StudentId có Status = "Confirmed"
+                    response.ApprovedStudents = session.Consents?.Where(c => c.Status == "Confirmed" && !c.IsDeleted).Select(c => c.StudentId).Distinct().Count() ?? 0;
+
+                    _logger.LogDebug("Buổi tiêm {0}: TotalStudents = {1}, ApprovedStudents = {2}, Status = {3}",
+                        session.Id, response.TotalStudents, response.ApprovedStudents, session.Status);
+
                     if (session.Classes != null)
                     {
                         foreach (var classEntry in session.Classes)
@@ -142,9 +151,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                                 classEntry.ClassId, session.Id, classEntry.SchoolClass?.Name ?? "Null");
                         }
                     }
-                }
 
-                var responses = sessions.Select(session => _mapper.Map<VaccinationSessionResponse>(session)).ToList();
+                    responses.Add(response);
+                }
 
                 var result = BaseListResponse<VaccinationSessionResponse>.SuccessResult(
                     responses,
@@ -155,6 +164,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
                 await _cacheService.AddToTrackingSetAsync(cacheKey, SESSION_CACHE_SET);
+
+                await InvalidateAllCachesAsync();
 
                 return result;
             }
@@ -319,6 +330,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
                 await _cacheService.AddToTrackingSetAsync(cacheKey, "session_detail_cache_keys");
+                await InvalidateAllCachesAsync();
 
                 return result;
             }
@@ -406,6 +418,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     responses.Count,
                     1,
                     "Lấy thông tin trạng thái học sinh cho tất cả các lớp thành công.");
+
+                await InvalidateAllCachesAsync();
+
             }
             catch (Exception ex)
             {
@@ -498,6 +513,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     1,
                     1,
                     "Lấy thông tin trạng thái học sinh thành công.");
+
+                await InvalidateAllCachesAsync();
+
             }
             catch (Exception ex)
             {
@@ -1908,6 +1926,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
                 await _cacheService.AddToTrackingSetAsync(cacheKey, "parent_consent_status_cache_keys");
+                await InvalidateAllCachesAsync();
 
                 return result;
             }
@@ -2006,6 +2025,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
                 await _cacheService.AddToTrackingSetAsync(cacheKey, "student_vaccination_result_cache_keys");
+                await InvalidateAllCachesAsync();
 
                 return result;
             }
@@ -2074,6 +2094,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                         await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
                         await _cacheService.AddToTrackingSetAsync(cacheKey, "nurse_assignment_status_cache_keys");
+                        await InvalidateAllCachesAsync();
                         _logger.LogDebug("Cached nurse assignment statuses with key: {CacheKey}", cacheKey);
 
                         return result;
