@@ -19,6 +19,7 @@ public class StudentMedicationResponse
     public string QuantityUnit { get; set; }
     
     public StudentMedicationStatus Status { get; set; }
+    public ReceivedMedication Received { get; set; }
     public string StatusDisplayName { get; set; }
     public string? RejectionReason { get; set; }
     public DateTime? SubmittedAt { get; set; }

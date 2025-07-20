@@ -19,6 +19,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Vacc
         public string SessionName { get; set; }
         public string Notes { get; set; }
         public List<ClassInfo> Classes { get; set; }
+        public int ApprovedStudents { get; set; } 
+        public int TotalStudents { get; set; }
     }
 
     public class ClassInfo

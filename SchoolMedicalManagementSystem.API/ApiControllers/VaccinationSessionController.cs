@@ -260,6 +260,27 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             }
         }
 
+        [HttpPut("{sessionId}/update-result")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<bool>>> UpdateStudentVaccinationResult(
+            Guid sessionId,
+            [FromBody] UpdateStudentVaccinationResultRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _vaccinationSessionService.UpdateStudentVaccinationResultAsync(sessionId, request, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
+
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
         [HttpPost("assign-nurse")]
         [Authorize(Roles = "MANAGER")]
         public async Task<ActionResult<BaseResponse<bool>>> AssignNurseToSession([FromBody] AssignNurseToSessionRequest request)

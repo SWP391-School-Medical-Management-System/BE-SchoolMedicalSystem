@@ -41,6 +41,15 @@ public class StudentMedicationService : IStudentMedicationService
     private const string MEDICATION_CACHE_SET = "student_medication_cache_keys";
     private const string STOCK_CACHE_SET = "medication_stock_cache_keys";
     private const string STATISTICS_PREFIX = "medication_statistics";
+    private const string MEDICATION_REQUEST_PREFIX = "student_medication_requests";
+    private const string USER_PROFILE_PREFIX = "user_profile";
+    private const string STUDENT_LIST_PREFIX = "student_list";
+    private const string PARENT_LIST_PREFIX = "parent_list";
+    private const string CLASS_ENROLLMENT_PREFIX = "class_enrollment";
+    private const string USER_PROFILE_CACHE_SET = "user_profile_cache_keys";
+    private const string STUDENT_LIST_CACHE_SET = "student_list_cache_keys";
+    private const string PARENT_LIST_CACHE_SET = "parent_list_cache_keys";
+    private const string CLASS_ENROLLMENT_CACHE_SET = "class_enrollment_cache_keys";
 
     public StudentMedicationService(
         IMapper mapper,
@@ -391,24 +400,27 @@ public class StudentMedicationService : IStudentMedicationService
     }
 
     public async Task<BaseListResponse<StudentMedicationResponse>> CreateBulkStudentMedicationsAsync(
-        CreateBulkStudentMedicationRequest request)
+    CreateBulkStudentMedicationRequest request)
     {
         try
         {
             if (request == null || request.Medications == null || !request.Medications.Any())
             {
+                _logger.LogWarning("Invalid medication list for studentId: {StudentId}", request.StudentId);
                 return BaseListResponse<StudentMedicationResponse>.ErrorResult("Danh sách thuốc không hợp lệ.");
             }
 
             var currentUserId = GetCurrentUserId();
             if (currentUserId == Guid.Empty)
             {
+                _logger.LogWarning("Unable to identify current user for creating bulk medications");
                 return BaseListResponse<StudentMedicationResponse>.ErrorResult("Không thể xác định người dùng hiện tại.");
             }
 
             var student = await ValidateStudentAsync(request.StudentId);
             if (student == null)
             {
+                _logger.LogWarning("Student not found or not a student for studentId: {StudentId}", request.StudentId);
                 return BaseListResponse<StudentMedicationResponse>.ErrorResult(
                     "Không tìm thấy học sinh hoặc người dùng không phải là học sinh.");
             }
@@ -416,6 +428,8 @@ public class StudentMedicationService : IStudentMedicationService
             var parentValidation = await ValidateParentPermissionsAsync(currentUserId, request.StudentId);
             if (!parentValidation.IsValid)
             {
+                _logger.LogWarning("Parent validation failed for studentId: {StudentId}, parentId: {ParentId}, error: {Error}",
+                    request.StudentId, currentUserId, parentValidation.ErrorMessage);
                 return BaseListResponse<StudentMedicationResponse>.ErrorResult(parentValidation.ErrorMessage);
             }
 
@@ -470,6 +484,38 @@ public class StudentMedicationService : IStudentMedicationService
                     medication.TimesOfDay = JsonSerializer.Serialize(medicationDetails.TimesOfDay);
                 }
 
+                // Kiểm tra và lấy số từ Dosage
+                int dosageQuantity = 1;
+                if (!string.IsNullOrEmpty(medicationDetails.Dosage))
+                {
+                    var parts = medicationDetails.Dosage.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 0 || !int.TryParse(parts[0], out dosageQuantity) || dosageQuantity <= 0)
+                    {
+                        _logger.LogWarning("Liều lượng không hợp lệ: {Dosage} cho thuốc {MedicationId}", medicationDetails.Dosage, medication.Id);
+                        return BaseListResponse<StudentMedicationResponse>.ErrorResult("Liều lượng không hợp lệ. Vui lòng nhập theo định dạng: 'số + khoảng trắng + đơn vị' (VD: '1 viên').");
+                    }
+                }
+
+                // Tính TotalDoses
+                var totalDoses = CalculateTotalDosesFromDosage(
+                    medicationDetails.Dosage,
+                    medicationDetails.QuantitySent,
+                    medicationDetails.FrequencyCount);
+                medication.TotalDoses = totalDoses;
+                medication.RemainingDoses = totalDoses;
+
+                // Tính TotalDay
+                if (medicationDetails.FrequencyCount.HasValue && medicationDetails.FrequencyCount > 0 && dosageQuantity > 0)
+                {
+                    double totalDay = (double)medicationDetails.QuantitySent / (dosageQuantity * medicationDetails.FrequencyCount.Value);
+                    medication.TotalDay = (int)Math.Ceiling(totalDay); 
+                }
+                else
+                {
+                    medication.TotalDay = 0;
+                    _logger.LogWarning("Không thể tính TotalDay do FrequencyCount hoặc Dosage không hợp lệ cho thuốc {MedicationId}", medication.Id);
+                }
+
                 await medicationRepo.AddAsync(medication);
                 medications.Add(medication);
 
@@ -486,14 +532,6 @@ public class StudentMedicationService : IStudentMedicationService
                     CreatedBy = parentRoleName,
                     CreatedDate = DateTime.UtcNow
                 };
-
-                // Tính toán TotalDoses dựa trên Dosage, QuantitySent, và FrequencyCount
-                var totalDoses = CalculateTotalDosesFromDosage(
-                    medicationDetails.Dosage,
-                    medicationDetails.QuantitySent,
-                    medicationDetails.FrequencyCount);
-                medication.TotalDoses = totalDoses;
-                medication.RemainingDoses = totalDoses;
 
                 await stockRepo.AddAsync(initialStock);
 
@@ -512,6 +550,31 @@ public class StudentMedicationService : IStudentMedicationService
             // Lưu thay đổi
             medicationRequest.MedicationsDetails = medications;
             await _unitOfWork.SaveChangesAsync();
+
+            // Xóa cache cụ thể sau khi tạo yêu cầu thuốc
+            var medicationCacheKey = _cacheService.GenerateCacheKey(
+                MEDICATION_REQUEST_PREFIX,
+                "1", // pageIndex mặc định
+                "10", // pageSize mặc định
+                request.StudentId.ToString(),
+                currentUserId.ToString(),
+                StudentMedicationStatus.PendingApproval.ToString()
+            );
+            await _cacheService.RemoveAsync(medicationCacheKey);
+            _logger.LogDebug("Đã xóa cache yêu cầu thuốc cụ thể: {CacheKey}", medicationCacheKey);
+
+            // Xóa cache danh sách yêu cầu thuốc chung
+            await _cacheService.RemoveByPrefixAsync(MEDICATION_REQUEST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách yêu cầu thuốc với prefix: {Prefix}", MEDICATION_REQUEST_PREFIX);
+
+            // Xóa cache liên quan đến học sinh và phụ huynh
+            await _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách học sinh với prefix: {Prefix}", STUDENT_LIST_PREFIX);
+            await _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX);
+            _logger.LogDebug("Đã xóa cache danh sách phụ huynh với prefix: {Prefix}", PARENT_LIST_PREFIX);
+
+            // Gọi InvalidateAllCachesAsync để xóa các cache liên quan
+            await InvalidateAllCachesAsync();
 
             await CreateBulkMedicationRequestNotificationAsync(medications);
             await _authService.InvalidateUserCacheAsync(student.Username, student.Email, student.Id);
@@ -1087,9 +1150,9 @@ public class StudentMedicationService : IStudentMedicationService
     }
 
     public async Task<BaseResponse<List<StudentMedicationResponse>>> UpdateQuantityReceivedAsync(
-        Guid requestId,
-        UpdateQuantityReceivedRequest request,
-        CancellationToken cancellationToken = default)
+    Guid requestId,
+    UpdateQuantityReceivedRequest request,
+    CancellationToken cancellationToken = default)
     {
         try
         {
@@ -1102,7 +1165,8 @@ public class StudentMedicationService : IStudentMedicationService
             var currentUser = await ValidateSchoolNursePermissions(currentUserId);
             if (currentUser == null)
             {
-                return BaseResponse<List<StudentMedicationResponse>>.ErrorResult("Chỉ School Nurse mới có quyền cập nhật số lượng thuốc nhận được.");
+                return BaseResponse<List<StudentMedicationResponse>>.ErrorResult(
+                    "Chỉ School Nurse mới có quyền cập nhật số lượng thuốc nhận được.");
             }
 
             // Lấy danh sách StudentMedication theo requestId
@@ -1124,7 +1188,8 @@ public class StudentMedicationService : IStudentMedicationService
             var invalidIds = requestMedicationIds.Except(medications.Select(m => m.Id)).ToList();
             if (invalidIds.Any())
             {
-                return BaseResponse<List<StudentMedicationResponse>>.ErrorResult($"Một số ID thuốc không thuộc yêu cầu này: {string.Join(", ", invalidIds)}.");
+                return BaseResponse<List<StudentMedicationResponse>>.ErrorResult(
+                    $"Một số ID thuốc không thuộc yêu cầu này: {string.Join(", ", invalidIds)}.");
             }
 
             var schoolNurseRoleName = await GetSchoolNurseRoleName();
@@ -1141,7 +1206,8 @@ public class StudentMedicationService : IStudentMedicationService
 
                 if (medUpdate.QuantityReceived < 0)
                 {
-                    return BaseResponse<List<StudentMedicationResponse>>.ErrorResult($"Số lượng nhận được của thuốc {medUpdate.MedicationId} phải lớn hơn hoặc bằng 0.");
+                    return BaseResponse<List<StudentMedicationResponse>>.ErrorResult(
+                        $"Số lượng nhận được của thuốc {medUpdate.MedicationId} phải lớn hơn hoặc bằng 0.");
                 }
 
                 // Cập nhật QuantityReceive và trạng thái Received
@@ -1162,7 +1228,9 @@ public class StudentMedicationService : IStudentMedicationService
                     Notes = medUpdate.Notes ?? "Cập nhật số lượng thuốc nhận được từ phụ huynh",
                     IsInitialStock = false,
                     CreatedBy = schoolNurseRoleName,
-                    CreatedDate = DateTime.Now
+                    CreatedDate = DateTime.Now,
+                    LastUpdatedBy = schoolNurseRoleName,
+                    LastUpdatedDate = DateTime.Now
                 };
                 await stockRepo.AddAsync(newStock);
 
@@ -1172,19 +1240,14 @@ public class StudentMedicationService : IStudentMedicationService
                 medicationRepo.Update(medication);
                 updatedMedications.Add(medication);
 
-                _logger.LogInformation("Cập nhật QuantityReceived cho thuốc {0}: QuantityReceive mới={1}, Received={2}",
+                _logger.LogInformation("Cập nhật QuantityReceived cho thuốc {MedicationId}: QuantityReceive={QuantityReceived}, Received={ReceivedStatus}",
                     medUpdate.MedicationId, medUpdate.QuantityReceived, medication.Received);
             }
 
             // Lưu tất cả thay đổi
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // Xóa cache cho học sinh liên quan
-            var student = updatedMedications.FirstOrDefault()?.Student;
-            if (student != null)
-            {
-                await _authService.InvalidateUserCacheAsync(student.Username, student.Email, student.Id);
-            }
+            await InvalidateAllCachesAsync();
 
             var medicationResponses = updatedMedications.Select(m => _mapper.Map<StudentMedicationResponse>(m)).ToList();
 
@@ -1193,8 +1256,9 @@ public class StudentMedicationService : IStudentMedicationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Lỗi khi cập nhật QuantityReceived cho yêu cầu {0}", requestId);
-            return BaseResponse<List<StudentMedicationResponse>>.ErrorResult($"Lỗi cập nhật số lượng thuốc nhận được: {ex.Message}");
+            _logger.LogError(ex, "Lỗi khi cập nhật QuantityReceived cho yêu cầu {RequestId}", requestId);
+            return BaseResponse<List<StudentMedicationResponse>>.ErrorResult(
+                $"Lỗi cập nhật số lượng thuốc nhận được: {ex.Message}");
         }
     }
 
@@ -1814,23 +1878,19 @@ public class StudentMedicationService : IStudentMedicationService
     }
 
     public async Task<BaseResponse<StudentMedicationUsageHistoryResponse>> AdministerMedicationAsync(
-            Guid medicationId,
-            AdministerMedicationRequest request,
-            CancellationToken cancellationToken = default)
+    Guid medicationId,
+    AdministerMedicationRequest request,
+    CancellationToken cancellationToken = default)
     {
         try
         {
             var currentUserId = GetCurrentUserId();
             if (currentUserId == Guid.Empty)
-            {
                 return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Không thể xác định người dùng hiện tại.");
-            }
 
             var currentUser = await ValidateSchoolNursePermissions(currentUserId);
             if (currentUser == null)
-            {
-                return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Chỉ School Nurse mới có quyền ghi nhận việc sử dụng thuốc.");
-            }
+                return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Chỉ y tá trường học mới có quyền ghi nhận việc sử dụng thuốc.");
 
             var medicationRepo = _unitOfWork.GetRepositoryByEntity<StudentMedication>();
             var medication = await medicationRepo.GetQueryable()
@@ -1839,37 +1899,147 @@ public class StudentMedicationService : IStudentMedicationService
                 .FirstOrDefaultAsync(sm => sm.Id == medicationId && !sm.IsDeleted, cancellationToken);
 
             if (medication == null)
-            {
-                return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Không tìm thấy thuốc học sinh.");
-            }
+                return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Không tìm thấy thuốc của học sinh.");
 
             if (medication.Status != StudentMedicationStatus.Active && medication.Status != StudentMedicationStatus.Approved)
-            {
                 return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Chỉ có thể ghi nhận sử dụng cho thuốc đã được phê duyệt hoặc đang hoạt động.");
-            }
 
             if (medication.StartDate > DateTime.Now)
-            {
                 return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Không thể ghi nhận sử dụng thuốc trước ngày bắt đầu.");
-            }
 
             if ((request.Status == StatusUsage.Skipped || request.Status == StatusUsage.Missed) && string.IsNullOrEmpty(request.Note))
-            {
                 return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Ghi chú là bắt buộc khi thuốc không được sử dụng.");
+
+            // Phân tích TimesOfDay (chuỗi JSON sang List<string>)
+            List<string> timesOfDay = new List<string>();
+            if (!string.IsNullOrEmpty(medication.TimesOfDay))
+            {
+                try
+                {
+                    timesOfDay = System.Text.Json.JsonSerializer.Deserialize<List<string>>(medication.TimesOfDay);
+                    if (timesOfDay == null || timesOfDay.Any(t => string.IsNullOrEmpty(t)))
+                    {
+                        _logger.LogWarning("TimesOfDay không hợp lệ hoặc chứa giá trị rỗng: {TimesOfDay} cho thuốc {MedicationId}", medication.TimesOfDay, medicationId);
+                        timesOfDay = new List<string> { "Buổi sáng" }; // Giá trị mặc định
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Lỗi khi phân tích TimesOfDay: {TimesOfDay} cho thuốc {MedicationId}", medication.TimesOfDay, medicationId);
+                    timesOfDay = new List<string> { "Buổi sáng" }; // Giá trị mặc định
+                    _logger.LogInformation("Sử dụng TimesOfDay mặc định: [\"Buổi sáng\"] cho thuốc {MedicationId}", medicationId);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("TimesOfDay rỗng, sử dụng giá trị mặc định: [\"Buổi sáng\"] cho thuốc {MedicationId}", medicationId);
+                timesOfDay = new List<string> { "Buổi sáng" }; // Giá trị mặc định
+            }
+
+            // Tính số liều mỗi ngày dựa trên FrequencyCount
+            int dosesPerDay = medication.FrequencyCount ?? 1;
+            if (dosesPerDay <= 0)
+                return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Số lần uống thuốc mỗi ngày không hợp lệ.");
+
+            // Kiểm tra và chuyển đổi AdministeredTime
+            DateTime? administeredTime = null;
+            bool isMakeupDose = request.IsMakeupDose;
+            if (request.Status == StatusUsage.Used && !string.IsNullOrEmpty(request.AdministeredTime))
+            {
+                if (!TimeSpan.TryParse(request.AdministeredTime, out var time))
+                    return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Giờ uống thuốc không đúng định dạng (HH:mm, ví dụ: 08:15).");
+
+                // Kết hợp thời gian với ngày hiện tại
+                var currentDate = DateTime.Today;
+                administeredTime = currentDate.Add(time);
+
+                // Ghi log nếu thời gian không nằm trong TimesOfDay, nhưng không tự động đặt isMakeupDose
+                if (timesOfDay.Any())
+                {
+                    bool isValidTime = false;
+                    foreach (var timeOfDay in timesOfDay)
+                    {
+                        var (start, end) = GetTimeRange(timeOfDay);
+                        if (time >= start && time <= end)
+                        {
+                            isValidTime = true;
+                            break;
+                        }
+                    }
+                    if (!isValidTime)
+                    {
+                        _logger.LogInformation("Giờ uống thuốc {AdministeredTime} không nằm trong khung giờ {TimesOfDay}, nhưng vẫn được ghi nhận vì chưa vượt quá số lần uống.", request.AdministeredTime, string.Join(", ", timesOfDay));
+                    }
+                }
+            }
+
+            // Kiểm tra số lần uống trong ngày
+            var usageCountToday = medication.UsageHistory
+                .Count(uh => uh.UsageDate.HasValue && uh.UsageDate.Value.Date == DateTime.Today && uh.Status == StatusUsage.Used && !uh.IsDeleted);
+
+            if (request.Status == StatusUsage.Used && !isMakeupDose && usageCountToday >= dosesPerDay)
+                return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Học sinh đã uống đủ {dosesPerDay} liều cho hôm nay rồi. Vui lòng xác nhận liều bù bằng cách đặt isMakeupDose = true.");
+
+            // Kiểm tra tổng số viên uống trong ngày
+            int totalDosageUsedToday = medication.UsageHistory
+                .Where(uh => uh.UsageDate.HasValue && uh.UsageDate.Value.Date == DateTime.Today && uh.Status == StatusUsage.Used && !uh.IsDeleted)
+                .Sum(uh =>
+                {
+                    if (!string.IsNullOrEmpty(uh.DosageUse))
+                    {
+                        var parts = uh.DosageUse.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length > 0 && int.TryParse(parts[0], out int quantity))
+                            return quantity;
+                    }
+                    return 0;
+                });
+
+            int maxDosagePerDay = medication.QuantitySent / medication.TotalDay; // Số viên tối đa mỗi ngày
+            int dosageQuantity = 1;
+            int prescribedDosageQuantity = 1;
+
+            if (request.Status == StatusUsage.Used)
+            {
+                // Lấy số từ Dosage của StudentMedication
+                if (!string.IsNullOrEmpty(medication.Dosage))
+                {
+                    var parts = medication.Dosage.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 0 || !int.TryParse(parts[0], out prescribedDosageQuantity) || prescribedDosageQuantity <= 0)
+                    {
+                        _logger.LogWarning("Liều lượng không hợp lệ trong StudentMedication: {Dosage} cho thuốc {MedicationId}", medication.Dosage, medicationId);
+                        return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Liều lượng trong StudentMedication không hợp lệ.");
+                    }
+                }
+
+                // Kiểm tra DosageUsed
+                if (!string.IsNullOrEmpty(request.DosageUsed))
+                {
+                    var parts = request.DosageUsed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 0 || !int.TryParse(parts[0], out dosageQuantity) || dosageQuantity <= 0)
+                        return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Liều lượng sử dụng không hợp lệ. Vui lòng nhập theo định dạng: 'số + khoảng trắng + đơn vị' (VD: '1 viên').");
+
+                    // Kiểm tra DosageUsed khớp với Dosage
+                    if (dosageQuantity != prescribedDosageQuantity)
+                        return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Liều lượng sử dụng không hợp lệ. Phải khớp với liều lượng quy định: {medication.Dosage}.");
+                }
+
+                // Kiểm tra tổng số viên uống trong ngày (bao gồm cả liều bù)
+                if (totalDosageUsedToday + dosageQuantity > maxDosagePerDay)
+                    return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Tổng số viên uống trong ngày vượt quá giới hạn: {maxDosagePerDay} viên/ngày, đã uống: {totalDosageUsedToday} viên.");
             }
 
             var schoolNurseRoleName = await GetSchoolNurseRoleName();
 
-            // Tạo bản ghi sử dụng thuốc
             var usageHistory = new StudentMedicationUsageHistory
             {
                 Id = Guid.NewGuid(),
                 StudentMedicationId = medicationId,
                 StudentId = medication.StudentId,
                 UsageDate = DateTime.Now,
+                AdministeredTime = request.Status == StatusUsage.Used ? administeredTime : null,
                 DosageUse = request.DosageUsed ?? medication.Dosage,
                 Status = request.Status,
-                Reason = request.IsMakeupDose ? "Liều uống bù" : null,
+                Reason = isMakeupDose ? "Liều uống bù" : null,
                 Note = request.Note,
                 AdministeredBy = currentUserId,
                 CreatedAt = DateTime.Now,
@@ -1877,51 +2047,33 @@ public class StudentMedicationService : IStudentMedicationService
                 CreatedDate = DateTime.Now
             };
 
-            // Xử lý logic trừ QuantityReceive
             if (request.Status == StatusUsage.Used)
             {
                 if (medication.QuantityUnit == QuantityUnitEnum.Tablet || medication.QuantityUnit == QuantityUnitEnum.Pack)
                 {
-                    int dosageQuantity = 1; // Mặc định là 1 nếu DosageUsed không hợp lệ
-                    if (!string.IsNullOrEmpty(request.DosageUsed))
-                    {
-                        var parts = request.DosageUsed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                        if (parts.Length == 0 || !int.TryParse(parts[0], out dosageQuantity) || dosageQuantity <= 0)
-                        {
-                            return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Liều lượng sử dụng không hợp lệ. Vui lòng nhập theo định dạng: 'số + khoảng trắng + đơn vị' (VD: '2 viên').");
-                        }
-                    }
                     if (medication.QuantityReceive >= dosageQuantity)
                     {
                         medication.QuantityReceive -= dosageQuantity;
-                        _logger.LogInformation("Giảm QuantityReceive cho thuốc {0}: DosageUsed={1}, QuantityReceive mới={2}", medicationId, dosageQuantity, medication.QuantityReceive);
                         medicationRepo.Update(medication);
                     }
                     else
-                    {
                         return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Không đủ thuốc trong kho. Yêu cầu: {dosageQuantity}, Còn lại: {medication.QuantityReceive}.");
-                    }
                 }
                 else if (medication.QuantityUnit == QuantityUnitEnum.Bottle)
                 {
                     if (string.IsNullOrEmpty(request.DosageUsed))
-                    {
                         return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Phải cung cấp liều lượng sử dụng cho thuốc dạng chai.");
-                    }
                 }
 
-                // Cập nhật trạng thái thành Completed nếu QuantityReceive = 0
                 if (medication.QuantityReceive == 0)
                 {
                     medication.Status = StudentMedicationStatus.Completed;
                     medication.LastUpdatedBy = schoolNurseRoleName;
                     medication.LastUpdatedDate = DateTime.Now;
-                    _logger.LogInformation("Thuốc {0} được đánh dấu là Completed vì QuantityReceive = 0", medicationId);
                     medicationRepo.Update(medication);
                 }
             }
 
-            // Kiểm tra và gửi cảnh báo nếu số lượng thuốc còn lại thấp
             if (medication.QuantityReceive <= medication.MinStockThreshold && !medication.LowStockAlertSent)
             {
                 await SendLowStockNotificationAsync(medication);
@@ -1929,25 +2081,22 @@ public class StudentMedicationService : IStudentMedicationService
                 medicationRepo.Update(medication);
             }
 
-            // Lưu bản ghi sử dụng thuốc và các thay đổi của medication
             await _unitOfWork.GetRepositoryByEntity<StudentMedicationUsageHistory>().AddAsync(usageHistory);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // Xóa cache người dùng
             await _authService.InvalidateUserCacheAsync(medication.Student.Username, medication.Student.Email, medication.StudentId);
 
             var usageHistoryResponse = _mapper.Map<StudentMedicationUsageHistoryResponse>(usageHistory);
-            // Đảm bảo QuantityReceive trong response phản ánh đúng giá trị
             usageHistoryResponse.QuantityReceive = medication.QuantityReceive;
 
-            _logger.LogInformation("Ghi nhận sử dụng thuốc {0} với trạng thái {1}", medicationId, request.Status);
+            _logger.LogInformation("Ghi nhận sử dụng thuốc {MedicationId} với trạng thái {Status}", medicationId, request.Status);
 
             return BaseResponse<StudentMedicationUsageHistoryResponse>.SuccessResult(
                 usageHistoryResponse, "Ghi nhận việc sử dụng thuốc thành công.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Lỗi khi ghi nhận sử dụng thuốc {0}", medicationId);
+            _logger.LogError(ex, "Lỗi khi ghi nhận sử dụng thuốc {MedicationId}", medicationId);
             return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Lỗi ghi nhận việc sử dụng thuốc: {ex.Message}");
         }
     }
@@ -2057,6 +2206,21 @@ public class StudentMedicationService : IStudentMedicationService
         }
 
         return $"{prefix}{today}-{sequenceNumber:D4}"; 
+    }
+
+    private (TimeSpan start, TimeSpan end) GetTimeRange(string timeOfDay)
+    {
+        if (string.IsNullOrEmpty(timeOfDay))
+            return (TimeSpan.Zero, TimeSpan.Zero);
+
+        return timeOfDay.ToLower() switch
+        {
+            "buổi sáng" => (TimeSpan.FromHours(7), TimeSpan.FromHours(11)),
+            "buổi trưa" => (TimeSpan.FromHours(11).Add(TimeSpan.FromMinutes(1)), TimeSpan.FromHours(15)),
+            "buổi chiều" => (TimeSpan.FromHours(11).Add(TimeSpan.FromMinutes(1)), TimeSpan.FromHours(15)),
+            "buổi tối" => (TimeSpan.FromHours(15).Add(TimeSpan.FromMinutes(1)), TimeSpan.FromHours(19)),
+            _ => (TimeSpan.Zero, TimeSpan.Zero) // Trường hợp không xác định
+        };
     }
 
     private int CalculateTotalDosesFromDosage(string dosage, int quantitySent, int? frequencyCount)
@@ -2444,17 +2608,42 @@ public class StudentMedicationService : IStudentMedicationService
     {
         try
         {
+            _logger.LogDebug("Starting cache invalidation for medication requests, users, students, parents, and related data");
+            // Xóa toàn bộ tracking set
             await Task.WhenAll(
                 _cacheService.InvalidateTrackingSetAsync(MEDICATION_CACHE_SET),
-                _cacheService.InvalidateTrackingSetAsync(STOCK_CACHE_SET),
-                _cacheService.RemoveByPrefixAsync(STATISTICS_PREFIX)
+                _cacheService.InvalidateTrackingSetAsync(USER_PROFILE_CACHE_SET),
+                _cacheService.InvalidateTrackingSetAsync(STUDENT_LIST_CACHE_SET),
+                _cacheService.InvalidateTrackingSetAsync(PARENT_LIST_CACHE_SET),
+                _cacheService.InvalidateTrackingSetAsync(CLASS_ENROLLMENT_CACHE_SET),
+                _cacheService.InvalidateTrackingSetAsync("vaccination_session_cache_keys"),
+                _cacheService.InvalidateTrackingSetAsync("nurse_assignment_status_cache_keys"),
+                _cacheService.InvalidateTrackingSetAsync("student_session_cache_keys"),
+                _cacheService.InvalidateTrackingSetAsync("session_detail_cache_keys"),
+                _cacheService.InvalidateTrackingSetAsync("parent_consent_status_cache_keys"),
+                _cacheService.InvalidateTrackingSetAsync("student_vaccination_result_cache_keys")
             );
 
-            _logger.LogDebug("Invalidated all medication-related caches");
+            // Xóa cache theo prefix
+            await Task.WhenAll(
+                _cacheService.RemoveByPrefixAsync(MEDICATION_REQUEST_PREFIX),
+                _cacheService.RemoveByPrefixAsync(USER_PROFILE_PREFIX),
+                _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX),
+                _cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX),
+                _cacheService.RemoveByPrefixAsync(CLASS_ENROLLMENT_PREFIX),
+                _cacheService.RemoveByPrefixAsync("vaccination_session"),
+                _cacheService.RemoveByPrefixAsync("vaccination_sessions_list"),
+                _cacheService.RemoveByPrefixAsync("nurse_assignment_status"),
+                _cacheService.RemoveByPrefixAsync("student_sessions"),
+                _cacheService.RemoveByPrefixAsync("session_detail"),
+                _cacheService.RemoveByPrefixAsync("parent_consent_status"),
+                _cacheService.RemoveByPrefixAsync("student_vaccination_result")
+            );
+            _logger.LogDebug("Completed cache invalidation for medication requests, users, students, parents, and related data");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error invalidating caches");
+            _logger.LogError(ex, "Error in cache invalidation for medication requests, users, students, parents, and related data");
         }
     }
 

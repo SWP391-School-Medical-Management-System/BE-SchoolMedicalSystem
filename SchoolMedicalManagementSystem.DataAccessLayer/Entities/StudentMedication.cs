@@ -19,8 +19,9 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public string Dosage { get; set; }              // Liều lượng (1 viên, 100ml)
         public string Instructions { get; set; }        // Hướng dẫn sử dụng
         public string? Frequency { get; set; }           // Số ngày cần dùng
-        public int? FrequencyCount { get; set; }        // 3, 2 - số lần uống/ngày   3 lần 
+        public int? FrequencyCount { get; set; }        // 3, 2 - số lần uống/ngày   2 lần 
         public string? FrequencyUnit { get; set; }      // "lần/ngày"
+        public int TotalDay { get; set; } = 0;          // Tổng số ngày cần uống
         public DateTime ExpiryDate { get; set; }        // Ngày hết hạn thuốc        
         public string? Purpose { get; set; }            // Mục đích sử dụng
         public string? SideEffects { get; set; }        // Tác dụng phụ
@@ -32,7 +33,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public DateTime? PrescriptionDate { get; set; } // Ngày kê đơn
         public string? PrescriptionNumber { get; set; } // Số đơn thuốc
         public DateTime? StartDate { get; set; }         // Ngày bắt đầu dùng thuốc
-        public int QuantitySent { get; set; }           // Số lượng Parent gửi        9
+        public int QuantitySent { get; set; }           // Số lượng Parent gửi        6
         public QuantityUnitEnum? QuantityUnit { get; set; }       // Đơn vị (viên, chai, gói)
         public string? SpecialNotes { get; set; }       // Ghi chú từ Parent
         public string? EmergencyContactInstructions { get; set; } // Hướng dẫn khẩn cấp
@@ -48,7 +49,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public string? ManagementNotes { get; set; }       // Ghi chú quản lý từ y tá
         public bool SkipWeekends { get; set; } = false;    // Bỏ qua cuối tuần
         public string? SpecificTimes { get; set; }         // JSON: ["08:00", "12:00", "18:00"]
-        public string? TimesOfDay { get; set; }            // JSON: ["Morning", "AfterLunch", "LateAfternoon"]
+        public string? TimesOfDay { get; set; }            // JSON: ["Morning", "AfterLunch"]
         public string? SkipDates { get; set; }             // JSON: ["2024-12-25", "2024-01-01"]
         public ReceivedMedication Received { get; set; }    // Trạng thái nhận thuốc từ Parent
         public int QuantityReceive { get; set; } = 0;      // Nhận được bao nhiêu thuốc từ Parent

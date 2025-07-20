@@ -12,7 +12,7 @@ public class VaccinationRecord : BaseEntity
     public DateTime? AdministeredDate { get; set; } // Ngày tiêm
     public string AdministeredBy { get; set; }     // Người tiêm
     public Guid? AdministeredByUserId { get; set; } // Người tiêm
-    public string BatchNumber { get; set; }        // Số lô vắc-xin
+    public string? BatchNumber { get; set; }        // Số lô vắc-xin
     public string Notes { get; set; }              // Ghi chú
     public string NoteAfterSession { get; set; }   // Ghi chú sau khi tiêm
     public Guid? SessionId { get; set; }           // Foreign Key đến VaccinationSession, nullable
