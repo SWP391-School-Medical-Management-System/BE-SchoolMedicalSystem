@@ -41,7 +41,21 @@ public class MedicalConditionMappingProfile : Profile
             .ForAllMembers(opt => opt.Condition((src, dest, member) => member != null));
 
         CreateMap<MedicalCondition, MedicalConditionResponse>()
-            .ForMember(dest => dest.StudentName, opt => opt.Ignore())
-            .ForMember(dest => dest.StudentCode, opt => opt.Ignore());
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+            .ForMember(dest => dest.MedicalRecordId, opt => opt.MapFrom(src => src.MedicalRecordId))
+            //.ForMember(dest => dest.HealthCheckId, opt => opt.MapFrom(src => src.HealthCheckId))
+            .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type))
+            .ForMember(dest => dest.Name, opt => opt.MapFrom(src => src.Name))
+            .ForMember(dest => dest.Severity, opt => opt.MapFrom(src => src.Severity))
+            .ForMember(dest => dest.Reaction, opt => opt.MapFrom(src => src.Reaction))
+            .ForMember(dest => dest.Treatment, opt => opt.MapFrom(src => src.Treatment))
+            .ForMember(dest => dest.Medication, opt => opt.MapFrom(src => src.Medication))
+            .ForMember(dest => dest.DiagnosisDate, opt => opt.MapFrom(src => src.DiagnosisDate))
+            .ForMember(dest => dest.Hospital, opt => opt.MapFrom(src => src.Hospital))
+            .ForMember(dest => dest.Doctor, opt => opt.MapFrom(src => src.Doctor))
+            .ForMember(dest => dest.Notes, opt => opt.MapFrom(src => src.Notes));
+            //.ForMember(dest => dest.SystolicBloodPressure, opt => opt.MapFrom(src => src.SystolicBloodPressure))
+            //.ForMember(dest => dest.DiastolicBloodPressure, opt => opt.MapFrom(src => src.DiastolicBloodPressure))
+            //.ForMember(dest => dest.HeartRate, opt => opt.MapFrom(src => src.HeartRate));
     }
 }

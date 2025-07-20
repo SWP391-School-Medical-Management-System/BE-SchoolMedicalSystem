@@ -18,7 +18,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
         public string StudentCode { get; set; }
         public string ParentName { get; set; }
         public string? ApprovedByName { get; set; }
-        public StudentMedicationStatus Status { get; set; }
+        public StudentMedicationStatus Status { get; set; }      
         public string StatusDisplayName { get; set; }
         public string PriorityDisplayName { get; set; }
         public DateTime? SubmittedAt { get; set; }
