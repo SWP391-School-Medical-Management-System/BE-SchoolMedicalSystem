@@ -62,7 +62,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
             // Ánh xạ từ VaccinationSession sang VaccinationSessionResponse
             CreateMap<VaccinationSession, VaccinationSessionResponse>()
                 .ForMember(dest => dest.VaccineTypeName, opt => opt.MapFrom(src => src.VaccineType.Name))
-                .ForMember(dest => dest.Classes, opt => opt.MapFrom(src => src.Classes.Select(c => new ClassInfo { Id = c.ClassId, Name = c.SchoolClass.Name }).ToList()));
+                .ForMember(dest => dest.Classes, opt => opt.MapFrom(src => src.Classes.Select(c => new ClassInfo { Id = c.ClassId, Name = c.SchoolClass.Name }).ToList()))
+                .ForMember(dest => dest.ApprovedStudents, opt => opt.MapFrom(src => src.Consents.Count(c => c.Status == "Confirmed" && !c.IsDeleted)))
+                .ForMember(dest => dest.TotalStudents, opt => opt.MapFrom(src => src.Classes.SelectMany(c => c.SchoolClass.StudentClasses).Select(sc => sc.StudentId).Distinct().Count()));
 
             // Ánh xạ từ VaccinationSession sang CreateWholeVaccinationSessionResponse
             CreateMap<VaccinationSession, CreateWholeVaccinationSessionResponse>()

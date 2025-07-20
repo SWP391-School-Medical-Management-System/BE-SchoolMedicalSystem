@@ -222,11 +222,28 @@ public class MedicalRecordService : IMedicalRecordService
                     vr.Id, vr.VaccinationTypeId, vr.VaccinationType?.Id, vr.VaccinationType?.Name ?? "null", vr.VaccinationType == null);
             }
 
+            _logger.LogDebug("Found {Count} active medical conditions for student {StudentId}",
+                medicalRecord.MedicalConditions?.Count ?? 0, studentId);
+            foreach (var mc in medicalRecord.MedicalConditions)
+            {
+                _logger.LogDebug("MedicalCondition: Id={Id}, Name={Name}, Doctor={Doctor}, Hospital={Hospital}",
+                    mc.Id, mc.Name, mc.Doctor ?? "null", mc.Hospital ?? "null");
+            }
+
             // Thêm log chi tiết trước khi ánh xạ
             _logger.LogDebug("Starting mapping for MedicalRecord with Id: {MedicalRecordId}", medicalRecord.Id);
             var recordResponse = MapToMedicalRecordDetailResponse(medicalRecord);
 
             // Log dữ liệu sau khi ánh xạ để kiểm tra
+            if (recordResponse.MedicalConditions != null)
+            {
+                foreach (var mcResponse in recordResponse.MedicalConditions)
+                {
+                    _logger.LogDebug("Mapped MedicalCondition Response: Id={Id}, Name={Name}, Doctor={Doctor}, Hospital={Hospital}",
+                        mcResponse.Id, mcResponse.Name, mcResponse.Doctor ?? "null", mcResponse.Hospital ?? "null");
+                }
+            }
+
             if (recordResponse.VaccinationRecords != null)
             {
                 foreach (var vrResponse in recordResponse.VaccinationRecords)

@@ -135,7 +135,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""))
                 .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
                 .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : null))
-                .ForMember(dest => dest.FrequencyCount, opt => opt.MapFrom(src => src.FrequencyCount));
+                .ForMember(dest => dest.FrequencyCount, opt => opt.MapFrom(src => src.FrequencyCount))
+                .ForMember(dest => dest.Received, opt => opt.MapFrom(src => src.Received));
 
             CreateMap<StudentMedication, ParentMedicationResponse>()
                 .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => GetStatusDisplayName(src.Status)))
@@ -170,22 +171,29 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.Priority, opt => opt.MapFrom(src => src.Priority))
                 .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
                 .ForMember(dest => dest.Instructions, opt => opt.MapFrom(src => src.ManagementNotes ?? "Không có hướng dẫn"))
-                .ForMember(dest => dest.Frequency, opt => opt.MapFrom(src => src.Frequency ?? "Không xác định"))
+                .ForMember(dest => dest.FrequencyCount, opt => opt.MapFrom(src => src.FrequencyCount))
                 .ForMember(dest => dest.SpecialNotes, opt => opt.MapFrom(src => src.SpecialNotes ?? "Không có ghi chú"))
-                .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => GetTimesOfDayDisplayNames(src.TimesOfDay)));
+                .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => GetTimesOfDayDisplayNames(src.TimesOfDay)))
+                .ForMember(dest => dest.Received, opt => opt.MapFrom(src => src.Received));
 
             CreateMap<StudentMedicationRequest, StudentMedicationRequestResponse>()
                 .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => src.Status.ToString()))
                 .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
                 .ForMember(dest => dest.Code, opt => opt.MapFrom(src => src.Code))
-                .ForMember(dest => dest.MedicationCount, opt => opt.MapFrom(src => src.MedicationsDetails.Count));
+                .ForMember(dest => dest.MedicationCount, opt => opt.MapFrom(src => src.MedicationsDetails.Count))
+                .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : src.StudentName))
+                .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : src.ParentName))
+                .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : src.ApprovedByName));
 
             CreateMap<StudentMedicationRequest, StudentMedicationRequestDetailResponse>()
                 .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => src.Status.ToString()))
                 .ForMember(dest => dest.PriorityDisplayName, opt => opt.MapFrom(src => src.Priority.ToString()))
                 .ForMember(dest => dest.Code, opt => opt.MapFrom(src => src.Code))
                 .ForMember(dest => dest.ApprovedById, opt => opt.MapFrom(src => src.ApprovedById))
-                .ForMember(dest => dest.Medications, opt => opt.MapFrom(src => src.MedicationsDetails));
+                .ForMember(dest => dest.Medications, opt => opt.MapFrom(src => src.MedicationsDetails))
+                .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : src.StudentName))
+                .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : src.ParentName))
+                .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : src.ApprovedByName));
 
             // Add mapping for StudentMedicationUsageHistory to StudentMedicationUsageHistoryResponse
             CreateMap<StudentMedicationUsageHistory, StudentMedicationUsageHistoryResponse>()
@@ -209,7 +217,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.StudentMedication.Student.FullName))
                 .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.StudentMedication.Student.StudentCode))
                 .ForMember(dest => dest.MedicationName, opt => opt.MapFrom(src => src.StudentMedication.MedicationName))
-                .ForMember(dest => dest.QuantityReceive, opt => opt.MapFrom(src => src.StudentMedication.QuantityReceive));
+                .ForMember(dest => dest.QuantityReceive, opt => opt.MapFrom(src => src.StudentMedication.QuantityReceive))
+                .ForMember(dest => dest.AdministeredTime, opt => opt.MapFrom(src => src.AdministeredTime));
 
         }
 

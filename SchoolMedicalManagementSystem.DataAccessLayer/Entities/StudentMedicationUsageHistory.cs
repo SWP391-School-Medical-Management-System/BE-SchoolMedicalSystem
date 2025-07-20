@@ -18,6 +18,7 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
         public string? Note { get; set; }   
         public Guid AdministeredBy { get; set; }    
         public DateTime? CreatedAt { get; set; }
+        public DateTime? AdministeredTime { get; set; }
 
         public virtual ApplicationUser Nurse {  get; set; }      
         public virtual ApplicationUser Student { get; set; }        

@@ -152,6 +152,7 @@ public class UserService : IUserService
 
             // Làm mới tất cả cache liên quan đến người dùng
             await InvalidateUserRelatedCachesAsync(user);
+            await InvalidateAllCachesAsync();
 
             var userResponse = _mapper.Map<UserResponses>(user);
             userResponse.Role = user.UserRoles.FirstOrDefault()?.Role.Name;
@@ -1119,9 +1120,6 @@ public class UserService : IUserService
             var studentClassRepo = _unitOfWork.GetRepositoryByEntity<StudentClass>();
             var schoolClassRepo = _unitOfWork.GetRepositoryByEntity<SchoolClass>();
             var medicalRecordRepo = _unitOfWork.GetRepositoryByEntity<MedicalRecord>();
-            var visionRecordRepo = _unitOfWork.GetRepositoryByEntity<VisionRecord>();
-            var hearingRecordRepo = _unitOfWork.GetRepositoryByEntity<HearingRecord>();
-            var physicalRecordRepo = _unitOfWork.GetRepositoryByEntity<PhysicalRecord>();
 
             var duplicateCheck = await userRepo.GetQueryable().AnyAsync(u =>
                 (u.Username == model.Username || u.Email == model.Email || u.StudentCode == model.StudentCode)
@@ -1244,7 +1242,7 @@ public class UserService : IUserService
                 await studentClassRepo.AddAsync(studentClass);
             }
 
-            // Tạo MedicalRecord và các bảng liên quan
+            // Tạo MedicalRecord với các danh sách rỗng
             var medicalRecord = new MedicalRecord
             {
                 Id = Guid.NewGuid(),
@@ -1260,53 +1258,17 @@ public class UserService : IUserService
                 HearingRecords = new List<HearingRecord>(),
                 PhysicalRecords = new List<PhysicalRecord>()
             };
-
             await medicalRecordRepo.AddAsync(medicalRecord);
 
-            // Tạo VisionRecord với giá trị mặc định
-            var visionRecord = new VisionRecord
-            {
-                Id = Guid.NewGuid(),
-                MedicalRecordId = medicalRecord.Id,
-                LeftEye = 0,
-                RightEye = 0,
-                CheckDate = DateTime.MinValue,
-                Comments = "Not recorded",
-                RecordedBy = currentUserId
-            };
-            await visionRecordRepo.AddAsync(visionRecord);
-
-            // Tạo HearingRecord với giá trị mặc định
-            var hearingRecord = new HearingRecord
-            {
-                Id = Guid.NewGuid(),
-                MedicalRecordId = medicalRecord.Id,
-                LeftEar = "Not recorded",
-                RightEar = "Not recorded",
-                CheckDate = DateTime.MinValue,
-                Comments = null,
-                RecordedBy = currentUserId
-            };
-            await hearingRecordRepo.AddAsync(hearingRecord);
-
-            // Tạo PhysicalRecord với giá trị mặc định
-            var physicalRecord = new PhysicalRecord
-            {
-                Id = Guid.NewGuid(),
-                MedicalRecordId = medicalRecord.Id,
-                Height = 0,
-                Weight = 0,
-                BMI = 0,
-                CheckDate = DateTime.MinValue,
-                Comments = "Not recorded",
-                RecordedBy = currentUserId
-            };
-            await physicalRecordRepo.AddAsync(physicalRecord);
-
+            // Lưu tất cả thay đổi
             await _unitOfWork.SaveChangesAsync();
 
+            // Gửi email thông báo tạo tài khoản
             await _emailService.SendAccountCreationEmailAsync(user.Email, user.Username, defaultPassword);
-            await InvalidateStudentCacheAsync();
+            _logger.LogInformation("Đã gửi email tạo tài khoản cho học sinh: {Username}", user.Username);
+
+            // Làm mới cache liên quan
+            await InvalidateStudentRelatedCachesAsync(user.Id, model.ParentId);
 
             var studentWithRelations = await userRepo.GetQueryable()
                 .Include(u => u.StudentClasses.Where(sc => !sc.IsDeleted))
@@ -1326,12 +1288,63 @@ public class UserService : IUserService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating student account");
+            _logger.LogError(ex, "Lỗi khi tạo tài khoản học sinh: {Username}", model.Username);
             return new BaseResponse<StudentResponse>
             {
                 Success = false,
                 Message = $"Lỗi tạo tài khoản học sinh: {ex.Message}"
             };
+        }
+    }
+
+    // Phương thức hỗ trợ để làm mới cache liên quan đến học sinh
+    private async Task InvalidateStudentRelatedCachesAsync(Guid studentId, Guid? parentId)
+    {
+        try
+        {
+            var cacheTasks = new List<Task>
+        {
+            _cacheService.RemoveByPrefixAsync(STUDENT_LIST_PREFIX),
+            _cacheService.RemoveByPrefixAsync(CLASS_ENROLLMENT_PREFIX)
+        };
+
+            // Xóa cache hồ sơ học sinh
+            var studentCacheKey = _cacheService.GenerateCacheKey("student_profile", studentId.ToString());
+            cacheTasks.Add(_cacheService.RemoveAsync(studentCacheKey));
+            _logger.LogDebug("Đã xóa cache hồ sơ học sinh: {CacheKey}", studentCacheKey);
+
+            // Xóa cache liên quan đến phụ huynh nếu có
+            if (parentId.HasValue)
+            {
+                cacheTasks.Add(_cacheService.RemoveByPrefixAsync(PARENT_LIST_PREFIX));
+                var parentCacheKey = _cacheService.GenerateCacheKey("parent_profile", parentId.Value.ToString());
+                cacheTasks.Add(_cacheService.RemoveAsync(parentCacheKey));
+                _logger.LogDebug("Đã xóa cache hồ sơ phụ huynh: {CacheKey}", parentCacheKey);
+            }
+
+            // Xóa cache tập hợp học sinh
+            cacheTasks.Add(_cacheService.RemoveByPrefixAsync("student_cache_set"));
+            _logger.LogDebug("Đã xóa cache tập hợp học sinh với prefix: {Prefix}", "student_cache_set");
+
+            // Thực hiện tất cả lệnh xóa cache đồng thời
+            await Task.WhenAll(cacheTasks);
+            await InvalidateAllCachesAsync();
+
+            // Làm mới cache người dùng
+            var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>()
+                .GetQueryable()
+                .FirstOrDefaultAsync(u => u.Id == studentId && !u.IsDeleted);
+            if (student != null)
+            {
+                await _authService.InvalidateUserCacheAsync(student.Username, student.Email, student.Id);
+                _logger.LogDebug("Đã làm mới cache người dùng cho học sinh: {StudentId}", studentId);
+            }
+
+            _logger.LogInformation("Đã làm mới tất cả cache liên quan đến học sinh: {StudentId}", studentId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi làm mới cache cho học sinh: {StudentId}", studentId);
         }
     }
 

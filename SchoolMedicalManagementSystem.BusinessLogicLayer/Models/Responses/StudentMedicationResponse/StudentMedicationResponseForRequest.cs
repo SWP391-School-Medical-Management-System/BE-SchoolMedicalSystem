@@ -19,10 +19,11 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
         public QuantityUnitEnum? QuantityUnit { get; set; } // Đơn vị (viên, chai, gói)
         public int QuantityReceived { get; set; }   // Số lượng nhận được
         public StudentMedicationStatus Status { get; set; } // Trạng thái
+        public ReceivedMedication Received { get; set; }
         public MedicationPriority Priority { get; set; } // Ưu tiên
         public string PriorityDisplayName { get; set; }  // Hiển thị tên ưu tiên
         public string Instructions { get; set; }    // Hướng dẫn sử dụng
-        public string Frequency { get; set; }       // Tần suất
+        public int FrequencyCount { get; set; }       // Tần suất
         public string SpecialNotes { get; set; }    // Ghi chú đặc biệt
         public List<string> TimesOfDay { get; set; } // Thời gian trong ngày (danh sách chuỗi)
     }
