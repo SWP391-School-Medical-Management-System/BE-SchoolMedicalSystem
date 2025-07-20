@@ -276,34 +276,43 @@ public class ApplicationDbContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<HealthCheck>()
-            .HasMany(c => c.CheckItems)
-            .WithOne(i => i.HealthCheck)
-            .HasForeignKey(i => i.HealthCheckId)
-            .OnDelete(DeleteBehavior.NoAction);
+            .HasMany(c => c.HealthCheckItemAssignments)
+            .WithOne(h => h.HealthCheck)
+            .HasForeignKey(h => h.HealthCheckId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthCheckItem>()
+            .HasMany(i => i.HealthCheckItemAssignments)
+            .WithOne(h => h.HealthCheckItem)
+            .HasForeignKey(h => h.HealthCheckItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthCheckItemAssignment>()
+            .HasKey(h => new { h.HealthCheckId, h.HealthCheckItemId });
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.Results)
             .WithOne(r => r.HealthCheck)
             .HasForeignKey(r => r.HealthCheckId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.HealthCheckConsents)
             .WithOne(hcc => hcc.HealthCheck)
             .HasForeignKey(hcc => hcc.HealthCheckId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.HealthCheckClasses)
             .WithOne(hcc => hcc.HealthCheck)
             .HasForeignKey(hcc => hcc.HealthCheckId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<HealthCheck>()
             .HasMany(c => c.HealthCheckAssignments)
             .WithOne(hca => hca.HealthCheck)
             .HasForeignKey(hca => hca.HealthCheckId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         #endregion
 

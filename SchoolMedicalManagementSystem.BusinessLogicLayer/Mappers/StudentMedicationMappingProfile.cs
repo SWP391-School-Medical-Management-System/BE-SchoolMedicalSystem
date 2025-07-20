@@ -106,7 +106,16 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.TotalSchedules, opt => opt.MapFrom(src => src.Schedules != null ? src.Schedules.Count(s => !s.IsDeleted) : 0))
                 .ForMember(dest => dest.TotalAdministrations, opt => opt.MapFrom(src => src.Administrations != null ? src.Administrations.Count(a => !a.IsDeleted) : 0))
                 .ForMember(dest => dest.IsExpiringSoon, opt => opt.MapFrom(src => src.ExpiryDate <= DateTime.Today.AddDays(7)))
-                .ForMember(dest => dest.IsLowStock, opt => opt.MapFrom(src => src.RemainingDoses <= src.MinStockThreshold));
+                .ForMember(dest => dest.IsLowStock, opt => opt.MapFrom(src => src.RemainingDoses <= src.MinStockThreshold))
+                .ForMember(dest => dest.QuantitySent, opt => opt.MapFrom(src => src.QuantitySent))
+                .ForMember(dest => dest.QuantityReceive, opt => opt.MapFrom(src => src.QuantityReceive))
+                .ForMember(dest => dest.QuantityUnit, opt => opt.MapFrom(src => src.QuantityUnit.HasValue ? src.QuantityUnit.Value.ToString() : null))
+                .ForMember(dest => dest.FrequencyCount, opt => opt.MapFrom(src => src.FrequencyCount))
+                .ForMember(dest => dest.TimesOfDay, opt => opt.MapFrom(src => GetTimesOfDayDisplayNames(src.TimesOfDay)))
+                .ForMember(dest => dest.StartDate, opt => opt.MapFrom(src => src.StartDate))
+                .ForMember(dest => dest.TotalDateUsage, opt => opt.MapFrom(src => src.TotalDay))
+                .ForMember(dest => dest.Instructions, opt => opt.MapFrom(src => src.ManagementNotes ?? "Không có hướng dẫn"))
+                .ForMember(dest => dest.SpecialNotes, opt => opt.MapFrom(src => src.SpecialNotes ?? "Không có ghi chú"));
 
             CreateMap<StudentMedication, StudentMedicationDetailResponse>()
                 .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => GetStatusDisplayName(src.Status)))
