@@ -12,8 +12,8 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
     {
         public Guid MedicalRecordId { get; set; } // References MedicalRecord (formerly Health_Profiles)
         public Guid? HealthCheckId { get; set; }
-        public decimal LeftEye { get; set; } // e.g., 4.0
-        public decimal RightEye { get; set; } // e.g., 4.0
+        public decimal? LeftEye { get; set; } // e.g., 4.0
+        public decimal? RightEye { get; set; } // e.g., 4.0
         public DateTime CheckDate { get; set; }
         public string? Comments { get; set; } // e.g., Suspected myopia
         public Guid RecordedBy { get; set; } // Medical staff who recorded the data
