@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IBlogCommentRepository, BlogCommentRepository>();
         services.AddScoped<IVaccinationSessionRepository, VaccinationSessionRepository>();
         services.AddScoped<IHealthCheckItemRepository, HealthCheckItemRepository>();
+        services.AddScoped<IHealthCheckRepository, HealthCheckRepository>();
 
         return services;
     }

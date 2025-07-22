@@ -360,6 +360,41 @@ public class ApplicationDbContext : DbContext
 
         #endregion
 
+        #region HealthCheckClass Relationship
+        modelBuilder.Entity<HealthCheckClass>()
+            .HasKey(hcc => hcc.Id);
+
+        modelBuilder.Entity<HealthCheckClass>()
+            .Property(hcc => hcc.HealthCheckId)
+            .IsRequired();
+
+        modelBuilder.Entity<HealthCheckClass>()
+            .Property(hcc => hcc.ClassId)
+            .IsRequired();
+
+        modelBuilder.Entity<HealthCheckClass>()
+            .Property(hcc => hcc.CreatedDate)
+            .IsRequired();
+
+        modelBuilder.Entity<HealthCheckClass>()
+            .Property(hcc => hcc.IsDeleted)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        modelBuilder.Entity<HealthCheckClass>()
+            .HasOne(hcc => hcc.HealthCheck)
+            .WithMany(hc => hc.HealthCheckClasses)
+            .HasForeignKey(hcc => hcc.HealthCheckId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HealthCheckClass>()
+            .HasOne(hcc => hcc.SchoolClass)
+            .WithMany(sc => sc.HealthCheckClasses)
+            .HasForeignKey(hcc => hcc.ClassId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        #endregion
+
         #region HealthEvent Relationships
 
         modelBuilder.Entity<HealthEvent>()
