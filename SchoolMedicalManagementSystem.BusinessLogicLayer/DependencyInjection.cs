@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<IBlogPostService, BlogPostService>();
         services.AddScoped<IVaccinationSessionService, VaccinationSessionService>();
         services.AddScoped<IHealthCheckItemService, HealthCheckItemService>();
+        services.AddScoped<IHealthCheckService, HealthCheckService>();
 
         // Cloudinary
         services.AddScoped<CloudinaryService>();

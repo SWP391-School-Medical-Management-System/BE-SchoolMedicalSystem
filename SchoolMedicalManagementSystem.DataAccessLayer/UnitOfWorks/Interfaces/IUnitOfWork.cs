@@ -21,4 +21,5 @@ public interface IUnitOfWork : IBaseUnitOfWork
     public IVaccinationTypeRepository VaccinationTypeRepository { get; }
     public IVaccinationSessionRepository VaccinationSessionRepository { get; }
     public IHealthCheckItemRepository HealthCheckItemRepository { get; }
+    public IHealthCheckRepository HealthCheckRepository { get; }
 }

@@ -15,6 +15,6 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
 
         public virtual HealthCheck HealthCheck { get; set; }
         public virtual ICollection<HealthCheckItem> HealthCheckItems { get; set; }
-        public virtual ApplicationUser Nurse { get; set; }     
+        public virtual ApplicationUser Nurse { get; set; }
     }
 }

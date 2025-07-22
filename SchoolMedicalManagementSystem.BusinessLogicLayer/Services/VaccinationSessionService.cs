@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.VaccineRecordResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Validators.VaccineSession;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 {
@@ -74,12 +75,12 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         #region CRUD Vaccination Session
 
         public async Task<BaseListResponse<VaccinationSessionResponse>> GetVaccinationSessionsAsync(
-     int pageIndex,
-     int pageSize,
-     string searchTerm,
-     string orderBy,
-     Guid? nurseId = null,
-     CancellationToken cancellationToken = default)
+             int pageIndex,
+             int pageSize,
+             string searchTerm,
+             string orderBy,
+             Guid? nurseId = null,
+             CancellationToken cancellationToken = default)
         {
             try
             {
@@ -601,7 +602,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseResponse<CreateWholeVaccinationSessionResponse>> CreateWholeVaccinationSessionAsync(
-    CreateWholeVaccinationSessionRequest model)
+             CreateWholeVaccinationSessionRequest model)
         {
             try
             {
@@ -1241,131 +1242,137 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseResponse<bool>> AssignNurseToSessionAsync(
-    AssignNurseToSessionRequest request,
-    CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                if (request.Assignments == null || !request.Assignments.Any())
+            AssignNurseToSessionRequest request,
+            CancellationToken cancellationToken = default)
                 {
-                    return new BaseResponse<bool>
+                    try
                     {
-                        Success = false,
-                        Message = "Danh sách phân công không được rỗng."
-                    };
-                }
+                        if (request.Assignments == null || !request.Assignments.Any())
+                        {
+                            return new BaseResponse<bool>
+                            {
+                                Success = false,
+                                Message = "Danh sách phân công không được rỗng."
+                            };
+                        }
 
-                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
-                {
-                    var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
-                        .FirstOrDefaultAsync(s => s.Id == request.SessionId && !s.IsDeleted, cancellationToken);
+                        return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                        {
+                            var session = await _unitOfWork.GetRepositoryByEntity<VaccinationSession>().GetQueryable()
+                                .FirstOrDefaultAsync(s => s.Id == request.SessionId && !s.IsDeleted, cancellationToken);
 
-                    if (session == null)
+                            if (session == null)
+                            {
+                                return new BaseResponse<bool>
+                                {
+                                    Success = false,
+                                    Message = "Buổi tiêm không tồn tại."
+                                };
+                            }
+
+                            if (session.Status != "WaitingForParentConsent" && session.Status != "Scheduled")
+                            {
+                                _logger.LogWarning("Buổi tiêm {VaccinationSessionId} không ở trạng thái hợp lệ để phân công y tá (Status: {Status})", request.SessionId, session.Status);
+                                return BaseResponse<bool>.ErrorResult("Buổi tiêm không ở trạng thái hợp lệ để phân công y tá (phải là WaitingForParentConsent hoặc Scheduled).");
+                            }
+
+                            // Lấy tất cả các phân công hiện tại
+                            var existingAssignments = await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().GetQueryable()
+                                .Where(a => a.SessionId == request.SessionId && !a.IsDeleted)
+                                .ToListAsync(cancellationToken);
+
+                            foreach (var assignmentRequest in request.Assignments)
+                            {
+                                var classExists = await _unitOfWork.GetRepositoryByEntity<VaccinationSessionClass>().GetQueryable()
+                                    .AnyAsync(vsc => vsc.SessionId == request.SessionId && vsc.ClassId == assignmentRequest.ClassId && !vsc.IsDeleted, cancellationToken);
+
+                                if (!classExists)
+                                {
+                                    return new BaseResponse<bool>
+                                    {
+                                        Success = false,
+                                        Message = $"Lớp học {assignmentRequest.ClassId} không thuộc buổi tiêm này."
+                                    };
+                                }
+
+                                var nurse = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                                    .FirstOrDefaultAsync(u => u.Id == assignmentRequest.NurseId &&
+                                                          u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") &&
+                                                          !u.IsDeleted, cancellationToken);
+
+                                if (nurse == null)
+                                {
+                                    return new BaseResponse<bool>
+                                    {
+                                        Success = false,
+                                        Message = $"Y tá {assignmentRequest.NurseId} không tồn tại hoặc không có vai SCHOOLNURSE."
+                                    };
+                                }
+
+                                // Kiểm tra và cập nhật hoặc thêm phân công
+                                var existingAssignment = existingAssignments.FirstOrDefault(a => a.ClassId == assignmentRequest.ClassId);
+                                if (existingAssignment != null)
+                                {
+                                    // Cập nhật phân công hiện tại
+                                    existingAssignment.NurseId = assignmentRequest.NurseId;
+                                    existingAssignment.AssignedDate = DateTime.UtcNow;
+                                    existingAssignment.LastUpdatedDate = DateTime.UtcNow;
+                                    await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().UpdateAsync(existingAssignment);
+                                }
+                                else
+                                {
+                                    // Thêm phân công mới
+                                    var newAssignment = new VaccinationAssignment
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        SessionId = request.SessionId,
+                                        ClassId = assignmentRequest.ClassId,
+                                        NurseId = assignmentRequest.NurseId,
+                                        AssignedDate = DateTime.UtcNow,
+                                        CreatedDate = DateTime.UtcNow,
+                                        IsDeleted = false
+                                    };
+                                    await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().AddAsync(newAssignment);
+                                }
+
+                                _logger.LogInformation("Phân công y tá {NurseId} cho lớp {ClassId} trong buổi tiêm {SessionId}",
+                                    assignmentRequest.NurseId, assignmentRequest.ClassId, request.SessionId);
+                            }
+
+                            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                            // Xóa cache cụ thể
+                            var sessionCacheKey = _cacheService.GenerateCacheKey("session_detail", request.SessionId.ToString());
+                            await _cacheService.RemoveAsync(sessionCacheKey);
+                            _logger.LogDebug("Đã xóa cache cụ thể cho session detail: {CacheKey}", sessionCacheKey);
+                            await _cacheService.RemoveByPrefixAsync(SESSION_LIST_PREFIX);
+                            _logger.LogDebug("Đã xóa cache danh sách sessions với prefix: {Prefix}", SESSION_LIST_PREFIX);
+                            var nurseAssignmentCacheKey = _cacheService.GenerateCacheKey("nurse_assignment_status", request.SessionId.ToString());
+                            await _cacheService.RemoveAsync(nurseAssignmentCacheKey);
+                            _logger.LogDebug("Đã xóa cache nurse assignment statuses: {CacheKey}", nurseAssignmentCacheKey);
+
+                            await InvalidateAllCachesAsync();
+
+                            return new BaseResponse<bool>
+                            {
+                                Success = true,
+                                Data = true,
+                                Message = "Phân công y tá cho tất cả các lớp thành công."
+                            };
+                        }, cancellationToken);
+                    }
+                    catch (Exception ex)
                     {
+                        _logger.LogError(ex, "Lỗi khi phân công y tá cho buổi tiêm {SessionId}. InnerException: {InnerException}",
+                            request.SessionId, ex.InnerException?.ToString() ?? "Không có InnerException");
                         return new BaseResponse<bool>
                         {
                             Success = false,
-                            Message = "Buổi tiêm không tồn tại."
+                            Data = false,
+                            Message = $"Lỗi khi phân công y tá: {ex.Message}"
                         };
                     }
-
-                    // Lấy tất cả các phân công hiện tại
-                    var existingAssignments = await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().GetQueryable()
-                        .Where(a => a.SessionId == request.SessionId && !a.IsDeleted)
-                        .ToListAsync(cancellationToken);
-
-                    foreach (var assignmentRequest in request.Assignments)
-                    {
-                        var classExists = await _unitOfWork.GetRepositoryByEntity<VaccinationSessionClass>().GetQueryable()
-                            .AnyAsync(vsc => vsc.SessionId == request.SessionId && vsc.ClassId == assignmentRequest.ClassId && !vsc.IsDeleted, cancellationToken);
-
-                        if (!classExists)
-                        {
-                            return new BaseResponse<bool>
-                            {
-                                Success = false,
-                                Message = $"Lớp học {assignmentRequest.ClassId} không thuộc buổi tiêm này."
-                            };
-                        }
-
-                        var nurse = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                            .FirstOrDefaultAsync(u => u.Id == assignmentRequest.NurseId &&
-                                                  u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") &&
-                                                  !u.IsDeleted, cancellationToken);
-
-                        if (nurse == null)
-                        {
-                            return new BaseResponse<bool>
-                            {
-                                Success = false,
-                                Message = $"Y tá {assignmentRequest.NurseId} không tồn tại hoặc không có vai SCHOOLNURSE."
-                            };
-                        }
-
-                        // Kiểm tra và cập nhật hoặc thêm phân công
-                        var existingAssignment = existingAssignments.FirstOrDefault(a => a.ClassId == assignmentRequest.ClassId);
-                        if (existingAssignment != null)
-                        {
-                            // Cập nhật phân công hiện tại
-                            existingAssignment.NurseId = assignmentRequest.NurseId;
-                            existingAssignment.AssignedDate = DateTime.UtcNow;
-                            existingAssignment.LastUpdatedDate = DateTime.UtcNow;
-                            await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().UpdateAsync(existingAssignment);
-                        }
-                        else
-                        {
-                            // Thêm phân công mới
-                            var newAssignment = new VaccinationAssignment
-                            {
-                                Id = Guid.NewGuid(),
-                                SessionId = request.SessionId,
-                                ClassId = assignmentRequest.ClassId,
-                                NurseId = assignmentRequest.NurseId,
-                                AssignedDate = DateTime.UtcNow,
-                                CreatedDate = DateTime.UtcNow,
-                                IsDeleted = false
-                            };
-                            await _unitOfWork.GetRepositoryByEntity<VaccinationAssignment>().AddAsync(newAssignment);
-                        }
-
-                        _logger.LogInformation("Phân công y tá {NurseId} cho lớp {ClassId} trong buổi tiêm {SessionId}",
-                            assignmentRequest.NurseId, assignmentRequest.ClassId, request.SessionId);
-                    }
-
-                    await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                    // Xóa cache cụ thể
-                    var sessionCacheKey = _cacheService.GenerateCacheKey("session_detail", request.SessionId.ToString());
-                    await _cacheService.RemoveAsync(sessionCacheKey);
-                    _logger.LogDebug("Đã xóa cache cụ thể cho session detail: {CacheKey}", sessionCacheKey);
-                    await _cacheService.RemoveByPrefixAsync(SESSION_LIST_PREFIX);
-                    _logger.LogDebug("Đã xóa cache danh sách sessions với prefix: {Prefix}", SESSION_LIST_PREFIX);
-                    var nurseAssignmentCacheKey = _cacheService.GenerateCacheKey("nurse_assignment_status", request.SessionId.ToString());
-                    await _cacheService.RemoveAsync(nurseAssignmentCacheKey);
-                    _logger.LogDebug("Đã xóa cache nurse assignment statuses: {CacheKey}", nurseAssignmentCacheKey);
-
-                    await InvalidateAllCachesAsync();
-
-                    return new BaseResponse<bool>
-                    {
-                        Success = true,
-                        Data = true,
-                        Message = "Phân công y tá cho tất cả các lớp thành công."
-                    };
-                }, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi phân công y tá cho buổi tiêm {SessionId}. InnerException: {InnerException}",
-                    request.SessionId, ex.InnerException?.ToString() ?? "Không có InnerException");
-                return new BaseResponse<bool>
-                {
-                    Success = false,
-                    Data = false,
-                    Message = $"Lỗi khi phân công y tá: {ex.Message}"
-                };
-            }
-        }
+                }
         public async Task<BaseResponse<bool>> ReassignNurseToSessionAsync(
             Guid sessionId,
             ReAssignNurseToSessionRequest request,
