@@ -12,4 +12,6 @@ public class SchoolClass : BaseEntity
     public virtual ICollection<StudentClass> StudentClasses { get; set; }
     public virtual ICollection<VaccinationSessionClass> VaccinationSessionClasses { get; set; }
     public virtual ICollection<VaccinationAssignment> VaccinationAssignments { get; set; }
+    public virtual ICollection<HealthCheckClass> HealthCheckClasses { get; set; }
+    public virtual ICollection<HealthCheckAssignment> HealthCheckAssignments { get; set; }
 }
