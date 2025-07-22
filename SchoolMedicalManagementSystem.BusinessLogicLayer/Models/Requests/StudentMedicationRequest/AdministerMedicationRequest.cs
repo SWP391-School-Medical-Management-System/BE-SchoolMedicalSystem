@@ -13,6 +13,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.Stude
         public string? DosageUsed { get; set; } // Liều lượng sử dụng (cho Bottle)
         public string? Note { get; set; } // Ghi chú (bắt buộc nếu Skipped hoặc Missed)
         public bool IsMakeupDose { get; set; } // Có phải là liều uống bù không
-        public string? AdministeredTime { get; set; }  // Thời gian uống
+        public DateTime? AdministeredTime { get; set; }  // Thời gian uống
     }
 }

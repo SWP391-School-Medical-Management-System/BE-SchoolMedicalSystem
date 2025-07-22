@@ -34,11 +34,22 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
 
             CreateMap<HealthCheck, HealthCheckResponse>()
                 .ForMember(dest => dest.ClassIds, opt => opt.MapFrom(src => src.HealthCheckClasses.Select(c => c.ClassId).ToList()))
+                .ForMember(dest => dest.ClassNames, opt => opt.MapFrom(src => src.HealthCheckClasses.Select(c => c.SchoolClass != null ? c.SchoolClass.Name : "").ToList()))
                 .ForMember(dest => dest.TotalStudents, opt => opt.Ignore())
                 .ForMember(dest => dest.ApprovedStudents, opt => opt.Ignore());
 
             CreateMap<HealthCheck, CreateWholeHealthCheckResponse>()
                 .ForMember(dest => dest.ClassIds, opt => opt.MapFrom(src => src.HealthCheckClasses.Select(c => c.ClassId).ToList()));
+
+            CreateMap<VisionRecord, VisionRecordResponseHealth>()
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.MedicalRecordId, opt => opt.MapFrom(src => src.MedicalRecordId))
+                .ForMember(dest => dest.HealthCheckId, opt => opt.MapFrom(src => src.HealthCheckId))
+                .ForMember(dest => dest.LeftEye, opt => opt.MapFrom(src => src.LeftEye))
+                .ForMember(dest => dest.RightEye, opt => opt.MapFrom(src => src.RightEye))
+                .ForMember(dest => dest.CheckDate, opt => opt.MapFrom(src => src.CheckDate))
+                .ForMember(dest => dest.Comments, opt => opt.MapFrom(src => src.Comments))
+                .ForMember(dest => dest.RecordedBy, opt => opt.MapFrom(src => src.RecordedBy));
         }
     }
 }

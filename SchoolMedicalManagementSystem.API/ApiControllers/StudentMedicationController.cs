@@ -747,6 +747,39 @@ public class StudentMedicationController : ControllerBase
         }
     }
 
+    [HttpGet("medications/{medicationId}/usage-history")]
+    [Authorize(Roles = "SCHOOLNURSE,ADMIN,MANAGER,PARENT,STUDENT")]
+    public async Task<ActionResult<BaseListResponse<StudentMedicationUsageHistoryResponse>>> GetMedicationUsageHistory(
+        Guid medicationId,
+        [FromQuery] int pageIndex = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null,
+        [FromQuery] StatusUsage? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(
+                    BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                        "Thông tin phân trang không hợp lệ."));
+
+            var result = await _studentMedicationService.GetMedicationUsageHistoryAsync(
+                medicationId, pageIndex, pageSize, fromDate, toDate, status, cancellationToken);
+
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting medication usage history: {MedicationId}", medicationId);
+            return StatusCode(500, BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
     #endregion
 }
 

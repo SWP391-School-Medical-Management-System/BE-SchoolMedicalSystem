@@ -1910,7 +1910,7 @@ public class StudentMedicationService : IStudentMedicationService
             if ((request.Status == StatusUsage.Skipped || request.Status == StatusUsage.Missed) && string.IsNullOrEmpty(request.Note))
                 return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Ghi chú là bắt buộc khi thuốc không được sử dụng.");
 
-            // Phân tích TimesOfDay (chuỗi JSON sang List<string>)
+            // Phân tích TimesOfDay
             List<string> timesOfDay = new List<string>();
             if (!string.IsNullOrEmpty(medication.TimesOfDay))
             {
@@ -1920,47 +1920,48 @@ public class StudentMedicationService : IStudentMedicationService
                     if (timesOfDay == null || timesOfDay.Any(t => string.IsNullOrEmpty(t)))
                     {
                         _logger.LogWarning("TimesOfDay không hợp lệ hoặc chứa giá trị rỗng: {TimesOfDay} cho thuốc {MedicationId}", medication.TimesOfDay, medicationId);
-                        timesOfDay = new List<string> { "Buổi sáng" }; // Giá trị mặc định
+                        timesOfDay = new List<string> { "Morning" };
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Lỗi khi phân tích TimesOfDay: {TimesOfDay} cho thuốc {MedicationId}", medication.TimesOfDay, medicationId);
-                    timesOfDay = new List<string> { "Buổi sáng" }; // Giá trị mặc định
-                    _logger.LogInformation("Sử dụng TimesOfDay mặc định: [\"Buổi sáng\"] cho thuốc {MedicationId}", medicationId);
+                    timesOfDay = new List<string> { "Morning" };
+                    _logger.LogInformation("Sử dụng TimesOfDay mặc định: [\"Morning\"] cho thuốc {MedicationId}", medicationId);
                 }
             }
             else
             {
-                _logger.LogInformation("TimesOfDay rỗng, sử dụng giá trị mặc định: [\"Buổi sáng\"] cho thuốc {MedicationId}", medicationId);
-                timesOfDay = new List<string> { "Buổi sáng" }; // Giá trị mặc định
+                _logger.LogInformation("TimesOfDay rỗng, sử dụng giá trị mặc định: [\"Morning\"] cho thuốc {MedicationId}", medicationId);
+                timesOfDay = new List<string> { "Morning" };
             }
 
-            // Tính số liều mỗi ngày dựa trên FrequencyCount
+            // Tính số liều mỗi ngày
             int dosesPerDay = medication.FrequencyCount ?? 1;
             if (dosesPerDay <= 0)
                 return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Số lần uống thuốc mỗi ngày không hợp lệ.");
 
-            // Kiểm tra và chuyển đổi AdministeredTime
+            // Xử lý AdministeredTime và AdministeredPeriod
             DateTime? administeredTime = null;
+            string? administeredPeriod = null;
             bool isMakeupDose = request.IsMakeupDose;
-            if (request.Status == StatusUsage.Used && !string.IsNullOrEmpty(request.AdministeredTime))
+            if (request.Status == StatusUsage.Used && request.AdministeredTime.HasValue)
             {
-                if (!TimeSpan.TryParse(request.AdministeredTime, out var time))
-                    return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Giờ uống thuốc không đúng định dạng (HH:mm, ví dụ: 08:15).");
+                // Chuyển đổi sang múi giờ Việt Nam (+7)
+                var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                administeredTime = TimeZoneInfo.ConvertTimeFromUtc(request.AdministeredTime.Value.ToUniversalTime(), vietnamTimeZone);
 
-                // Kết hợp thời gian với ngày hiện tại
-                var currentDate = DateTime.Today;
-                administeredTime = currentDate.Add(time);
+                // Xác định AdministeredPeriod
+                administeredPeriod = GetAdministeredPeriod(administeredTime.Value);
 
-                // Ghi log nếu thời gian không nằm trong TimesOfDay, nhưng không tự động đặt isMakeupDose
+                // Kiểm tra thời gian có nằm trong TimesOfDay
                 if (timesOfDay.Any())
                 {
                     bool isValidTime = false;
                     foreach (var timeOfDay in timesOfDay)
                     {
                         var (start, end) = GetTimeRange(timeOfDay);
-                        if (time >= start && time <= end)
+                        if (administeredTime.Value.TimeOfDay >= start && administeredTime.Value.TimeOfDay <= end)
                         {
                             isValidTime = true;
                             break;
@@ -1968,64 +1969,82 @@ public class StudentMedicationService : IStudentMedicationService
                     }
                     if (!isValidTime)
                     {
-                        _logger.LogInformation("Giờ uống thuốc {AdministeredTime} không nằm trong khung giờ {TimesOfDay}, nhưng vẫn được ghi nhận vì chưa vượt quá số lần uống.", request.AdministeredTime, string.Join(", ", timesOfDay));
+                        _logger.LogInformation("Giờ uống thuốc {AdministeredTime} không nằm trong khung giờ {TimesOfDay}, nhưng vẫn được ghi nhận.", administeredTime, string.Join(", ", timesOfDay));
                     }
                 }
             }
 
-            // Kiểm tra số lần uống trong ngày
+            // Đếm số liều đã uống trong ngày (không bao gồm liều bù)
             var usageCountToday = medication.UsageHistory
-                .Count(uh => uh.UsageDate.HasValue && uh.UsageDate.Value.Date == DateTime.Today && uh.Status == StatusUsage.Used && !uh.IsDeleted);
+                .Count(uh => uh.UsageDate.HasValue &&
+                             uh.UsageDate.Value.Date == DateTime.Today &&
+                             uh.Status == StatusUsage.Used &&
+                             !uh.IsDeleted);
 
+            // Kiểm tra giới hạn liều trong ngày (chỉ áp dụng với liều thường, không áp dụng với liều bù)
             if (request.Status == StatusUsage.Used && !isMakeupDose && usageCountToday >= dosesPerDay)
-                return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Học sinh đã uống đủ {dosesPerDay} liều cho hôm nay rồi. Vui lòng xác nhận liều bù bằng cách đặt isMakeupDose = true.");
+            {
+                return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                    $"Học sinh đã uống đủ {dosesPerDay} liều cho hôm nay rồi. " +
+                    $"Vui lòng xác nhận liều bù bằng cách đặt isMakeupDose = true.");
+            }
 
-            // Kiểm tra tổng số viên uống trong ngày
+            // Kiểm tra tổng số viên uống trong ngày (bao gồm cả liều bù)
             int totalDosageUsedToday = medication.UsageHistory
-                .Where(uh => uh.UsageDate.HasValue && uh.UsageDate.Value.Date == DateTime.Today && uh.Status == StatusUsage.Used && !uh.IsDeleted)
-                .Sum(uh =>
-                {
-                    if (!string.IsNullOrEmpty(uh.DosageUse))
-                    {
-                        var parts = uh.DosageUse.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                        if (parts.Length > 0 && int.TryParse(parts[0], out int quantity))
-                            return quantity;
-                    }
-                    return 0;
-                });
+                .Where(uh => uh.UsageDate.HasValue &&
+                             uh.UsageDate.Value.Date == DateTime.Today &&
+                             uh.Status == StatusUsage.Used &&
+                             !uh.IsDeleted)
+                .Sum(uh => GetDosageQuantity(uh.DosageUse));
 
-            int maxDosagePerDay = medication.QuantitySent / medication.TotalDay; // Số viên tối đa mỗi ngày
-            int dosageQuantity = 1;
+            // Tính toán liều lượng cho lần uống này
+            int dosageQuantity = GetDosageQuantity(request.DosageUsed);
+            int currentDosageQuantity = dosageQuantity == 0 ? 1 : dosageQuantity;
             int prescribedDosageQuantity = 1;
 
             if (request.Status == StatusUsage.Used)
             {
-                // Lấy số từ Dosage của StudentMedication
+                // Validate prescribed dosage
                 if (!string.IsNullOrEmpty(medication.Dosage))
                 {
-                    var parts = medication.Dosage.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length == 0 || !int.TryParse(parts[0], out prescribedDosageQuantity) || prescribedDosageQuantity <= 0)
+                    prescribedDosageQuantity = GetDosageQuantity(medication.Dosage);
+                    if (prescribedDosageQuantity <= 0)
                     {
                         _logger.LogWarning("Liều lượng không hợp lệ trong StudentMedication: {Dosage} cho thuốc {MedicationId}", medication.Dosage, medicationId);
                         return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Liều lượng trong StudentMedication không hợp lệ.");
                     }
                 }
 
-                // Kiểm tra DosageUsed
+                // Validate dosage used matches prescribed dosage
                 if (!string.IsNullOrEmpty(request.DosageUsed))
                 {
-                    var parts = request.DosageUsed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length == 0 || !int.TryParse(parts[0], out dosageQuantity) || dosageQuantity <= 0)
+                    if (currentDosageQuantity <= 0)
                         return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Liều lượng sử dụng không hợp lệ. Vui lòng nhập theo định dạng: 'số + khoảng trắng + đơn vị' (VD: '1 viên').");
 
-                    // Kiểm tra DosageUsed khớp với Dosage
-                    if (dosageQuantity != prescribedDosageQuantity)
+                    if (currentDosageQuantity != prescribedDosageQuantity)
                         return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Liều lượng sử dụng không hợp lệ. Phải khớp với liều lượng quy định: {medication.Dosage}.");
                 }
+                else
+                {
+                    // If no dosage used provided, use prescribed dosage
+                    currentDosageQuantity = prescribedDosageQuantity;
+                }
 
-                // Kiểm tra tổng số viên uống trong ngày (bao gồm cả liều bù)
-                if (totalDosageUsedToday + dosageQuantity > maxDosagePerDay)
-                    return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Tổng số viên uống trong ngày vượt quá giới hạn: {maxDosagePerDay} viên/ngày, đã uống: {totalDosageUsedToday} viên.");
+                // Kiểm tra có vượt quá tổng số viên trong ngày không
+                int maxDosagePerDay = medication.QuantitySent / medication.TotalDay;
+                if (!isMakeupDose && totalDosageUsedToday + currentDosageQuantity > maxDosagePerDay)
+                {
+                    return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                        $"Không thể uống liều thường. Tổng số viên trong ngày sẽ vượt quá giới hạn " +
+                        $"({totalDosageUsedToday + currentDosageQuantity}/{maxDosagePerDay} viên).");
+                }
+            }
+
+            // Nếu là liều bù, ghi log hoặc xử lý đặc biệt
+            if (isMakeupDose)
+            {
+                _logger.LogInformation("Học sinh uống liều bù. Tổng số liều hôm nay: {TotalDoses} cho thuốc {MedicationId}",
+                    usageCountToday + 1, medicationId);
             }
 
             var schoolNurseRoleName = await GetSchoolNurseRoleName();
@@ -2037,6 +2056,7 @@ public class StudentMedicationService : IStudentMedicationService
                 StudentId = medication.StudentId,
                 UsageDate = DateTime.Now,
                 AdministeredTime = request.Status == StatusUsage.Used ? administeredTime : null,
+                AdministeredPeriod = request.Status == StatusUsage.Used ? administeredPeriod : null,
                 DosageUse = request.DosageUsed ?? medication.Dosage,
                 Status = request.Status,
                 Reason = isMakeupDose ? "Liều uống bù" : null,
@@ -2051,13 +2071,13 @@ public class StudentMedicationService : IStudentMedicationService
             {
                 if (medication.QuantityUnit == QuantityUnitEnum.Tablet || medication.QuantityUnit == QuantityUnitEnum.Pack)
                 {
-                    if (medication.QuantityReceive >= dosageQuantity)
+                    if (medication.QuantityReceive >= currentDosageQuantity)
                     {
-                        medication.QuantityReceive -= dosageQuantity;
+                        medication.QuantityReceive -= currentDosageQuantity;
                         medicationRepo.Update(medication);
                     }
                     else
-                        return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Không đủ thuốc trong kho. Yêu cầu: {dosageQuantity}, Còn lại: {medication.QuantityReceive}.");
+                        return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Không đủ thuốc trong kho. Yêu cầu: {currentDosageQuantity}, Còn lại: {medication.QuantityReceive}.");
                 }
                 else if (medication.QuantityUnit == QuantityUnitEnum.Bottle)
                 {
@@ -2100,6 +2120,8 @@ public class StudentMedicationService : IStudentMedicationService
             return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Lỗi ghi nhận việc sử dụng thuốc: {ex.Message}");
         }
     }
+
+
 
     public async Task<BaseListResponse<MedicationStockResponse>> GetMedicationStockByIdForNurseAsync
     (
@@ -2180,9 +2202,33 @@ public class StudentMedicationService : IStudentMedicationService
         }
     }
 
+
+
     #endregion
 
     #region Helper Methods
+
+    private int GetDosageQuantity(string dosageUse)
+    {
+        if (string.IsNullOrEmpty(dosageUse))
+            return 1; // Default quantity
+
+        var parts = dosageUse.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > 0 && int.TryParse(parts[0], out int quantity) && quantity > 0)
+            return quantity;
+
+        return 1; // Default quantity if parsing fails
+    }
+
+    private string GetAdministeredPeriod(DateTime administeredTime)
+    {
+        var hour = administeredTime.Hour;
+        if (hour >= 6 && hour < 11) return "Buổi sáng";
+        if (hour >= 11 && hour < 14) return "Buổi trưa";
+        if (hour >= 14 && hour < 18) return "Buổi chiều";
+        if (hour >= 18 && hour < 22) return "Buổi tối";
+        return "Khuya";
+    }
 
     private async Task<string> GenerateStudentMedicationCodeAsync()
     {
@@ -3256,6 +3302,155 @@ public class StudentMedicationService : IStudentMedicationService
             _logger.LogError(ex, "Error retrieving medication usage history for student {StudentId}", studentId);
             return BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
                 "Lỗi lấy lịch sử sử dụng thuốc của học sinh.");
+        }
+    }
+
+    public async Task<BaseListResponse<StudentMedicationUsageHistoryResponse>> GetMedicationUsageHistoryAsync(
+    Guid studentMedicationId,
+    int pageIndex,
+    int pageSize,
+    DateTime? fromDate = null,
+    DateTime? toDate = null,
+    StatusUsage? status = null,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == Guid.Empty)
+            {
+                return BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                    "Không thể xác định người dùng hiện tại.");
+            }
+
+            // Validate medication exists
+            var medication = await _unitOfWork.GetRepositoryByEntity<StudentMedication>()
+                .GetQueryable()
+                .Include(sm => sm.Student)
+                    .ThenInclude(s => s.StudentClasses)
+                        .ThenInclude(sc => sc.SchoolClass)
+                .Where(sm => sm.Id == studentMedicationId && !sm.IsDeleted)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (medication == null)
+            {
+                return BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                    "Không tìm thấy thuốc học sinh.");
+            }
+
+            // Validate access permission
+            var currentUser = await GetCurrentUserWithRoles();
+            if (currentUser == null)
+            {
+                return BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                    "Không thể xác định quyền của người dùng.");
+            }
+
+            var userRoles = currentUser.UserRoles.Select(ur => ur.Role.Name.ToUpper()).ToList();
+            if (!userRoles.Any(role => new[] { "SCHOOLNURSE", "ADMIN", "MANAGER" }.Contains(role)) &&
+                currentUser.Id != medication.StudentId && currentUser.Id != medication.ParentId)
+            {
+                return BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                    "Bạn không có quyền xem lịch sử sử dụng thuốc này.");
+            }
+
+            // Generate cache key
+            var cacheKey = _cacheService.GenerateCacheKey(
+                MEDICATION_LIST_PREFIX,
+                "medication_usage_history",
+                studentMedicationId.ToString(),
+                pageIndex.ToString(),
+                pageSize.ToString(),
+                fromDate?.ToString("yyyy-MM-dd") ?? "",
+                toDate?.ToString("yyyy-MM-dd") ?? "",
+                status?.ToString() ?? "");
+
+            // Check cache
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<StudentMedicationUsageHistoryResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                _logger.LogDebug("Cache hit for medication usage history: {StudentMedicationId}", studentMedicationId);
+                return cachedResult;
+            }
+
+            // Build query
+            var query = _unitOfWork.GetRepositoryByEntity<StudentMedicationUsageHistory>()
+                .GetQueryable()
+                .Include(uh => uh.StudentMedication)
+                    .ThenInclude(sm => sm.Student)
+                        .ThenInclude(s => s.StudentClasses)
+                            .ThenInclude(sc => sc.SchoolClass)
+                .Include(uh => uh.Nurse)
+                .Where(uh => uh.StudentMedicationId == studentMedicationId && !uh.IsDeleted);
+
+            // Apply filters
+            if (fromDate.HasValue)
+            {
+                query = query.Where(uh => uh.UsageDate >= fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                query = query.Where(uh => uh.UsageDate <= toDate.Value.AddDays(1));
+            }
+
+            if (status.HasValue)
+            {
+                query = query.Where(uh => uh.Status == status.Value);
+            }
+
+            // Order by usage date descending
+            query = query.OrderByDescending(uh => uh.UsageDate);
+
+            // Get total count and paginated results
+            var totalCount = await query.CountAsync(cancellationToken);
+            var usageHistory = await query
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            // Map to response model
+            var responses = _mapper.Map<List<StudentMedicationUsageHistoryResponse>>(usageHistory);
+
+            foreach (var response in responses)
+            {
+                var history = usageHistory.FirstOrDefault(uh => uh.Id == response.Id);
+                if (history?.StudentMedication?.Student != null)
+                {
+                    response.StudentName = history.StudentMedication.Student.FullName;
+                    response.StudentCode = history.StudentMedication.Student.StudentCode;
+                    // Lấy ClassName từ SchoolClass thông qua StudentClasses
+                    response.ClassName = history.StudentMedication.Student.StudentClasses
+                        .FirstOrDefault()?.SchoolClass?.Name ?? "";
+                    response.MedicationName = history.StudentMedication.MedicationName;
+                    response.DosageUse = history.DosageUse;
+                    response.UsageDate = history.UsageDate;
+                    response.AdministeredTime = history.UsageDate;
+                    response.AdministeredPeriod = history.AdministeredPeriod;
+                    response.Status = history.Status;
+                    response.StatusDisplayName = history.Status.ToString();
+                    response.AdministeredByName = history.Nurse != null ? history.Nurse.FullName : "";
+                    response.Note = history.Note;
+                    response.QuantityReceive = history.StudentMedication.QuantityReceive;
+                }
+            }
+
+            // Create success response
+            var result = BaseListResponse<StudentMedicationUsageHistoryResponse>.SuccessResult(
+                responses, totalCount, pageSize, pageIndex,
+                "Lấy lịch sử sử dụng thuốc thành công.");
+
+            // Cache the result
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
+            await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving medication usage history for medication {StudentMedicationId}", studentMedicationId);
+            return BaseListResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                "Lỗi lấy lịch sử sử dụng thuốc.");
         }
     }
 

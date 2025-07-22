@@ -19,6 +19,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Heal
         public string Status { get; set; }
         public string Notes { get; set; }
         public List<Guid> ClassIds { get; set; } // Thay Classes bằng ClassIds
+        public List<string> ClassNames { get; set; }
         public int ApprovedStudents { get; set; }
         public int TotalStudents { get; set; }
     }

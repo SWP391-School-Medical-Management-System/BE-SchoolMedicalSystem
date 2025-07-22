@@ -156,4 +156,13 @@ public interface IStudentMedicationService
         StatusUsage? status = null,
         CancellationToken cancellationToken = default);
 
+    Task<BaseListResponse<StudentMedicationUsageHistoryResponse>> GetMedicationUsageHistoryAsync(
+        Guid studentMedicationId,
+        int pageIndex,
+        int pageSize,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        StatusUsage? status = null,
+        CancellationToken cancellationToken = default);
+
 }

@@ -14,6 +14,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
         public Guid StudentId { get; set; }
         public string StudentName { get; set; }
         public string StudentCode { get; set; }
+        public string ClassName { get; set; }
         public DateTime? UsageDate { get; set; }
         public string DosageUse { get; set; }
         public StatusUsage Status { get; set; }
@@ -26,5 +27,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
         public int QuantityReceive { get; set; } // Số lượng thuốc còn lại      
         public string MedicationName { get; set; }
         public DateTime? AdministeredTime { get; set; }
+        public string? AdministeredPeriod { get; set; }
     }
 }
