@@ -145,7 +145,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.ParentName, opt => opt.MapFrom(src => src.Parent != null ? src.Parent.FullName : ""))
                 .ForMember(dest => dest.ApprovedByName, opt => opt.MapFrom(src => src.ApprovedBy != null ? src.ApprovedBy.FullName : null))
                 .ForMember(dest => dest.FrequencyCount, opt => opt.MapFrom(src => src.FrequencyCount))
-                .ForMember(dest => dest.Received, opt => opt.MapFrom(src => src.Received));
+                .ForMember(dest => dest.RequestId, opt => opt.MapFrom(src => src.StudentMedicationRequestId == Guid.Empty ? (Guid?)null : src.StudentMedicationRequestId));
 
             CreateMap<StudentMedication, ParentMedicationResponse>()
                 .ForMember(dest => dest.StatusDisplayName, opt => opt.MapFrom(src => GetStatusDisplayName(src.Status)))
@@ -333,7 +333,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.MedicationName, opt => opt.MapFrom(src => src.StudentMedication != null ? src.StudentMedication.MedicationName : ""))
                 .ForMember(dest => dest.StudentName, opt => opt.MapFrom(src => src.Student != null ? src.Student.FullName : ""))
-                .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""));
+                .ForMember(dest => dest.StudentCode, opt => opt.MapFrom(src => src.Student != null ? src.Student.StudentCode : ""))
+                .ForMember(dest => dest.AdministeredPeriod, opt => opt.MapFrom(src => src.AdministeredPeriod));
         }
 
         #region Helper Methods

@@ -25,6 +25,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Heal
         public int PendingConsents { get; set; }
         public int DeclinedConsents { get; set; }
         public List<ItemNurseAssignmentHealthCheck> ItemNurseAssignments { get; set; }
+        public List<HealthCheckItemResponseDetail> HealthCheckItems { get; set; }
     }
 
     public class ItemNurseAssignmentHealthCheck
@@ -33,6 +34,14 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Heal
         public string HealthCheckItemName { get; set; }
         public Guid? NurseId { get; set; }
         public string NurseName { get; set; }
+    }
+
+    public class HealthCheckItemResponseDetail
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public string Category { get; set; }
     }
 
 }

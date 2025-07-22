@@ -1047,8 +1047,8 @@ public class MedicalRecordService : IMedicalRecordService
                 .OrderByDescending(vr => vr.CheckDate)
                 .Select(vr => new VisionRecordResponse
                 {
-                    LeftEye = vr.LeftEye,
-                    RightEye = vr.RightEye,
+                    LeftEye = (decimal)vr.LeftEye,
+                    RightEye = (decimal)vr.RightEye,
                     CheckDate = vr.CheckDate,
                     Comments = vr.Comments,
                     RecordedBy = vr.RecordedBy
