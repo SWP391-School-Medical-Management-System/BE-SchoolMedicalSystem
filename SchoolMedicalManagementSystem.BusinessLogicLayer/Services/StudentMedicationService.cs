@@ -484,15 +484,28 @@ public class StudentMedicationService : IStudentMedicationService
                     medication.TimesOfDay = JsonSerializer.Serialize(medicationDetails.TimesOfDay);
                 }
 
-                // Kiểm tra và lấy số từ Dosage
-                int dosageQuantity = 1;
-                if (!string.IsNullOrEmpty(medicationDetails.Dosage))
+                // Không kiểm tra định dạng dosage nếu là Bottle
+                if (medication.QuantityUnit == QuantityUnitEnum.Bottle)
                 {
-                    var parts = medicationDetails.Dosage.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length == 0 || !int.TryParse(parts[0], out dosageQuantity) || dosageQuantity <= 0)
+                    medication.TotalDay = int.MaxValue; // Đặt TotalDay là "Future"
+                }
+                else
+                {
+                    // Tính TotalDay cho các đơn vị khác (Tablet, Pack)
+                    int dosageQuantity = 1;
+                    if (!string.IsNullOrEmpty(medicationDetails.Dosage))
                     {
-                        _logger.LogWarning("Liều lượng không hợp lệ: {Dosage} cho thuốc {MedicationId}", medicationDetails.Dosage, medication.Id);
-                        return BaseListResponse<StudentMedicationResponse>.ErrorResult("Liều lượng không hợp lệ. Vui lòng nhập theo định dạng: 'số + khoảng trắng + đơn vị' (VD: '1 viên').");
+                        var parts = medicationDetails.Dosage.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length > 0 && int.TryParse(parts[0], out dosageQuantity) && dosageQuantity > 0)
+                        {
+                            double totalDay = (double)medicationDetails.QuantitySent / (dosageQuantity * (medicationDetails.FrequencyCount ?? 1));
+                            medication.TotalDay = (int)Math.Ceiling(totalDay);
+                        }
+                        else
+                        {
+                            medication.TotalDay = 0;
+                            _logger.LogWarning("Liều lượng không hợp lệ: {Dosage} cho thuốc {MedicationId}", medicationDetails.Dosage, medication.Id);
+                        }
                     }
                 }
 
@@ -503,18 +516,6 @@ public class StudentMedicationService : IStudentMedicationService
                     medicationDetails.FrequencyCount);
                 medication.TotalDoses = totalDoses;
                 medication.RemainingDoses = totalDoses;
-
-                // Tính TotalDay
-                if (medicationDetails.FrequencyCount.HasValue && medicationDetails.FrequencyCount > 0 && dosageQuantity > 0)
-                {
-                    double totalDay = (double)medicationDetails.QuantitySent / (dosageQuantity * medicationDetails.FrequencyCount.Value);
-                    medication.TotalDay = (int)Math.Ceiling(totalDay); 
-                }
-                else
-                {
-                    medication.TotalDay = 0;
-                    _logger.LogWarning("Không thể tính TotalDay do FrequencyCount hoặc Dosage không hợp lệ cho thuốc {MedicationId}", medication.Id);
-                }
 
                 await medicationRepo.AddAsync(medication);
                 medications.Add(medication);
@@ -1878,9 +1879,9 @@ public class StudentMedicationService : IStudentMedicationService
     }
 
     public async Task<BaseResponse<StudentMedicationUsageHistoryResponse>> AdministerMedicationAsync(
-    Guid medicationId,
-    AdministerMedicationRequest request,
-    CancellationToken cancellationToken = default)
+         Guid medicationId,
+         AdministerMedicationRequest request,
+         CancellationToken cancellationToken = default)
     {
         try
         {
@@ -1945,7 +1946,7 @@ public class StudentMedicationService : IStudentMedicationService
             DateTime? administeredTime = null;
             string? administeredPeriod = null;
             bool isMakeupDose = request.IsMakeupDose;
-            if (request.Status == StatusUsage.Used && request.AdministeredTime.HasValue)
+            if (request.AdministeredTime.HasValue) // Kiểm tra cho cả Used, Skipped, Missed
             {
                 // Chuyển đổi sang múi giờ Việt Nam (+7)
                 var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
@@ -1954,8 +1955,8 @@ public class StudentMedicationService : IStudentMedicationService
                 // Xác định AdministeredPeriod
                 administeredPeriod = GetAdministeredPeriod(administeredTime.Value);
 
-                // Kiểm tra thời gian có nằm trong TimesOfDay
-                if (timesOfDay.Any())
+                // Kiểm tra thời gian có nằm trong TimesOfDay (chỉ áp dụng cho Used)
+                if (request.Status == StatusUsage.Used && timesOfDay.Any())
                 {
                     bool isValidTime = false;
                     foreach (var timeOfDay in timesOfDay)
@@ -1989,14 +1990,6 @@ public class StudentMedicationService : IStudentMedicationService
                     $"Vui lòng xác nhận liều bù bằng cách đặt isMakeupDose = true.");
             }
 
-            // Kiểm tra tổng số viên uống trong ngày (bao gồm cả liều bù)
-            int totalDosageUsedToday = medication.UsageHistory
-                .Where(uh => uh.UsageDate.HasValue &&
-                             uh.UsageDate.Value.Date == DateTime.Today &&
-                             uh.Status == StatusUsage.Used &&
-                             !uh.IsDeleted)
-                .Sum(uh => GetDosageQuantity(uh.DosageUse));
-
             // Tính toán liều lượng cho lần uống này
             int dosageQuantity = GetDosageQuantity(request.DosageUsed);
             int currentDosageQuantity = dosageQuantity == 0 ? 1 : dosageQuantity;
@@ -2015,28 +2008,66 @@ public class StudentMedicationService : IStudentMedicationService
                     }
                 }
 
-                // Validate dosage used matches prescribed dosage
+                // Validate dosage used matches prescribed dosage, đặc biệt cho Bottle
                 if (!string.IsNullOrEmpty(request.DosageUsed))
                 {
                     if (currentDosageQuantity <= 0)
                         return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Liều lượng sử dụng không hợp lệ. Vui lòng nhập theo định dạng: 'số + khoảng trắng + đơn vị' (VD: '1 viên').");
 
-                    if (currentDosageQuantity != prescribedDosageQuantity)
-                        return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Liều lượng sử dụng không hợp lệ. Phải khớp với liều lượng quy định: {medication.Dosage}.");
+                    if (medication.QuantityUnit == QuantityUnitEnum.Bottle)
+                    {
+                        // Đối với Bottle, DosageUsed phải khớp với Dosage đã nhập
+                        if (request.DosageUsed != medication.Dosage)
+                        {
+                            return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                                $"Liều lượng sử dụng ({request.DosageUsed}) phải khớp với liều lượng quy định: {medication.Dosage} cho thuốc dạng chai.");
+                        }
+                        // Không trừ QuantityReceive cho Bottle
+                        currentDosageQuantity = prescribedDosageQuantity; // Đảm bảo khớp
+                    }
+                    else
+                    {
+                        // Đối với Tablet hoặc Pack, kiểm tra khớp với liều lượng quy định
+                        if (currentDosageQuantity != prescribedDosageQuantity)
+                            return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Liều lượng sử dụng không hợp lệ. Phải khớp với liều lượng quy định: {medication.Dosage}.");
+                    }
                 }
                 else
                 {
-                    // If no dosage used provided, use prescribed dosage
+                    // Nếu không cung cấp dosage, dùng dosage quy định
                     currentDosageQuantity = prescribedDosageQuantity;
                 }
 
-                // Kiểm tra có vượt quá tổng số viên trong ngày không
-                int maxDosagePerDay = medication.QuantitySent / medication.TotalDay;
-                if (!isMakeupDose && totalDosageUsedToday + currentDosageQuantity > maxDosagePerDay)
+                int totalUsageCountToday = medication.UsageHistory
+                .Count(uh => uh.UsageDate.HasValue &&
+                             uh.UsageDate.Value.Date == DateTime.Today &&
+                             uh.Status == StatusUsage.Used &&
+                             !uh.IsDeleted);
+
+                if (!isMakeupDose && totalUsageCountToday >= dosesPerDay)
                 {
                     return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
-                        $"Không thể uống liều thường. Tổng số viên trong ngày sẽ vượt quá giới hạn " +
-                        $"({totalDosageUsedToday + currentDosageQuantity}/{maxDosagePerDay} viên).");
+                        $"Học sinh đã uống đủ {dosesPerDay} liều cho hôm nay rồi. " +
+                        $"Vui lòng xác nhận liều bù bằng cách đặt isMakeupDose = true.");
+                }
+
+                // Kiểm tra giới hạn liều trong ngày cho Tablet/Pack (không áp dụng cho Bottle)
+                if (medication.QuantityUnit != QuantityUnitEnum.Bottle)
+                {
+                    int maxDosagePerDay = medication.QuantitySent / medication.TotalDay;
+                    int totalDosageUsedToday = medication.UsageHistory
+                        .Where(uh => uh.UsageDate.HasValue &&
+                                     uh.UsageDate.Value.Date == DateTime.Today &&
+                                     uh.Status == StatusUsage.Used &&
+                                     !uh.IsDeleted)
+                        .Sum(uh => GetDosageQuantity(uh.DosageUse));
+
+                    if (!isMakeupDose && totalDosageUsedToday + currentDosageQuantity > maxDosagePerDay)
+                    {
+                        return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
+                            $"Không thể uống liều thường. Tổng số viên trong ngày sẽ vượt quá giới hạn " +
+                            $"({totalDosageUsedToday + currentDosageQuantity}/{maxDosagePerDay} viên).");
+                    }
                 }
             }
 
@@ -2055,8 +2086,8 @@ public class StudentMedicationService : IStudentMedicationService
                 StudentMedicationId = medicationId,
                 StudentId = medication.StudentId,
                 UsageDate = DateTime.Now,
-                AdministeredTime = request.Status == StatusUsage.Used ? administeredTime : null,
-                AdministeredPeriod = request.Status == StatusUsage.Used ? administeredPeriod : null,
+                AdministeredTime = request.AdministeredTime.HasValue ? administeredTime : null, // Lưu AdministeredTime cho cả Used, Skipped, Missed
+                AdministeredPeriod = request.AdministeredTime.HasValue ? administeredPeriod : null, // Lưu AdministeredPeriod cho cả Used, Skipped, Missed
                 DosageUse = request.DosageUsed ?? medication.Dosage,
                 Status = request.Status,
                 Reason = isMakeupDose ? "Liều uống bù" : null,
@@ -2079,13 +2110,9 @@ public class StudentMedicationService : IStudentMedicationService
                     else
                         return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Không đủ thuốc trong kho. Yêu cầu: {currentDosageQuantity}, Còn lại: {medication.QuantityReceive}.");
                 }
-                else if (medication.QuantityUnit == QuantityUnitEnum.Bottle)
-                {
-                    if (string.IsNullOrEmpty(request.DosageUsed))
-                        return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Phải cung cấp liều lượng sử dụng cho thuốc dạng chai.");
-                }
+                // Không trừ QuantityReceive cho Bottle (đã kiểm tra DosageUse ở trên)
 
-                if (medication.QuantityReceive == 0)
+                if (medication.QuantityReceive == 0 && (medication.QuantityUnit == QuantityUnitEnum.Tablet || medication.QuantityUnit == QuantityUnitEnum.Pack))
                 {
                     medication.Status = StudentMedicationStatus.Completed;
                     medication.LastUpdatedBy = schoolNurseRoleName;
@@ -2094,7 +2121,7 @@ public class StudentMedicationService : IStudentMedicationService
                 }
             }
 
-            if (medication.QuantityReceive <= medication.MinStockThreshold && !medication.LowStockAlertSent)
+            if (medication.QuantityReceive <= medication.MinStockThreshold && !medication.LowStockAlertSent && (medication.QuantityUnit == QuantityUnitEnum.Tablet || medication.QuantityUnit == QuantityUnitEnum.Pack))
             {
                 await SendLowStockNotificationAsync(medication);
                 medication.LowStockAlertSent = true;
@@ -2120,8 +2147,6 @@ public class StudentMedicationService : IStudentMedicationService
             return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Lỗi ghi nhận việc sử dụng thuốc: {ex.Message}");
         }
     }
-
-
 
     public async Task<BaseListResponse<MedicationStockResponse>> GetMedicationStockByIdForNurseAsync
     (
@@ -3425,7 +3450,7 @@ public class StudentMedicationService : IStudentMedicationService
                     response.MedicationName = history.StudentMedication.MedicationName;
                     response.DosageUse = history.DosageUse;
                     response.UsageDate = history.UsageDate;
-                    response.AdministeredTime = history.UsageDate;
+                    response.AdministeredTime = history.AdministeredTime;
                     response.AdministeredPeriod = history.AdministeredPeriod;
                     response.Status = history.Status;
                     response.StatusDisplayName = history.Status.ToString();

@@ -33,9 +33,14 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForAllMembers(opt => opt.Condition((src, dest, member) => member != null));
 
             CreateMap<HealthCheck, HealthCheckResponse>()
-                .ForMember(dest => dest.ClassIds, opt => opt.MapFrom(src => src.HealthCheckClasses.Select(c => c.ClassId).ToList()))
-                .ForMember(dest => dest.ClassNames, opt => opt.MapFrom(src => src.HealthCheckClasses.Select(c => c.SchoolClass != null ? c.SchoolClass.Name : "").ToList()))
-                .ForMember(dest => dest.TotalStudents, opt => opt.Ignore())
+                .ForMember(dest => dest.Classes, opt => opt.MapFrom(src => src.HealthCheckClasses
+                    .Select(c => new ClassInfoHealth
+                    {
+                        Id = c.ClassId,
+                        Name = c.SchoolClass != null ? c.SchoolClass.Name : null
+                    })
+                    .Where(c => c.Name != null)
+                    .ToList()))
                 .ForMember(dest => dest.ApprovedStudents, opt => opt.Ignore());
 
             CreateMap<HealthCheck, CreateWholeHealthCheckResponse>()

@@ -109,14 +109,16 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 var totalCount = await query.CountAsync(cancellationToken);
                 var healthChecks = await query.Skip((pageIndex - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
 
-                var responses = healthChecks.Select(hc =>
+                var responses = _mapper.Map<List<HealthCheckResponse>>(healthChecks);
+                foreach (var response in responses)
                 {
-                    var response = _mapper.Map<HealthCheckResponse>(hc);
-                    response.TotalStudents = hc.HealthCheckConsents?.Where(c => !c.IsDeleted).Select(c => c.StudentId).Distinct().Count() ?? 0;
-                    response.ApprovedStudents = hc.HealthCheckConsents?.Where(c => c.Status == "Confirmed" && !c.IsDeleted).Select(c => c.StudentId).Distinct().Count() ?? 0;
-                    response.ClassNames = hc.HealthCheckClasses.Select(hcc => hcc.SchoolClass?.Name ?? "").ToList(); // Thêm ClassNames
-                    return response;
-                }).ToList();
+                    var hc = healthChecks.FirstOrDefault(h => h.Id == response.Id);
+                    if (hc != null)
+                    {
+                        response.ApprovedStudents = hc.HealthCheckConsents.Count(hcs => hcs.Status == "Confirmed" && !hcs.IsDeleted);
+                        response.TotalStudents = hc.HealthCheckConsents.Count(hcs => !hcs.IsDeleted);
+                    }
+                }
 
                 var result = BaseListResponse<HealthCheckResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách buổi khám thành công.");
                 await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
@@ -964,27 +966,42 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .Where(u => u.StudentClasses.Any(sc => classIds.Contains(sc.ClassId)))
                     .ToListAsync(cancellationToken);
 
-                // Tạo danh sách phản hồi
-                var studentStatuses = (from student in students
-                                       join consent in consents on student.Id equals consent.StudentId into gj
-                                       from consent in gj.DefaultIfEmpty()
-                                       select new StudentConsentStatusHealthCheckResponse
-                                       {
-                                           StudentId = student.Id,
-                                           StudentName = student.FullName,
-                                           StudentCode = student.StudentCode ?? "N/A",
-                                           ClassNames = student.StudentClasses
-                                               .Where(sc => classIds.Contains(sc.ClassId))
-                                               .Select(sc => sc.SchoolClass.Name)
-                                               .ToList(),
-                                           Status = consent?.Status ?? "Pending",                                                                             
-                                       }).ToList();
+                // Nhóm học sinh theo lớp
+                var classStudentGroups = from student in students
+                                         from studentClass in student.StudentClasses
+                                         where classIds.Contains(studentClass.ClassId)
+                                         group student by new { studentClass.ClassId, studentClass.SchoolClass.Name } into g
+                                         select new StudentConsentStatusHealthCheckResponse
+                                         {
+                                             ClassId = g.Key.ClassId,
+                                             ClassName = g.Key.Name,
+                                             TotalStudents = g.Count(),
+                                             PendingCount = 0,
+                                             ConfirmedCount = 0,
+                                             DeclinedCount = 0,
+                                             Students = g.Select(student => new StudentConsentDetailHealthResponse
+                                             {
+                                                 StudentId = student.Id,
+                                                 StudentName = student.FullName,
+                                                 Status = consents.FirstOrDefault(c => c.StudentId == student.Id)?.Status ?? "Pending",
+                                                 ResponseDate = consents.FirstOrDefault(c => c.StudentId == student.Id)?.ResponseDate,                                               
+                                             }).ToList()
+                                         };
 
-                // Tính toán thống kê
-                var totalStudents = studentStatuses.Count;
-                var pendingCount = studentStatuses.Count(s => s.Status == "Pending");
-                var confirmedCount = studentStatuses.Count(s => s.Status == "Confirmed");
-                var declinedCount = studentStatuses.Count(s => s.Status == "Declined");
+                // Tính toán thống kê cho mỗi lớp
+                var classResponses = classStudentGroups.ToList();
+                foreach (var classResponse in classResponses)
+                {
+                    classResponse.PendingCount = classResponse.Students.Count(s => s.Status == "Pending");
+                    classResponse.ConfirmedCount = classResponse.Students.Count(s => s.Status == "Confirmed");
+                    classResponse.DeclinedCount = classResponse.Students.Count(s => s.Status == "Declined");
+                }
+
+                // Tính toán tổng thống kê cho toàn bộ buổi khám
+                var totalStudents = classResponses.Sum(cr => cr.TotalStudents);
+                var pendingCount = classResponses.Sum(cr => cr.PendingCount);
+                var confirmedCount = classResponses.Sum(cr => cr.ConfirmedCount);
+                var declinedCount = classResponses.Sum(cr => cr.DeclinedCount);
 
                 // Ghi log
                 _logger.LogInformation("Lấy danh sách học sinh cho buổi khám {HealthCheckId}. Tổng: {Total}, Đang chờ: {Pending}, Đồng ý: {Confirmed}, Từ chối: {Declined}",
@@ -992,9 +1009,9 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                 // Trả về kết quả
                 return BaseListResponse<StudentConsentStatusHealthCheckResponse>.SuccessResult(
-                    studentStatuses,
+                    classResponses,
                     totalStudents,
-                    totalStudents,
+                    classResponses.Count,
                     1,
                     "Lấy danh sách học sinh và trạng thái đồng ý thành công.");
             }
@@ -1002,6 +1019,190 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             {
                 _logger.LogError(ex, "Lỗi khi lấy danh sách học sinh cho buổi khám: {HealthCheckId}", healthCheckId);
                 return BaseListResponse<StudentConsentStatusHealthCheckResponse>.ErrorResult("Lỗi lấy danh sách học sinh và trạng thái đồng ý.");
+            }
+        }
+
+        public async Task<BaseListResponse<HealthCheckNurseAssignmentStatusResponse>> GetHealthCheckNurseAssignmentsAsync(
+            Guid healthCheckId,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var cacheKey = _cacheService.GenerateCacheKey(
+                    "health_check_nurse_assignment_status",
+                    healthCheckId.ToString()
+                );
+
+                //var cachedResult = await _cacheService.GetAsync<BaseListResponse<HealthCheckNurseAssignmentStatusResponse>>(cacheKey);
+                //if (cachedResult != null)
+                //{
+                //    _logger.LogDebug("Health check nurse assignment statuses found in cache with key: {CacheKey}", cacheKey);
+                //    return cachedResult;
+                //}
+
+                var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                    .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted, cancellationToken);
+
+                if (healthCheck == null)
+                {
+                    _logger.LogWarning("Health check not found for id: {Id}", healthCheckId);
+                    return BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.ErrorResult("Buổi khám không tồn tại.");
+                }
+
+                var nurses = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                    .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") && !u.IsDeleted)
+                    .ToListAsync(cancellationToken);
+
+                // Truy vấn HealthCheckAssignment để lấy thông tin phân công y tá
+                var assignments = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                    .Where(a => a.HealthCheckId == healthCheckId && !a.IsDeleted)
+                    .ToListAsync(cancellationToken);
+
+                // Truy vấn HealthCheckItemAssignments để lấy danh sách HealthCheckItem được liên kết với HealthCheck
+                var itemAssignments = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                    .Include(ia => ia.HealthCheckItem)
+                    .Where(ia => ia.HealthCheckId == healthCheckId && !ia.IsDeleted)
+                    .ToListAsync(cancellationToken);
+
+                _logger.LogDebug("Found {AssignmentCount} assignments and {ItemAssignmentCount} item assignments for healthCheckId: {HealthCheckId}",
+                    assignments.Count, itemAssignments.Count, healthCheckId);
+
+                var responses = nurses.Select(nurse =>
+                {
+                    // Kiểm tra xem y tá có được phân công không
+                    var isAssigned = assignments.Any(a => a.NurseId == nurse.Id);
+
+                    // Lấy danh sách HealthCheckItem từ HealthCheckItemAssignments nếu y tá được phân công
+                    var assignedItems = isAssigned
+                        ? itemAssignments.Select(ia => ia.HealthCheckItem).Where(hci => hci != null).ToList()
+                        : new List<HealthCheckItem>();
+
+                    _logger.LogDebug("Nurse {NurseId} has {ItemCount} assigned items", nurse.Id, assignedItems.Count);
+
+                    return new HealthCheckNurseAssignmentStatusResponse
+                    {
+                        NurseId = nurse.Id,
+                        NurseName = nurse.FullName,
+                        IsAssigned = isAssigned,
+                        AssignedHealthCheckItemIds = assignedItems.Select(hci => hci.Id).ToList(),
+                        AssignedHealthCheckItemNames = assignedItems.Select(hci => hci.Name ?? "Chưa phân công").ToList()
+                    };
+                }).ToList();
+
+                var result = BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.SuccessResult(
+                    responses,
+                    responses.Count,
+                    responses.Count,
+                    1,
+                    "Lấy danh sách trạng thái phân công y tá cho buổi khám thành công.");
+
+                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+                await _cacheService.AddToTrackingSetAsync(cacheKey, "health_check_nurse_assignment_status_cache_keys");
+                await InvalidateAllCachesAsync();
+                _logger.LogDebug("Cached health check nurse assignment statuses with key: {CacheKey}", cacheKey);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving health check nurse assignment statuses for id: {Id}", healthCheckId);
+                return BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.ErrorResult("Lỗi lấy trạng thái phân công y tá.");
+            }
+        }
+
+        public async Task<BaseListResponse<HealthCheckResponse>> GetHealthCheckByStudentIdAsync(
+            Guid studentId,
+            int pageIndex,
+            int pageSize,
+            string searchTerm = "",
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                // Kiểm tra phân trang
+                if (pageIndex < 1 || pageSize < 1)
+                {
+                    _logger.LogWarning("Invalid pagination parameters: pageIndex={PageIndex}, pageSize={PageSize}", pageIndex, pageSize);
+                    return BaseListResponse<HealthCheckResponse>.ErrorResult("Thông tin phân trang không hợp lệ.");
+                }
+
+                // Generate cache key
+                var cacheKey = _cacheService.GenerateCacheKey(
+                    "health_check_by_student",
+                    studentId.ToString(),
+                    pageIndex.ToString(),
+                    pageSize.ToString(),
+                    searchTerm);
+
+                // Check cache
+                var cachedResult = await _cacheService.GetAsync<BaseListResponse<HealthCheckResponse>>(cacheKey);
+                if (cachedResult != null)
+                {
+                    _logger.LogDebug("Cache hit for health checks by studentId: {StudentId}", studentId);
+                    return cachedResult;
+                }
+
+                // Build query
+                var query = _unitOfWork.GetRepositoryByEntity<HealthCheck>()
+                    .GetQueryable()
+                    .Include(hc => hc.HealthCheckClasses) // Sửa từ Classes thành HealthCheckClasses
+                        .ThenInclude(hcc => hcc.SchoolClass)
+                    .Include(hc => hc.HealthCheckConsents) // Sử dụng HealthCheckConsents thay vì HealthCheckStudents
+                    .Where(hc => !hc.IsDeleted &&
+                                 hc.HealthCheckConsents.Any(hcs => hcs.StudentId == studentId && !hcs.IsDeleted));
+
+                // Apply search filter
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    searchTerm = searchTerm.Trim().ToLower();
+                    query = query.Where(hc => hc.Title.ToLower().Contains(searchTerm) ||
+                                             hc.Description.ToLower().Contains(searchTerm) ||
+                                             hc.ResponsibleOrganizationName.ToLower().Contains(searchTerm));
+                }
+
+                // Order by ScheduledDate descending
+                query = query.OrderByDescending(hc => hc.ScheduledDate);
+
+                // Get total count
+                var totalCount = await query.CountAsync(cancellationToken);
+
+                // Paginate results
+                var healthChecks = await query
+                    .Skip((pageIndex - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync(cancellationToken);
+
+                // Map to response model
+                var responses = _mapper.Map<List<HealthCheckResponse>>(healthChecks);
+                foreach (var response in responses)
+                {
+                    var hc = healthChecks.FirstOrDefault(h => h.Id == response.Id);
+                    if (hc != null)
+                    {
+                        response.ApprovedStudents = hc.HealthCheckConsents.Count(hcs => hcs.Status == "Confirmed" && !hcs.IsDeleted);
+                        response.TotalStudents = hc.HealthCheckConsents.Count(hcs => !hcs.IsDeleted);
+                    }
+                }
+
+                // Create success response
+                var result = BaseListResponse<HealthCheckResponse>.SuccessResult(
+                    responses,
+                    totalCount,
+                    pageSize,
+                    pageIndex,
+                    "Lấy danh sách buổi khám theo học sinh thành công.");
+
+                // Cache the result
+                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
+                await _cacheService.AddToTrackingSetAsync(cacheKey, "health_check_cache_keys");
+                await InvalidateAllCachesAsync();
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving health checks for studentId: {StudentId}", studentId);
+                return BaseListResponse<HealthCheckResponse>.ErrorResult("Lỗi lấy danh sách buổi khám.");
             }
         }
 
