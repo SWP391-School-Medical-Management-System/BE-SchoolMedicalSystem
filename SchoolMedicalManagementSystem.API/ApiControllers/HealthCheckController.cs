@@ -289,6 +289,52 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             }
         }
 
+        [HttpGet("{healthCheckId}/nurse-assignments")]
+        [Authorize(Roles = "MANAGER")]
+        public async Task<ActionResult<BaseListResponse<HealthCheckNurseAssignmentStatusResponse>>> GetNurseAssignmentsAsync(
+            Guid healthCheckId,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _healthCheckService.GetHealthCheckNurseAssignmentsAsync(healthCheckId, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
+
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<bool>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
+        [HttpGet("student/{studentId}")]
+        [Authorize(Roles = "SCHOOLNURSE, MANAGER, PARENT")]
+        public async Task<ActionResult<BaseListResponse<HealthCheckResponse>>> GetHealthCheckByStudentId(
+            Guid studentId,
+            [FromQuery] int pageIndex = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string searchTerm = "",
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (pageIndex < 1 || pageSize < 1)
+                    return BadRequest(BaseListResponse<HealthCheckResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+
+                var response = await _healthCheckService.GetHealthCheckByStudentIdAsync(studentId, pageIndex, pageSize, searchTerm, cancellationToken);
+                if (!response.Success)
+                    return BadRequest(response);
+
+                return Ok(response);
+            }
+            catch
+            {
+                return StatusCode(500, BaseListResponse<HealthCheckResponse>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
         #region HealthCheck Flow
 
         [HttpPost("{healthCheckId}/vision/left")]
