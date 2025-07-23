@@ -41,6 +41,17 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
             Guid healthCheckId,
             CancellationToken cancellationToken = default);
 
+        Task<BaseListResponse<HealthCheckNurseAssignmentStatusResponse>> GetHealthCheckNurseAssignmentsAsync(
+            Guid id,
+            CancellationToken cancellationToken = default);
+
+        Task<BaseListResponse<HealthCheckResponse>> GetHealthCheckByStudentIdAsync(
+            Guid studentId,
+            int pageIndex,
+            int pageSize,
+            string searchTerm = "",
+            CancellationToken cancellationToken = default);
+
         #region HealthCheck Flow
 
         Task<BaseResponse<VisionRecordResponseHealth>> SaveLeftEyeCheckAsync(
