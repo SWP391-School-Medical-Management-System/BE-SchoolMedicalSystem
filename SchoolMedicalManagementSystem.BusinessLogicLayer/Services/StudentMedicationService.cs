@@ -140,7 +140,7 @@ public class StudentMedicationService : IStudentMedicationService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
-
+            await InvalidateAllCachesAsync();
             return result;
         }
         catch (Exception ex)
@@ -215,7 +215,7 @@ public class StudentMedicationService : IStudentMedicationService
 
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
-
+            await InvalidateAllCachesAsync();
             return response;
         }
         catch (Exception ex)
@@ -309,7 +309,7 @@ public class StudentMedicationService : IStudentMedicationService
             // Cache the result
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
-
+            await InvalidateAllCachesAsync();
             return result;
         }
         catch (Exception ex)
@@ -978,7 +978,7 @@ public class StudentMedicationService : IStudentMedicationService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
-
+            await InvalidateAllCachesAsync();
             return result;
         }
         catch (Exception ex)
@@ -1057,7 +1057,7 @@ public class StudentMedicationService : IStudentMedicationService
 
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
-
+            await InvalidateAllCachesAsync();
             return response;
         }
         catch (Exception ex)
@@ -1555,7 +1555,7 @@ public class StudentMedicationService : IStudentMedicationService
                 "Lấy lịch sử cho uống thuốc thành công.");
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
-
+            await InvalidateAllCachesAsync();
             return result;
         }
         catch (Exception ex)
@@ -3319,6 +3319,7 @@ public class StudentMedicationService : IStudentMedicationService
             // Cache the result
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
+            await InvalidateAllCachesAsync();
 
             return result;
         }
@@ -3468,6 +3469,7 @@ public class StudentMedicationService : IStudentMedicationService
             // Cache the result
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(10));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICATION_CACHE_SET);
+            await InvalidateAllCachesAsync();
 
             return result;
         }

@@ -1294,7 +1294,23 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     }
 
                     var visionRecord = await _unitOfWork.GetRepositoryByEntity<VisionRecord>().GetQueryable()
-                        .FirstOrDefaultAsync(vr => vr.MedicalRecordId == medicalRecord.Id && vr.HealthCheckId == healthCheckId && !vr.IsDeleted, cancellationToken);
+                .FirstOrDefaultAsync(vr => vr.MedicalRecordId == medicalRecord.Id && vr.HealthCheckId == healthCheckId && !vr.IsDeleted, cancellationToken);
+
+                    // Tìm giá trị RightEye từ bản ghi cũ (nếu có) -- THAY ĐỔI
+                    decimal? previousRightEye = null;
+                    if (visionRecord == null) // Chỉ tìm bản ghi cũ nếu không có VisionRecord cho buổi khám hiện tại
+                    {
+                        var previousVisionRecord = await _unitOfWork.GetRepositoryByEntity<VisionRecord>().GetQueryable()
+                            .Where(vr => vr.MedicalRecordId == medicalRecord.Id && !vr.IsDeleted)
+                            .OrderByDescending(vr => vr.CheckDate) // Lấy bản ghi gần nhất
+                            .FirstOrDefaultAsync(cancellationToken);
+                        previousRightEye = previousVisionRecord?.RightEye;
+                    }
+                    else
+                    {
+                        previousRightEye = visionRecord.RightEye; // Giữ giá trị RightEye hiện tại nếu VisionRecord đã tồn tại
+                    }
+
                     if (visionRecord == null)
                     {
                         visionRecord = new VisionRecord
@@ -1303,7 +1319,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             MedicalRecordId = medicalRecord.Id,
                             HealthCheckId = healthCheckId,
                             LeftEye = request.Value,
-                            RightEye = null,
+                            RightEye = previousRightEye, // Sử dụng giá trị RightEye từ bản ghi cũ -- THAY ĐỔI
                             CheckDate = DateTime.UtcNow,
                             Comments = request.Comments,
                             RecordedBy = nurseId,
@@ -1333,7 +1349,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             UserId = request.StudentId,
                             HealthCheckId = healthCheckId,
                             OverallAssessment = "Chưa đánh giá",
-                            Recommendations = "Không có khuyến nghị", // Gán giá trị mặc định
+                            Recommendations = "Không có khuyến nghị",
                             HasAbnormality = false,
                             CreatedDate = DateTime.UtcNow,
                             IsDeleted = false
@@ -1488,6 +1504,20 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                     var visionRecord = await _unitOfWork.GetRepositoryByEntity<VisionRecord>().GetQueryable()
                         .FirstOrDefaultAsync(vr => vr.MedicalRecordId == medicalRecord.Id && vr.HealthCheckId == healthCheckId && !vr.IsDeleted, cancellationToken);
+                    decimal? previousLeftEye = null;
+                    if (visionRecord == null) // Chỉ tìm bản ghi cũ nếu không có VisionRecord cho buổi khám hiện tại
+                    {
+                        var previousVisionRecord = await _unitOfWork.GetRepositoryByEntity<VisionRecord>().GetQueryable()
+                            .Where(vr => vr.MedicalRecordId == medicalRecord.Id && !vr.IsDeleted)
+                            .OrderByDescending(vr => vr.CheckDate) // Lấy bản ghi gần nhất
+                            .FirstOrDefaultAsync(cancellationToken);
+                        previousLeftEye = previousVisionRecord?.LeftEye;
+                    }
+                    else
+                    {
+                        previousLeftEye = visionRecord.LeftEye; // Giữ giá trị LeftEye hiện tại nếu VisionRecord đã tồn tại
+                    }
+
                     if (visionRecord == null)
                     {
                         visionRecord = new VisionRecord
@@ -1495,7 +1525,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             Id = Guid.NewGuid(),
                             MedicalRecordId = medicalRecord.Id,
                             HealthCheckId = healthCheckId,
-                            LeftEye = null,
+                            LeftEye = previousLeftEye, 
                             RightEye = request.Value,
                             CheckDate = DateTime.UtcNow,
                             Comments = request.Comments,
@@ -1526,7 +1556,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             UserId = request.StudentId,
                             HealthCheckId = healthCheckId,
                             OverallAssessment = "Chưa đánh giá",
-                            Recommendations = "Không có khuyến nghị", // Gán giá trị mặc định
+                            Recommendations = "Không có khuyến nghị",
                             HasAbnormality = false,
                             CreatedDate = DateTime.UtcNow,
                             IsDeleted = false
