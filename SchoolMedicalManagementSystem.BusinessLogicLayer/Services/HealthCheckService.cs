@@ -685,8 +685,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseResponse<bool>> AssignNurseToHealthCheckAsync(
-            AssignNurseToHealthCheckRequest request,
-            CancellationToken cancellationToken = default)
+    AssignNurseToHealthCheckRequest request,
+    CancellationToken cancellationToken = default)
         {
             try
             {
@@ -714,39 +714,93 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         return BaseResponse<bool>.ErrorResult("Buổi khám không ở trạng thái hợp lệ để phân công y tá (phải là WaitingForParentConsent hoặc Scheduled).");
                     }
 
+                    // Lấy danh sách HealthCheckItemId từ request
+                    var requestItemIds = request.Assignments.Select(a => a.HealthCheckItemId).Distinct().ToList();
+                    var requestNurseIds = request.Assignments.Select(a => a.NurseId).Distinct().ToList();
+
+                    // Lấy tất cả phân công hiện tại cho HealthCheckId
                     var existingAssignments = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                        .Include(a => a.HealthCheckItems)
                         .Where(a => a.HealthCheckId == request.HealthCheckId && !a.IsDeleted)
                         .ToListAsync(cancellationToken);
 
-                    foreach (var assignmentRequest in request.Assignments)
+                    // Xóa các HealthCheckItemId trong request khỏi các y tá khác
+                    foreach (var assignment in existingAssignments)
                     {
-                        // Kiểm tra HealthCheckItemId có thuộc buổi khám không
-                        var itemExists = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
-                            .AnyAsync(hia => hia.HealthCheckId == request.HealthCheckId && hia.HealthCheckItemId == assignmentRequest.HealthCheckItemId && !hia.IsDeleted, cancellationToken);
-                        if (!itemExists)
+                        var itemsToRemove = assignment.HealthCheckItems
+                            .Where(hci => requestItemIds.Contains(hci.Id))
+                            .ToList();
+                        if (itemsToRemove.Any())
                         {
-                            _logger.LogWarning("Hạng mục kiểm tra {HealthCheckItemId} không thuộc buổi khám {HealthCheckId}", assignmentRequest.HealthCheckItemId, request.HealthCheckId);
-                            return BaseResponse<bool>.ErrorResult($"Hạng mục kiểm tra {assignmentRequest.HealthCheckItemId} không thuộc buổi khám này.");
+                            foreach (var item in itemsToRemove)
+                            {
+                                assignment.HealthCheckItems.Remove(item);
+                            }
+                            assignment.LastUpdatedDate = DateTime.UtcNow;
+                            if (!assignment.HealthCheckItems.Any())
+                            {
+                                assignment.IsDeleted = true;
+                            }
+                            await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().UpdateAsync(assignment);
+                            _logger.LogInformation("Xóa mềm hoặc cập nhật phân công y tá {NurseId} cho các hạng mục {ItemIds} trong buổi khám {HealthCheckId}",
+                                assignment.NurseId, string.Join(", ", itemsToRemove.Select(i => i.Id)), request.HealthCheckId);
                         }
+                    }
 
+                    // Nhóm các HealthCheckItemId theo NurseId từ request
+                    var assignmentsByNurse = request.Assignments
+                        .GroupBy(a => a.NurseId)
+                        .ToDictionary(g => g.Key, g => g.Select(a => a.HealthCheckItemId).ToList());
+
+                    // Thêm hoặc cập nhật phân công mới
+                    foreach (var nurseId in assignmentsByNurse.Keys)
+                    {
                         // Kiểm tra y tá
                         var nurse = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                            .FirstOrDefaultAsync(u => u.Id == assignmentRequest.NurseId && u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") && !u.IsDeleted, cancellationToken);
+                            .FirstOrDefaultAsync(u => u.Id == nurseId && u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") && !u.IsDeleted, cancellationToken);
                         if (nurse == null)
                         {
-                            _logger.LogWarning("Y tá {NurseId} không tồn tại hoặc không có vai SCHOOLNURSE", assignmentRequest.NurseId);
-                            return BaseResponse<bool>.ErrorResult($"Y tá {assignmentRequest.NurseId} không tồn tại hoặc không có vai SCHOOLNURSE.");
+                            _logger.LogWarning("Y tá {NurseId} không tồn tại hoặc không có vai SCHOOLNURSE", nurseId);
+                            return BaseResponse<bool>.ErrorResult($"Y tá {nurseId} không tồn tại hoặc không có vai SCHOOLNURSE.");
                         }
 
-                        var existingAssignment = existingAssignments.FirstOrDefault(a => a.HealthCheckItemId == assignmentRequest.HealthCheckItemId);
-                        if (existingAssignment != null)
+                        // Kiểm tra các HealthCheckItemId
+                        var itemIds = assignmentsByNurse[nurseId];
+                        var healthCheckItems = await _unitOfWork.GetRepositoryByEntity<HealthCheckItem>().GetQueryable()
+                            .Where(hci => itemIds.Contains(hci.Id) && !hci.IsDeleted)
+                            .ToListAsync(cancellationToken);
+
+                        // Kiểm tra xem tất cả HealthCheckItemId có thuộc buổi khám không
+                        foreach (var itemId in itemIds)
+                        {
+                            var itemExists = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                                .AnyAsync(hia => hia.HealthCheckId == request.HealthCheckId && hia.HealthCheckItemId == itemId && !hia.IsDeleted, cancellationToken);
+                            if (!itemExists)
+                            {
+                                _logger.LogWarning("Hạng mục kiểm tra {HealthCheckItemId} không thuộc buổi khám {HealthCheckId}", itemId, request.HealthCheckId);
+                                return BaseResponse<bool>.ErrorResult($"Hạng mục kiểm tra {itemId} không thuộc buổi khám này.");
+                            }
+                        }
+
+                        // Tìm phân công hiện tại của y tá
+                        var existingNurseAssignment = existingAssignments
+                            .FirstOrDefault(a => a.NurseId == nurseId && !a.IsDeleted);
+
+                        if (existingNurseAssignment != null)
                         {
                             // Cập nhật phân công hiện tại
-                            existingAssignment.NurseId = assignmentRequest.NurseId;
-                            existingAssignment.AssignedDate = DateTime.UtcNow;
-                            existingAssignment.LastUpdatedDate = DateTime.UtcNow;
-                            await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().UpdateAsync(existingAssignment);
-                            _logger.LogInformation("Cập nhật phân công y tá {NurseId} cho hạng mục {HealthCheckItemId} trong buổi khám {HealthCheckId}", assignmentRequest.NurseId, assignmentRequest.HealthCheckItemId, request.HealthCheckId);
+                            foreach (var item in healthCheckItems)
+                            {
+                                if (!existingNurseAssignment.HealthCheckItems.Any(i => i.Id == item.Id))
+                                {
+                                    existingNurseAssignment.HealthCheckItems.Add(item);
+                                }
+                            }
+                            existingNurseAssignment.LastUpdatedDate = DateTime.UtcNow;
+                            await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().UpdateAsync(existingNurseAssignment);
+                            _logger.LogInformation("Cập nhật phân công y tá {NurseId} với {ItemCount} hạng mục trong buổi khám {HealthCheckId}: {ItemNames}",
+                                nurseId, healthCheckItems.Count, request.HealthCheckId,
+                                string.Join(", ", healthCheckItems.Select(hci => hci.Name ?? "Chưa xác định")));
                         }
                         else
                         {
@@ -755,21 +809,32 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             {
                                 Id = Guid.NewGuid(),
                                 HealthCheckId = request.HealthCheckId,
-                                HealthCheckItemId = assignmentRequest.HealthCheckItemId,
-                                NurseId = assignmentRequest.NurseId,
+                                NurseId = nurseId,
+                                HealthCheckItemId = Guid.Empty,
+                                HealthCheckItems = healthCheckItems.Any() ? healthCheckItems : new List<HealthCheckItem>(),
                                 AssignedDate = DateTime.UtcNow,
                                 CreatedDate = DateTime.UtcNow,
                                 IsDeleted = false
                             };
                             await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().AddAsync(newAssignment);
-                            _logger.LogInformation("Thêm phân công y tá {NurseId} cho hạng mục {HealthCheckItemId} trong buổi khám {HealthCheckId}", assignmentRequest.NurseId, assignmentRequest.HealthCheckItemId, request.HealthCheckId);
+                            _logger.LogInformation("Thêm phân công y tá {NurseId} cho {ItemCount} hạng mục trong buổi khám {HealthCheckId}: {ItemNames}",
+                                nurseId, healthCheckItems.Count, request.HealthCheckId,
+                                string.Join(", ", healthCheckItems.Select(hci => hci.Name ?? "Chưa xác định")));
                         }
                     }
 
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                    // Xóa cache
                     var cacheKey = _cacheService.GenerateCacheKey("healthcheck_detail", request.HealthCheckId.ToString());
                     await _cacheService.RemoveAsync(cacheKey);
+                    _logger.LogDebug("Đã xóa cache cụ thể cho healthcheck detail: {CacheKey}", cacheKey);
                     await _cacheService.RemoveByPrefixAsync(HEALTHCHECK_LIST_PREFIX);
+                    _logger.LogDebug("Đã xóa cache danh sách healthchecks với prefix: {Prefix}", HEALTHCHECK_LIST_PREFIX);
+                    var nurseAssignmentCacheKey = _cacheService.GenerateCacheKey("nurse_assignment_status", request.HealthCheckId.ToString());
+                    await _cacheService.RemoveAsync(nurseAssignmentCacheKey);
+                    _logger.LogDebug("Đã xóa cache nurse assignment statuses: {CacheKey}", nurseAssignmentCacheKey);
+
                     await InvalidateAllCachesAsync();
 
                     return BaseResponse<bool>.SuccessResult(true, "Phân công y tá thành công.");
@@ -783,7 +848,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseResponse<bool>> ReassignNurseToHealthCheckAsync(
-            Guid healthCheckId, ReAssignNurseToHealthCheckRequest request, CancellationToken cancellationToken = default)
+    Guid healthCheckId, ReAssignNurseToHealthCheckRequest request, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -811,54 +876,116 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         return BaseResponse<bool>.ErrorResult("Buổi khám không ở trạng thái hợp lệ để tái phân công y tá (phải là WaitingForParentConsent hoặc Scheduled).");
                     }
 
-                    // Lấy tất cả các phân công hiện tại
+                    // Lấy danh sách HealthCheckItemId từ request
+                    var requestItemIds = request.Assignments.Select(a => a.HealthCheckItemId).Distinct().ToList();
+                    var requestNurseIds = request.Assignments.Select(a => a.NurseId).Distinct().ToList();
+
+                    // Lấy tất cả phân công hiện tại cho HealthCheckId
                     var existingAssignments = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                        .Include(a => a.HealthCheckItems)
                         .Where(a => a.HealthCheckId == healthCheckId && !a.IsDeleted)
                         .ToListAsync(cancellationToken);
 
-                    // Xóa mềm tất cả các phân công hiện tại
+                    // Xóa các HealthCheckItemId trong request khỏi các y tá khác
                     foreach (var assignment in existingAssignments)
                     {
-                        assignment.IsDeleted = true;
-                        assignment.LastUpdatedDate = DateTime.UtcNow;
-                        await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().UpdateAsync(assignment);
-                        _logger.LogInformation("Xóa mềm phân công y tá cho hạng mục {HealthCheckItemId} trong buổi khám {HealthCheckId}", assignment.HealthCheckItemId, healthCheckId);
+                        if (!requestNurseIds.Contains(assignment.NurseId))
+                        {
+                            var itemsToRemove = assignment.HealthCheckItems
+                                .Where(hci => requestItemIds.Contains(hci.Id))
+                                .ToList();
+                            if (itemsToRemove.Any())
+                            {
+                                foreach (var item in itemsToRemove)
+                                {
+                                    assignment.HealthCheckItems.Remove(item);
+                                }
+                                assignment.LastUpdatedDate = DateTime.UtcNow;
+                                if (!assignment.HealthCheckItems.Any())
+                                {
+                                    assignment.IsDeleted = true;
+                                }
+                                await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().UpdateAsync(assignment);
+                                _logger.LogInformation("Xóa mềm hoặc cập nhật phân công y tá {NurseId} cho các hạng mục {ItemIds} trong buổi khám {HealthCheckId}",
+                                    assignment.NurseId, string.Join(", ", itemsToRemove.Select(i => i.Id)), healthCheckId);
+                            }
+                        }
                     }
 
-                    // Thêm các phân công mới từ request
-                    foreach (var assignmentRequest in request.Assignments)
-                    {
-                        // Kiểm tra HealthCheckItemId có thuộc buổi khám không
-                        var itemExists = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
-                            .AnyAsync(hia => hia.HealthCheckId == healthCheckId && hia.HealthCheckItemId == assignmentRequest.HealthCheckItemId && !hia.IsDeleted, cancellationToken);
-                        if (!itemExists)
-                        {
-                            _logger.LogWarning("Hạng mục kiểm tra {HealthCheckItemId} không thuộc buổi khám {HealthCheckId}", assignmentRequest.HealthCheckItemId, healthCheckId);
-                            return BaseResponse<bool>.ErrorResult($"Hạng mục kiểm tra {assignmentRequest.HealthCheckItemId} không thuộc buổi khám này.");
-                        }
+                    // Nhóm các HealthCheckItemId theo NurseId từ request
+                    var assignmentsByNurse = request.Assignments
+                        .GroupBy(a => a.NurseId)
+                        .ToDictionary(g => g.Key, g => g.Select(a => a.HealthCheckItemId).ToList());
 
+                    // Thêm hoặc cập nhật phân công mới
+                    foreach (var nurseId in assignmentsByNurse.Keys)
+                    {
                         // Kiểm tra y tá
                         var nurse = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                            .FirstOrDefaultAsync(u => u.Id == assignmentRequest.NurseId && u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") && !u.IsDeleted, cancellationToken);
+                            .FirstOrDefaultAsync(u => u.Id == nurseId && u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") && !u.IsDeleted, cancellationToken);
                         if (nurse == null)
                         {
-                            _logger.LogWarning("Y tá {NurseId} không tồn tại hoặc không có vai SCHOOLNURSE", assignmentRequest.NurseId);
-                            return BaseResponse<bool>.ErrorResult($"Y tá {assignmentRequest.NurseId} không tồn tại hoặc không có vai SCHOOLNURSE.");
+                            _logger.LogWarning("Y tá {NurseId} không tồn tại hoặc không có vai SCHOOLNURSE", nurseId);
+                            return BaseResponse<bool>.ErrorResult($"Y tá {nurseId} không tồn tại hoặc không có vai SCHOOLNURSE.");
                         }
 
-                        // Thêm phân công mới
-                        var newAssignment = new HealthCheckAssignment
+                        // Kiểm tra các HealthCheckItemId
+                        var itemIds = assignmentsByNurse[nurseId];
+                        var healthCheckItems = await _unitOfWork.GetRepositoryByEntity<HealthCheckItem>().GetQueryable()
+                            .Where(hci => itemIds.Contains(hci.Id) && !hci.IsDeleted)
+                            .ToListAsync(cancellationToken);
+
+                        // Kiểm tra xem tất cả HealthCheckItemId có thuộc buổi khám không
+                        foreach (var itemId in itemIds)
                         {
-                            Id = Guid.NewGuid(),
-                            HealthCheckId = healthCheckId,
-                            HealthCheckItemId = assignmentRequest.HealthCheckItemId,
-                            NurseId = assignmentRequest.NurseId,
-                            AssignedDate = DateTime.UtcNow,
-                            CreatedDate = DateTime.UtcNow,
-                            IsDeleted = false
-                        };
-                        await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().AddAsync(newAssignment);
-                        _logger.LogInformation("Thêm phân công y tá {NurseId} cho hạng mục {HealthCheckItemId} trong buổi khám {HealthCheckId}", assignmentRequest.NurseId, assignmentRequest.HealthCheckItemId, healthCheckId);
+                            var itemExists = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                                .AnyAsync(hia => hia.HealthCheckId == healthCheckId && hia.HealthCheckItemId == itemId && !hia.IsDeleted, cancellationToken);
+                            if (!itemExists)
+                            {
+                                _logger.LogWarning("Hạng mục kiểm tra {HealthCheckItemId} không thuộc buổi khám {HealthCheckId}", itemId, healthCheckId);
+                                return BaseResponse<bool>.ErrorResult($"Hạng mục kiểm tra {itemId} không thuộc buổi khám này.");
+                            }
+                        }
+
+                        // Tìm phân công hiện tại của y tá
+                        var existingNurseAssignment = existingAssignments
+                            .FirstOrDefault(a => a.NurseId == nurseId && !a.IsDeleted);
+
+                        if (existingNurseAssignment != null)
+                        {
+                            // Cập nhật phân công hiện tại
+                            foreach (var item in healthCheckItems)
+                            {
+                                if (!existingNurseAssignment.HealthCheckItems.Any(i => i.Id == item.Id))
+                                {
+                                    existingNurseAssignment.HealthCheckItems.Add(item);
+                                }
+                            }
+                            existingNurseAssignment.LastUpdatedDate = DateTime.UtcNow;
+                            await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().UpdateAsync(existingNurseAssignment);
+                            _logger.LogInformation("Cập nhật phân công y tá {NurseId} với {ItemCount} hạng mục trong buổi khám {HealthCheckId}: {ItemNames}",
+                                nurseId, healthCheckItems.Count, healthCheckId,
+                                string.Join(", ", healthCheckItems.Select(hci => hci.Name ?? "Chưa xác định")));
+                        }
+                        else
+                        {
+                            // Thêm phân công mới
+                            var newAssignment = new HealthCheckAssignment
+                            {
+                                Id = Guid.NewGuid(),
+                                HealthCheckId = healthCheckId,
+                                NurseId = nurseId,
+                                HealthCheckItemId = Guid.Empty,
+                                HealthCheckItems = healthCheckItems.Any() ? healthCheckItems : new List<HealthCheckItem>(),
+                                AssignedDate = DateTime.UtcNow,
+                                CreatedDate = DateTime.UtcNow,
+                                IsDeleted = false
+                            };
+                            await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().AddAsync(newAssignment);
+                            _logger.LogInformation("Thêm phân công y tá {NurseId} cho {ItemCount} hạng mục trong buổi khám {HealthCheckId}: {ItemNames}",
+                                nurseId, healthCheckItems.Count, healthCheckId,
+                                string.Join(", ", healthCheckItems.Select(hci => hci.Name ?? "Chưa xác định")));
+                        }
                     }
 
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -875,7 +1002,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                     await InvalidateAllCachesAsync();
 
-                    return BaseResponse<bool>.SuccessResult(true, "Tái phân công y tá cho tất cả các hạng mục thành công.");
+                    return BaseResponse<bool>.SuccessResult(true, "Tái phân công y tá cho các hạng mục được chỉ định thành công.");
                 }, cancellationToken);
             }
             catch (Exception ex)
@@ -1025,90 +1152,88 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         public async Task<BaseListResponse<HealthCheckNurseAssignmentStatusResponse>> GetHealthCheckNurseAssignmentsAsync(
             Guid healthCheckId,
             CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                var cacheKey = _cacheService.GenerateCacheKey(
-                    "health_check_nurse_assignment_status",
-                    healthCheckId.ToString()
-                );
-
-                //var cachedResult = await _cacheService.GetAsync<BaseListResponse<HealthCheckNurseAssignmentStatusResponse>>(cacheKey);
-                //if (cachedResult != null)
-                //{
-                //    _logger.LogDebug("Health check nurse assignment statuses found in cache with key: {CacheKey}", cacheKey);
-                //    return cachedResult;
-                //}
-
-                var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
-                    .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted, cancellationToken);
-
-                if (healthCheck == null)
                 {
-                    _logger.LogWarning("Health check not found for id: {Id}", healthCheckId);
-                    return BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.ErrorResult("Buổi khám không tồn tại.");
-                }
-
-                var nurses = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
-                    .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") && !u.IsDeleted)
-                    .ToListAsync(cancellationToken);
-
-                // Truy vấn HealthCheckAssignment để lấy thông tin phân công y tá
-                var assignments = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
-                    .Where(a => a.HealthCheckId == healthCheckId && !a.IsDeleted)
-                    .ToListAsync(cancellationToken);
-
-                // Truy vấn HealthCheckItemAssignments để lấy danh sách HealthCheckItem được liên kết với HealthCheck
-                var itemAssignments = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
-                    .Include(ia => ia.HealthCheckItem)
-                    .Where(ia => ia.HealthCheckId == healthCheckId && !ia.IsDeleted)
-                    .ToListAsync(cancellationToken);
-
-                _logger.LogDebug("Found {AssignmentCount} assignments and {ItemAssignmentCount} item assignments for healthCheckId: {HealthCheckId}",
-                    assignments.Count, itemAssignments.Count, healthCheckId);
-
-                var responses = nurses.Select(nurse =>
-                {
-                    // Kiểm tra xem y tá có được phân công không
-                    var isAssigned = assignments.Any(a => a.NurseId == nurse.Id);
-
-                    // Lấy danh sách HealthCheckItem từ HealthCheckItemAssignments nếu y tá được phân công
-                    var assignedItems = isAssigned
-                        ? itemAssignments.Select(ia => ia.HealthCheckItem).Where(hci => hci != null).ToList()
-                        : new List<HealthCheckItem>();
-
-                    _logger.LogDebug("Nurse {NurseId} has {ItemCount} assigned items", nurse.Id, assignedItems.Count);
-
-                    return new HealthCheckNurseAssignmentStatusResponse
+                    try
                     {
-                        NurseId = nurse.Id,
-                        NurseName = nurse.FullName,
-                        IsAssigned = isAssigned,
-                        AssignedHealthCheckItemIds = assignedItems.Select(hci => hci.Id).ToList(),
-                        AssignedHealthCheckItemNames = assignedItems.Select(hci => hci.Name ?? "Chưa phân công").ToList()
-                    };
-                }).ToList();
+                        var cacheKey = _cacheService.GenerateCacheKey(
+                            "health_check_nurse_assignment_status",
+                            healthCheckId.ToString()
+                        );
 
-                var result = BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.SuccessResult(
-                    responses,
-                    responses.Count,
-                    responses.Count,
-                    1,
-                    "Lấy danh sách trạng thái phân công y tá cho buổi khám thành công.");
+                        // Kiểm tra cache (để nguyên đoạn bị comment để bạn có thể bật lại nếu cần)
+                        // var cachedResult = await _cacheService.GetAsync<BaseListResponse<HealthCheckNurseAssignmentStatusResponse>>(cacheKey);
+                        // if (cachedResult != null)
+                        // {
+                        //     _logger.LogDebug("Health check nurse assignment statuses found in cache with key: {CacheKey}", cacheKey);
+                        //     return cachedResult;
+                        // }
 
-                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
-                await _cacheService.AddToTrackingSetAsync(cacheKey, "health_check_nurse_assignment_status_cache_keys");
-                await InvalidateAllCachesAsync();
-                _logger.LogDebug("Cached health check nurse assignment statuses with key: {CacheKey}", cacheKey);
+                        var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                            .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted, cancellationToken);
 
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error retrieving health check nurse assignment statuses for id: {Id}", healthCheckId);
-                return BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.ErrorResult("Lỗi lấy trạng thái phân công y tá.");
-            }
-        }
+                        if (healthCheck == null)
+                        {
+                            _logger.LogWarning("Health check not found for id: {Id}", healthCheckId);
+                            return BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.ErrorResult("Buổi khám không tồn tại.");
+                        }
+
+                        var nurses = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                            .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") && !u.IsDeleted)
+                            .ToListAsync(cancellationToken);
+
+                        // Truy vấn HealthCheckAssignment để lấy thông tin phân công y tá
+                        var assignments = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                            .Include(a => a.HealthCheckItems) // Include để lấy danh sách HealthCheckItem
+                            .Where(a => a.HealthCheckId == healthCheckId && !a.IsDeleted)
+                            .ToListAsync(cancellationToken);
+
+                        _logger.LogDebug("Found {AssignmentCount} assignments for healthCheckId: {HealthCheckId}",
+                            assignments.Count, healthCheckId);
+
+                        var responses = nurses.Select(nurse =>
+                        {
+                            // Lấy danh sách phân công cho y tá cụ thể
+                            var nurseAssignments = assignments.Where(a => a.NurseId == nurse.Id).ToList();
+                            var isAssigned = nurseAssignments.Any();
+
+                            // Lấy danh sách HealthCheckItem từ các phân công của y tá
+                            var assignedItems = nurseAssignments
+                                .SelectMany(a => a.HealthCheckItems) // Lấy tất cả HealthCheckItem từ collection
+                                .Where(hci => hci != null)
+                                .ToList();
+
+                            _logger.LogDebug("Nurse {NurseId} has {ItemCount} assigned items", nurse.Id, assignedItems.Count);
+
+                            return new HealthCheckNurseAssignmentStatusResponse
+                            {
+                                NurseId = nurse.Id,
+                                NurseName = nurse.FullName,
+                                IsAssigned = isAssigned,
+                                AssignedHealthCheckItemIds = assignedItems.Select(hci => hci.Id).ToList(),
+                                AssignedHealthCheckItemNames = assignedItems.Select(hci => hci.Name ?? "Chưa xác định").ToList()
+                            };
+                        }).ToList();
+
+                        var result = BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.SuccessResult(
+                            responses,
+                            responses.Count,
+                            responses.Count,
+                            1,
+                            "Lấy danh sách trạng thái phân công y tá cho buổi khám thành công.");
+
+                        await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+                        await _cacheService.AddToTrackingSetAsync(cacheKey, "health_check_nurse_assignment_status_cache_keys");
+                        await InvalidateAllCachesAsync();
+                        _logger.LogDebug("Cached health check nurse assignment statuses with key: {CacheKey}", cacheKey);
+
+                        return result;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error retrieving health check nurse assignment statuses for id: {Id}", healthCheckId);
+                        return BaseListResponse<HealthCheckNurseAssignmentStatusResponse>.ErrorResult("Lỗi lấy trạng thái phân công y tá.");
+                    }
+                }
 
         public async Task<BaseListResponse<HealthCheckResponse>> GetHealthCheckByStudentIdAsync(
             Guid studentId,
@@ -1822,15 +1947,29 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         {
             try
             {
-                await _cacheService.InvalidateTrackingSetAsync(HEALTHCHECK_CACHE_SET);
+                // Invalidate specific tracking sets
+                await Task.WhenAll(
+                    _cacheService.InvalidateTrackingSetAsync(HEALTHCHECK_CACHE_SET),
+                    _cacheService.InvalidateTrackingSetAsync("healthcheck_detail_cache_keys"),
+                    _cacheService.InvalidateTrackingSetAsync("health_check_nurse_assignment_status_cache_keys"),
+                    _cacheService.InvalidateTrackingSetAsync("health_check_cache_keys")
+                );
+
+                // Invalidate caches by prefixes
                 await Task.WhenAll(
                     _cacheService.RemoveByPrefixAsync(HEALTHCHECK_CACHE_PREFIX),
                     _cacheService.RemoveByPrefixAsync(HEALTHCHECK_LIST_PREFIX),
-                    _cacheService.RemoveByPrefixAsync("parent_consent_status"));
+                    _cacheService.RemoveByPrefixAsync("parent_consent_status"),
+                    _cacheService.RemoveByPrefixAsync("healthcheck_detail"),
+                    _cacheService.RemoveByPrefixAsync("nurse_assignment_status"),
+                    _cacheService.RemoveByPrefixAsync("health_check_by_student")
+                );
+
+                _logger.LogDebug("All relevant caches invalidated successfully.");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi làm mới cache cho buổi khám.");
+                _logger.LogError(ex, "Error while invalidating all caches for health checks.");
             }
         }
 

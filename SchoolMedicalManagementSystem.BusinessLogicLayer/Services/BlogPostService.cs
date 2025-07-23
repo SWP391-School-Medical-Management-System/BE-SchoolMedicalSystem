@@ -145,9 +145,9 @@ public class BlogPostService : IBlogPostService
                 _logger.LogWarning("Tác giả không tồn tại: {AuthorId}", model.AuthorId);
                 return BaseResponse<BlogPostResponse>.ErrorResult("Tác giả không tồn tại.");
             }
-            if (!author.UserRoles.Any(ur => ur.Role.Name == "MANAGER"))
+            if (!author.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE"))
             {
-                _logger.LogWarning("Tác giả {AuthorId} không phải là MANAGER", model.AuthorId);
+                _logger.LogWarning("Tác giả {AuthorId} không phải là SCHOOLNURSE", model.AuthorId);
                 return BaseResponse<BlogPostResponse>.ErrorResult("Tác giả không phải là quản lý.");
             }
 
@@ -265,6 +265,55 @@ public class BlogPostService : IBlogPostService
     #endregion
 
     #region Blog Comment
+
+    public async Task<BaseListResponse<BlogCommentResponse>> GetBlogCommentsByBlogIdAsync(
+            Guid blogId,
+            int pageIndex = 1,
+            int pageSize = 10,
+            bool? isApproved = null,
+            string orderBy = null,
+            CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var cacheKey = $"blog_comments_{blogId}_{pageIndex}_{pageSize}_{isApproved ?? false}_{orderBy ?? ""}";
+            var cachedResult = await _cacheService.GetAsync<BaseListResponse<BlogCommentResponse>>(cacheKey);
+            if (cachedResult != null)
+            {
+                _logger.LogInformation("Trả về kết quả từ bộ nhớ đệm cho key: {CacheKey}", cacheKey);
+                return cachedResult;
+            }
+
+            var query = _unitOfWork.GetRepositoryByEntity<BlogComment>().GetQueryable()
+                .Include(c => c.User)
+                .Include(c => c.Post)
+                .Where(c => c.PostId == blogId && !c.IsDeleted);
+
+            if (isApproved.HasValue)
+                query = query.Where(c => c.IsApproved == isApproved.Value);
+
+            query = ApplyBlogCommentOrdering(query, orderBy);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var comments = await query
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            _logger.LogInformation("Số lượng bình luận trả về cho bài viết {BlogId}: {Count}", blogId, comments.Count);
+
+            var responses = _mapper.Map<List<BlogCommentResponse>>(comments);
+
+            var result = BaseListResponse<BlogCommentResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách bình luận thành công.");
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi lấy danh sách bình luận cho bài viết {BlogId}", blogId);
+            return BaseListResponse<BlogCommentResponse>.ErrorResult("Lỗi lấy danh sách bình luận.");
+        }
+    }
 
     public async Task<BaseResponse<BlogCommentResponse>> CreateBlogCommentAsync(CreateBlogCommentRequest model)
     {
@@ -423,6 +472,24 @@ public class BlogPostService : IBlogPostService
     #endregion
 
     #region Helper Methods
+
+    private IQueryable<BlogComment> ApplyBlogCommentOrdering(
+            IQueryable<BlogComment> query,
+            string orderBy)
+    {
+        if (string.IsNullOrEmpty(orderBy))
+            return query.OrderByDescending(c => c.CreatedDate);
+
+        switch (orderBy.ToLower())
+        {
+            case "createddate_desc":
+                return query.OrderByDescending(c => c.CreatedDate);
+            case "createddate_asc":
+                return query.OrderBy(c => c.CreatedDate);
+            default:
+                return query.OrderByDescending(c => c.CreatedDate);
+        }
+    }
 
     private IQueryable<BlogPost> ApplyBlogPostOrdering(
         IQueryable<BlogPost> query,

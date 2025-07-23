@@ -127,6 +127,28 @@ public class BlogPostController : ControllerBase
 
     #region Blog Comment Management
 
+    [HttpGet("{blogId}/comments")]
+    public async Task<ActionResult<BaseListResponse<BlogCommentResponse>>> GetBlogCommentsByBlogId(
+        Guid blogId,
+        [FromQuery] int pageIndex = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] bool? isApproved = null,
+        [FromQuery] string orderBy = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (pageIndex < 1 || pageSize < 1)
+                return BadRequest(BaseListResponse<BlogCommentResponse>.ErrorResult("Thông tin phân trang không hợp lệ."));
+            var response = await _blogPostService.GetBlogCommentsByBlogIdAsync(blogId, pageIndex, pageSize, isApproved, orderBy, cancellationToken);
+            return response.Success ? Ok(response) : NotFound(response);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, BaseListResponse<BlogCommentResponse>.ErrorResult("Lỗi hệ thống."));
+        }
+    }
+
     [HttpPost("comments")]
     public async Task<ActionResult<BaseResponse<BlogCommentResponse>>> CreateBlogComment([FromBody] CreateBlogCommentRequest model)
     {
