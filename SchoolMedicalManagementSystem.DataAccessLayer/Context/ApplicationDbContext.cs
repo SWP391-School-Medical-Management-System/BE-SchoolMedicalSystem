@@ -314,6 +314,21 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(hca => hca.HealthCheckId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<HealthCheckAssignment>()
+             .HasMany(a => a.HealthCheckItems)
+             .WithMany() // Nếu HealthCheckItem không có tham chiếu ngược
+             .UsingEntity<Dictionary<string, object>>(
+                 "HealthCheckAssignmentItems", // Tên bảng trung gian
+                 j => j.HasOne<HealthCheckItem>().WithMany().HasForeignKey("HealthCheckItemId"),
+                 j => j.HasOne<HealthCheckAssignment>().WithMany().HasForeignKey("HealthCheckAssignmentId"),
+                 j =>
+                 {
+                     j.HasKey("HealthCheckAssignmentId", "HealthCheckItemId");
+                     j.Property<DateTime>("CreatedDate").IsRequired();
+                     j.Property<DateTime>("LastUpdatedDate").IsRequired();
+                     j.Property<bool>("IsDeleted").IsRequired().HasDefaultValue(false);
+                 });
+
         #endregion
 
         #region HealthCheckConsent Relationships
