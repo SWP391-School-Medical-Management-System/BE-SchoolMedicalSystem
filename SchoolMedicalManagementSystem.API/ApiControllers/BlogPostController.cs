@@ -44,7 +44,6 @@ public class BlogPostController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "SCHOOLNURSE")]
     public async Task<ActionResult<BaseResponse<BlogPostResponse>>> GetBlogPostById(Guid id)
     {
         try
