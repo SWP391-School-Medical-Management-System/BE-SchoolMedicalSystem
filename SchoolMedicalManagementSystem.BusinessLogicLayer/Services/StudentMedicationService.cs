@@ -1238,11 +1238,20 @@ public class StudentMedicationService : IStudentMedicationService
                 // Cập nhật TotalDoses và RemainingDoses
                 await RecalculateMedicationDosesAsync(medication);
 
+                // Kiểm tra và gửi thông báo tồn kho thấp
+                if (medication.QuantityReceive <= medication.MinStockThreshold && !medication.LowStockAlertSent &&
+                    (medication.QuantityUnit == QuantityUnitEnum.Tablet || medication.QuantityUnit == QuantityUnitEnum.Pack))
+                {
+                    await SendLowStockNotificationAsync(medication);
+                    medication.LowStockAlertSent = true;
+                    medicationRepo.Update(medication);
+                }
+
                 medicationRepo.Update(medication);
                 updatedMedications.Add(medication);
 
-                _logger.LogInformation("Cập nhật QuantityReceived cho thuốc {MedicationId}: QuantityReceive={QuantityReceived}, Received={ReceivedStatus}",
-                    medUpdate.MedicationId, medUpdate.QuantityReceived, medication.Received);
+                _logger.LogInformation("Cập nhật QuantityReceived cho thuốc {MedicationId}: QuantityReceive={QuantityReceived}, MinStockThreshold={MinStockThreshold}, Received={ReceivedStatus}",
+                    medUpdate.MedicationId, medUpdate.QuantityReceived, medication.MinStockThreshold, medication.Received);
             }
 
             // Lưu tất cả thay đổi
@@ -1250,7 +1259,16 @@ public class StudentMedicationService : IStudentMedicationService
 
             await InvalidateAllCachesAsync();
 
-            var medicationResponses = updatedMedications.Select(m => _mapper.Map<StudentMedicationResponse>(m)).ToList();
+            // Ánh xạ sang StudentMedicationResponse với kiểm tra IsLowStock
+            var medicationResponses = updatedMedications.Select(m =>
+            {
+                var response = _mapper.Map<StudentMedicationResponse>(m);
+                // Đặt IsLowStock dựa trên QuantityReceive
+                response.IsLowStock = m.QuantityReceive > 5;
+                _logger.LogInformation("Thiết lập IsLowStock={IsLowStock} cho thuốc {MedicationId}: QuantityReceive={QuantityReceived}, MinStockThreshold={MinStockThreshold}",
+                    response.IsLowStock, m.Id, m.QuantityReceive, m.MinStockThreshold);
+                return response;
+            }).ToList();
 
             return BaseResponse<List<StudentMedicationResponse>>.SuccessResult(
                 medicationResponses, "Cập nhật số lượng thuốc nhận được thành công.");
@@ -1879,9 +1897,9 @@ public class StudentMedicationService : IStudentMedicationService
     }
 
     public async Task<BaseResponse<StudentMedicationUsageHistoryResponse>> AdministerMedicationAsync(
-         Guid medicationId,
-         AdministerMedicationRequest request,
-         CancellationToken cancellationToken = default)
+    Guid medicationId,
+    AdministerMedicationRequest request,
+    CancellationToken cancellationToken = default)
     {
         try
         {
@@ -1901,6 +1919,9 @@ public class StudentMedicationService : IStudentMedicationService
 
             if (medication == null)
                 return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Không tìm thấy thuốc của học sinh.");
+
+            // Log trạng thái hiện tại
+            _logger.LogInformation("Trạng thái thuốc {MedicationId} trước khi xử lý: {Status}", medicationId, medication.Status);
 
             if (medication.Status != StudentMedicationStatus.Active && medication.Status != StudentMedicationStatus.Approved)
                 return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Chỉ có thể ghi nhận sử dụng cho thuốc đã được phê duyệt hoặc đang hoạt động.");
@@ -1997,6 +2018,27 @@ public class StudentMedicationService : IStudentMedicationService
 
             if (request.Status == StatusUsage.Used)
             {
+                // Kiểm tra và cập nhật trạng thái
+                try
+                {
+                    var usedHistoryCount = medication.UsageHistory.Count(uh => uh.Status == StatusUsage.Used && !uh.IsDeleted);
+                    _logger.LogInformation("Số bản ghi UsageHistory với Status=Used cho thuốc {MedicationId}: {Count}", medicationId, usedHistoryCount);
+
+                    if (medication.Status == StudentMedicationStatus.Approved && usedHistoryCount == 0)
+                    {
+                        medication.Status = StudentMedicationStatus.Active;
+                        medication.LastUpdatedBy = await GetSchoolNurseRoleName();
+                        medication.LastUpdatedDate = DateTime.Now;
+                        medicationRepo.Update(medication); // Đánh dấu cập nhật
+                        _logger.LogInformation("Cập nhật trạng thái thuốc {MedicationId} từ Approved sang Active.", medicationId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Lỗi khi cập nhật trạng thái thuốc {MedicationId} sang Active", medicationId);
+                    return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult("Lỗi khi cập nhật trạng thái thuốc.");
+                }
+
                 // Validate prescribed dosage
                 if (!string.IsNullOrEmpty(medication.Dosage))
                 {
@@ -2039,16 +2081,16 @@ public class StudentMedicationService : IStudentMedicationService
                 }
 
                 int totalUsageCountToday = medication.UsageHistory
-                .Count(uh => uh.UsageDate.HasValue &&
-                             uh.UsageDate.Value.Date == DateTime.Today &&
-                             uh.Status == StatusUsage.Used &&
-                             !uh.IsDeleted);
+                    .Count(uh => uh.UsageDate.HasValue &&
+                                 uh.UsageDate.Value.Date == DateTime.Today &&
+                                 uh.Status == StatusUsage.Used &&
+                                 !uh.IsDeleted);
 
                 if (!isMakeupDose && totalUsageCountToday >= dosesPerDay)
                 {
                     return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult(
                         $"Học sinh đã uống đủ {dosesPerDay} liều cho hôm nay rồi. " +
-                        $"Vui lòng xác nhận liều bù bằng cách đặt isMakeupDose = true.");
+                        $"Vui lòng xác nhận liều bù bằng cách chọn uống khẩn cấp ");
                 }
 
                 // Kiểm tra giới hạn liều trong ngày cho Tablet/Pack (không áp dụng cho Bottle)
@@ -2110,7 +2152,7 @@ public class StudentMedicationService : IStudentMedicationService
                     else
                         return BaseResponse<StudentMedicationUsageHistoryResponse>.ErrorResult($"Không đủ thuốc trong kho. Yêu cầu: {currentDosageQuantity}, Còn lại: {medication.QuantityReceive}.");
                 }
-                // Không trừ QuantityReceive cho Bottle (đã kiểm tra DosageUse ở trên)
+                // Không trừ QuantityReceive cho Bottle (đã kiểm tra Dosage ở trên)
 
                 if (medication.QuantityReceive == 0 && (medication.QuantityUnit == QuantityUnitEnum.Tablet || medication.QuantityUnit == QuantityUnitEnum.Pack))
                 {
@@ -2129,9 +2171,14 @@ public class StudentMedicationService : IStudentMedicationService
             }
 
             await _unitOfWork.GetRepositoryByEntity<StudentMedicationUsageHistory>().AddAsync(usageHistory);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var saveResult = await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Kết quả SaveChangesAsync cho thuốc {MedicationId}: {Changes}", medicationId, saveResult);
 
             await _authService.InvalidateUserCacheAsync(medication.Student.Username, medication.Student.Email, medication.StudentId);
+            // Xóa cache liên quan đến StudentMedication
+            var medicationCacheKey = _cacheService.GenerateCacheKey("medication_detail", medicationId.ToString());
+            await _cacheService.RemoveAsync(medicationCacheKey);
+            await InvalidateAllCachesAsync();
 
             var usageHistoryResponse = _mapper.Map<StudentMedicationUsageHistoryResponse>(usageHistory);
             usageHistoryResponse.QuantityReceive = medication.QuantityReceive;
@@ -2139,7 +2186,7 @@ public class StudentMedicationService : IStudentMedicationService
             _logger.LogInformation("Ghi nhận sử dụng thuốc {MedicationId} với trạng thái {Status}", medicationId, request.Status);
 
             return BaseResponse<StudentMedicationUsageHistoryResponse>.SuccessResult(
-                usageHistoryResponse, "Ghi nhận việc sử dụng thuốc thành công.");
+                usageHistoryResponse, "Ghi nhận việc sử dụng thành công.");
         }
         catch (Exception ex)
         {

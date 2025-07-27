@@ -434,8 +434,7 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             }
         }
 
-        [HttpGet("/api/students/{studentId}/vaccination-sessions")]
-        [Authorize(Roles = "PARENT, SCHOOLNURSE, MANAGER")]
+        [HttpGet("/api/students/{studentId}/vaccination-sessions")]       
         public async Task<ActionResult<BaseListResponse<VaccinationSessionResponse>>> GetSessionsByStudentId(Guid studentId, CancellationToken cancellationToken = default)
         {
             try

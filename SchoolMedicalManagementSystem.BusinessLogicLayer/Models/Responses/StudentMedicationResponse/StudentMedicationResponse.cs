@@ -20,6 +20,7 @@ public class StudentMedicationResponse
     
     public StudentMedicationStatus Status { get; set; }
     public ReceivedMedication Received { get; set; }
+    public bool IsLowStock { get; set; }
     public string StatusDisplayName { get; set; }
     public string? RejectionReason { get; set; }
     public DateTime? SubmittedAt { get; set; }
