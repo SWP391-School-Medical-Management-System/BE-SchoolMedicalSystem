@@ -264,8 +264,8 @@ public class MedicalItemService : IMedicalItemService
     }
 
     public async Task<BaseResponse<MedicalItemResponse>> UpdateMedicalItemAsync(
-        Guid itemId,
-        UpdateMedicalItemRequest model)
+    Guid itemId,
+    UpdateMedicalItemRequest model)
     {
         try
         {
@@ -296,7 +296,10 @@ public class MedicalItemService : IMedicalItemService
                     "Chỉ Y tá trường học mới có quyền cập nhật thuốc/vật tư y tế.");
             }
 
-            if (medicalItem.ApprovalStatus == MedicalItemApprovalStatus.Rejected)
+            // Nếu School Nurse cập nhật và trạng thái là Approved hoặc Rejected, chuyển về Pending
+            if (userRoles.Contains("SCHOOLNURSE") && !userRoles.Contains("MANAGER") &&
+                (medicalItem.ApprovalStatus == MedicalItemApprovalStatus.Approved ||
+                 medicalItem.ApprovalStatus == MedicalItemApprovalStatus.Rejected))
             {
                 medicalItem.ApprovalStatus = MedicalItemApprovalStatus.Pending;
                 medicalItem.RequestedAt = DateTime.Now;
@@ -304,6 +307,7 @@ public class MedicalItemService : IMedicalItemService
                 medicalItem.ApprovedAt = null;
                 medicalItem.RejectedAt = null;
                 medicalItem.RejectionReason = null;
+                _logger.LogInformation("Trạng thái MedicalItem {ItemId} chuyển về Pending để chờ phê duyệt lại bởi School Nurse {UserId}", itemId, currentUserId);
             }
 
             var schoolNurseRoleName = await GetSchoolNurseRoleName();

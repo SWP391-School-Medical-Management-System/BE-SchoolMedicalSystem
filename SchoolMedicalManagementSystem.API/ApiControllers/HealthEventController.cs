@@ -170,7 +170,6 @@ public class HealthEventController : ControllerBase
     /// Lấy danh sách sự kiện y tế theo học sinh
     /// </summary>
     [HttpGet("student/{studentId}")]
-    [Authorize(Roles = "SCHOOLNURSE,PARENT,MANAGER")]
     public async Task<ActionResult<BaseListResponse<HealthEventResponse>>> GetHealthEventsByStudent(
         Guid studentId,
         [FromQuery] int pageIndex = 1,

@@ -92,7 +92,7 @@ public class BlogPostService : IBlogPostService
             var responses = _mapper.Map<List<BlogPostResponse>>(blogPosts);
 
             var result = BaseListResponse<BlogPostResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách bài viết thành công.");
-            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+            await InvalidateCacheAsync();
             return result;
         }
         catch (Exception ex)
@@ -118,7 +118,7 @@ public class BlogPostService : IBlogPostService
                 return BaseResponse<BlogPostResponse>.ErrorResult("Không tìm thấy bài viết.");
 
             var response = BaseResponse<BlogPostResponse>.SuccessResult(_mapper.Map<BlogPostResponse>(blogPost), "Lấy bài viết thành công.");
-            await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
+            await InvalidateCacheAsync();
             return response;
         }
         catch (Exception ex)
@@ -306,6 +306,7 @@ public class BlogPostService : IBlogPostService
 
             var result = BaseListResponse<BlogCommentResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách bình luận thành công.");
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+            await InvalidateCacheAsync();
             return result;
         }
         catch (Exception ex)
