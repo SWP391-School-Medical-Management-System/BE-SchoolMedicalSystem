@@ -1875,7 +1875,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
 
         public async Task<BaseResponse<HearingRecordResponseHealth>> SaveLeftEarCheckAsync(
-            Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default)
+    Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -1953,24 +1953,20 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     var hearingRecord = await _unitOfWork.GetRepositoryByEntity<HearingRecord>().GetQueryable()
                         .FirstOrDefaultAsync(hr => hr.MedicalRecordId == medicalRecord.Id && hr.HealthCheckId == healthCheckId && !hr.IsDeleted, cancellationToken);
 
-                    string previousRightEar = null;
+                    string previousRightEar = hearingRecord?.RightEar ?? "Not recorded"; // Giá trị mặc định nếu null
                     if (hearingRecord == null)
                     {
                         var previousHearingRecord = await _unitOfWork.GetRepositoryByEntity<HearingRecord>().GetQueryable()
                             .Where(hr => hr.MedicalRecordId == medicalRecord.Id && !hr.IsDeleted)
                             .OrderByDescending(hr => hr.CheckDate)
                             .FirstOrDefaultAsync(cancellationToken);
-                        previousRightEar = previousHearingRecord?.RightEar;
-                    }
-                    else
-                    {
-                        previousRightEar = hearingRecord.RightEar;
+                        previousRightEar = previousHearingRecord?.RightEar ?? "Not recorded";
                     }
 
-                    // Chuyển đổi decimal? sang string (giả sử Value là số decibel hoặc trạng thái)
+                    // Chuyển đổi request.Value sang string
                     string leftEarValue = request.Value switch
                     {
-                        null => "normal",
+                        null => "Not recorded", // Thay đổi từ "normal" thành "Not recorded" để phản ánh không có dữ liệu
                         <= 20 => "normal",
                         <= 40 => "mild",
                         <= 60 => "moderate",
@@ -2160,24 +2156,20 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     var hearingRecord = await _unitOfWork.GetRepositoryByEntity<HearingRecord>().GetQueryable()
                         .FirstOrDefaultAsync(hr => hr.MedicalRecordId == medicalRecord.Id && hr.HealthCheckId == healthCheckId && !hr.IsDeleted, cancellationToken);
 
-                    string previousLeftEar = null;
+                    string previousLeftEar = hearingRecord?.LeftEar ?? "Not recorded"; // Giá trị mặc định nếu null
                     if (hearingRecord == null)
                     {
                         var previousHearingRecord = await _unitOfWork.GetRepositoryByEntity<HearingRecord>().GetQueryable()
                             .Where(hr => hr.MedicalRecordId == medicalRecord.Id && !hr.IsDeleted)
                             .OrderByDescending(hr => hr.CheckDate)
                             .FirstOrDefaultAsync(cancellationToken);
-                        previousLeftEar = previousHearingRecord?.LeftEar;
-                    }
-                    else
-                    {
-                        previousLeftEar = hearingRecord.LeftEar;
+                        previousLeftEar = previousHearingRecord?.LeftEar ?? "Not recorded";
                     }
 
-                    // Chuyển đổi decimal? sang string
+                    // Chuyển đổi request.Value sang string
                     string rightEarValue = request.Value switch
                     {
-                        null => "normal",
+                        null => "Not recorded", // Thay đổi từ "normal" thành "Not recorded" để phản ánh không có dữ liệu
                         <= 20 => "normal",
                         <= 40 => "mild",
                         <= 60 => "moderate",
