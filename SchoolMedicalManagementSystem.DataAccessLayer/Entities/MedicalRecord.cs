@@ -16,4 +16,5 @@ public class MedicalRecord : BaseEntity
     public virtual ICollection<VisionRecord> VisionRecords { get; set; }
     public virtual ICollection<HearingRecord> HearingRecords { get; set; }
     public virtual ICollection<PhysicalRecord> PhysicalRecords { get; set; }
+    public virtual ICollection<VitalSignRecord> VitalSignRecords { get; set; }
 }

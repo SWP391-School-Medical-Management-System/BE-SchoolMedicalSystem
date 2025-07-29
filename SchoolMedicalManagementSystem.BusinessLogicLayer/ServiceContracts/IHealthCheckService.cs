@@ -1,5 +1,6 @@
 ﻿using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Requests.HealthCheckRequest;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.BaseResponse;
+using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.HealthCheckItemResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.HealthCheckResponse;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicalCondition;
 using SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.MedicalRecordResponse;
@@ -54,16 +55,50 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.ServiceContracts
 
         #region HealthCheck Flow
 
+        Task<BaseResponse<List<HealthCheckItemResultResponse>>> GetHealthCheckResultsAsync(
+            Guid healthCheckId,
+            Guid? studentId
+            , CancellationToken cancellationToken = default);
+
         Task<BaseResponse<VisionRecordResponseHealth>> SaveLeftEyeCheckAsync(
-            Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default);
+            Guid healthCheckId,
+            SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default);
+
         Task<BaseResponse<VisionRecordResponseHealth>> SaveRightEyeCheckAsync(
-         Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default);
-        //Task<BaseResponse<HearingRecordResponse>> SaveLeftEarCheckAsync(Guid healthCheckId, SaveHearingCheckRequest request, CancellationToken cancellationToken = default);
-        //Task<BaseResponse<HearingRecordResponse>> SaveRightEarCheckAsync(Guid healthCheckId, SaveHearingCheckRequest request, CancellationToken cancellationToken = default);
-        //Task<BaseResponse<PhysicalRecordResponse>> SaveHeightCheckAsync(Guid healthCheckId, SaveHeightCheckRequest request, CancellationToken cancellationToken = default);
-        //Task<BaseResponse<PhysicalRecordResponse>> SaveWeightCheckAsync(Guid healthCheckId, SaveWeightCheckRequest request, CancellationToken cancellationToken = default);
-        //Task<BaseResponse<MedicalConditionResponse>> SaveBloodPressureCheckAsync(Guid healthCheckId, SaveBloodPressureCheckRequest request, CancellationToken cancellationToken = default);
-        //Task<BaseResponse<MedicalConditionResponse>> SaveHeartRateCheckAsync(Guid healthCheckId, SaveHeartRateCheckRequest request, CancellationToken cancellationToken = default);
+             Guid healthCheckId,
+             SaveVisionCheckRequest request,
+             CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<HearingRecordResponseHealth>> SaveLeftEarCheckAsync(
+             Guid healthCheckId,
+             SaveVisionCheckRequest request,
+             CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<HearingRecordResponseHealth>> SaveRightEarCheckAsync(
+             Guid healthCheckId,
+             SaveVisionCheckRequest request,
+             CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<PhysicalRecordResponseHealth>> SaveHeightCheckAsync(
+             Guid healthCheckId,
+             SaveVisionCheckRequest request,
+             CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<PhysicalRecordResponseHealth>> SaveWeightCheckAsync(
+             Guid healthCheckId,
+             SaveVisionCheckRequest request,
+             CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<VitalSignRecordResponseHealth>> SaveBloodPressureCheckAsync(
+            Guid healthCheckId,
+            SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default);
+
+        Task<BaseResponse<VitalSignRecordResponseHealth>> SaveHeartRateCheckAsync(
+            Guid healthCheckId,
+            SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default);
 
         #endregion
 
