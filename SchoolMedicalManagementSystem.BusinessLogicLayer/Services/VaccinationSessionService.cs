@@ -2163,22 +2163,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             Message = "Buổi tiêm phải ở trạng thái Scheduled để hoàn tất."
                         };
                     }
-
-                    var consents = session.Consents.Where(c => c.Status == "Confirmed").ToList();
-                    var vaccinatedStudents = await _unitOfWork.GetRepositoryByEntity<VaccinationRecord>().GetQueryable()
-                        .Where(vr => vr.SessionId == sessionId && vr.VaccinationStatus == "Completed" && !vr.IsDeleted)
-                        .Select(vr => vr.UserId)
-                        .ToListAsync(cancellationToken);
-
-                    if (consents.Any() && !consents.All(c => vaccinatedStudents.Contains(c.StudentId)))
-                    {
-                        return new BaseResponse<bool>
-                        {
-                            Success = false,
-                            Message = "Tất cả học sinh đã xác nhận phải được đánh dấu tiêm trước khi hoàn tất."
-                        };
-                    }
-
+                  
                     var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
                     if (!Guid.TryParse(userIdClaim, out var managerId))
                     {
