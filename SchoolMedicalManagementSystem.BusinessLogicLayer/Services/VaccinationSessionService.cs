@@ -1103,21 +1103,29 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .Where(c => c.SessionId == sessionId)
                     .ToListAsync();
 
-                var pendingConsents = consents.Where(c => c.Status == "Pending").ToList();
+                var pendingConsents = consents.Where(c => c.Status == "Pending" || c.Status == "WaitingForParentConsent").ToList();
+                if (!pendingConsents.Any())
+                {
+                    _logger.LogInformation("Không có consent nào cần cập nhật trạng thái cho session: {SessionId}", sessionId);
+                }
+
                 foreach (var consent in pendingConsents)
                 {
                     consent.Status = "Declined";
                     consent.ResponseDate = DateTime.UtcNow;
                     await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().UpdateAsync(consent);
+                    _logger.LogDebug("Cập nhật consent {ConsentId} sang trạng thái Declined", consent.Id);
                 }
 
                 if (pendingConsents.Any())
                 {
                     await _unitOfWork.SaveChangesAsync();
+                    _logger.LogInformation("Đã lưu thay đổi trạng thái cho {Count} consents trong session {SessionId}", pendingConsents.Count, sessionId);
                 }
 
                 session.Status = "Scheduled";
                 await _unitOfWork.SaveChangesAsync();
+                _logger.LogInformation("Cập nhật trạng thái session {SessionId} sang Scheduled", sessionId);
 
                 // Xóa cache cụ thể cho session detail và danh sách sessions
                 var sessionCacheKey = _cacheService.GenerateCacheKey("session_detail", sessionId.ToString());
@@ -1125,6 +1133,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 _logger.LogDebug("Đã xóa cache cụ thể cho session detail: {CacheKey}", sessionCacheKey);
                 await _cacheService.RemoveByPrefixAsync(SESSION_LIST_PREFIX);
                 _logger.LogDebug("Đã xóa cache danh sách sessions với prefix: {Prefix}", SESSION_LIST_PREFIX);
+
                 // Xóa cache consent status
                 foreach (var consent in pendingConsents)
                 {
@@ -1134,6 +1143,18 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 }
 
                 await InvalidateAllCachesAsync();
+
+                // Xác minh trạng thái sau khi cập nhật (debug)
+                var updatedConsents = await _unitOfWork.GetRepositoryByEntity<VaccinationConsent>().GetQueryable()
+                    .Where(c => c.SessionId == sessionId && pendingConsents.Select(pc => pc.Id).Contains(c.Id))
+                    .ToListAsync();
+                foreach (var updatedConsent in updatedConsents)
+                {
+                    if (updatedConsent.Status != "Declined")
+                    {
+                        _logger.LogWarning("Consent {ConsentId} không được cập nhật sang Declined sau khi lưu", updatedConsent.Id);
+                    }
+                }
 
                 return new BaseResponse<bool>
                 {
@@ -1243,7 +1264,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
         public async Task<BaseResponse<bool>> AssignNurseToSessionAsync(
             AssignNurseToSessionRequest request,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)  
                 {
                     try
                     {
