@@ -36,6 +36,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         private readonly IValidator<AssignNurseToHealthCheckRequest> _assignNurseValidator;
         private readonly IValidator<ReAssignNurseToHealthCheckRequest> _reAssignNurseValidator;
         private readonly IValidator<SaveVisionCheckRequest> _saveVisionCheckValidator;
+        private readonly IValidator<SaveVisionCheckRequest> _saveHearingCheckValidator;
         private readonly IEmailService _emailService;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
@@ -54,6 +55,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             IValidator<AssignNurseToHealthCheckRequest> assignNurseValidator,
             IValidator<ReAssignNurseToHealthCheckRequest> reAssignNurseValidator,
             IValidator<SaveVisionCheckRequest> saveVisionCheckValidator,
+            IValidator<SaveVisionCheckRequest> saveHearingCheckValidator,
             IEmailService emailService,
             IHttpContextAccessor httpContextAccessor)
         {
@@ -68,73 +70,81 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
             _reAssignNurseValidator = reAssignNurseValidator;
             _emailService = emailService;
             _saveVisionCheckValidator = saveVisionCheckValidator;
+            _saveHearingCheckValidator = saveHearingCheckValidator;
             _httpContextAccessor = httpContextAccessor;
         }
 
         #region CRUD HealthCheck
 
         public async Task<BaseListResponse<HealthCheckResponse>> GetHealthChecksAsync(
-         int pageIndex, int pageSize, string searchTerm, string orderBy, Guid? nurseId = null, CancellationToken cancellationToken = default)
-        {
-            try
+             int pageIndex,
+             int pageSize,
+             string searchTerm,
+             string orderBy,
+             Guid? nurseId = null,
+             CancellationToken cancellationToken = default)
             {
-                var cacheKey = _cacheService.GenerateCacheKey(HEALTHCHECK_LIST_PREFIX, pageIndex.ToString(), pageSize.ToString(), searchTerm ?? "", orderBy ?? "", nurseId?.ToString() ?? "all");
-                var cachedResult = await _cacheService.GetAsync<BaseListResponse<HealthCheckResponse>>(cacheKey);
-                if (cachedResult != null)
+                try
                 {
-                    _logger.LogDebug("Danh sách buổi khám được tìm thấy trong cache.");
-                    return cachedResult;
-                }
-
-                var query = _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
-                    .Include(hc => hc.HealthCheckClasses)
-                        .ThenInclude(hcc => hcc.SchoolClass)
-                    .Include(hc => hc.HealthCheckAssignments)
-                    .Include(hc => hc.HealthCheckConsents)
-                    .Where(hc => !hc.IsDeleted)
-                    .AsQueryable();
-
-                if (!string.IsNullOrEmpty(searchTerm))
-                {
-                    searchTerm = searchTerm.ToLower();
-                    query = query.Where(hc => hc.Title.ToLower().Contains(searchTerm) || hc.Location.ToLower().Contains(searchTerm));
-                }
-
-                if (nurseId.HasValue)
-                {
-                    query = query.Where(hc => hc.HealthCheckAssignments.Any(a => a.NurseId == nurseId.Value));
-                }
-
-                query = ApplyHealthCheckOrdering(query, orderBy);
-                var totalCount = await query.CountAsync(cancellationToken);
-                var healthChecks = await query.Skip((pageIndex - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-
-                var responses = _mapper.Map<List<HealthCheckResponse>>(healthChecks);
-                foreach (var response in responses)
-                {
-                    var hc = healthChecks.FirstOrDefault(h => h.Id == response.Id);
-                    if (hc != null)
+                    var cacheKey = _cacheService.GenerateCacheKey(HEALTHCHECK_LIST_PREFIX, pageIndex.ToString(), pageSize.ToString(), searchTerm ?? "", orderBy ?? "", nurseId?.ToString() ?? "all");
+                    var cachedResult = await _cacheService.GetAsync<BaseListResponse<HealthCheckResponse>>(cacheKey);
+                    if (cachedResult != null)
                     {
-                        response.ApprovedStudents = hc.HealthCheckConsents.Count(hcs => hcs.Status == "Confirmed" && !hcs.IsDeleted);
-                        response.TotalStudents = hc.HealthCheckConsents.Count(hcs => !hcs.IsDeleted);
+                        _logger.LogDebug("Danh sách buổi khám được tìm thấy trong cache.");
+                        return cachedResult;
                     }
+
+                    var query = _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                        .Include(hc => hc.HealthCheckClasses)
+                            .ThenInclude(hcc => hcc.SchoolClass)
+                        .Include(hc => hc.HealthCheckAssignments)
+                        .Include(hc => hc.HealthCheckConsents)
+                        .Where(hc => !hc.IsDeleted)
+                        .AsQueryable();
+
+                    if (!string.IsNullOrEmpty(searchTerm))
+                    {
+                        searchTerm = searchTerm.ToLower();
+                        query = query.Where(hc => hc.Title.ToLower().Contains(searchTerm) || hc.Location.ToLower().Contains(searchTerm));
+                    }
+
+                    if (nurseId.HasValue)
+                    {
+                        query = query.Where(hc => hc.HealthCheckAssignments.Any(a => a.NurseId == nurseId.Value));
+                    }
+
+                    query = ApplyHealthCheckOrdering(query, orderBy);
+                    var totalCount = await query.CountAsync(cancellationToken);
+                    var healthChecks = await query.Skip((pageIndex - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+
+                    var responses = _mapper.Map<List<HealthCheckResponse>>(healthChecks);
+                    foreach (var response in responses)
+                    {
+                        var hc = healthChecks.FirstOrDefault(h => h.Id == response.Id);
+                        if (hc != null)
+                        {
+                            response.ApprovedStudents = hc.HealthCheckConsents.Count(hcs => hcs.Status == "Confirmed" && !hcs.IsDeleted);
+                            response.TotalStudents = hc.HealthCheckConsents.Count(hcs => !hcs.IsDeleted);
+                        }
+                    }
+
+                    var result = BaseListResponse<HealthCheckResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách buổi khám thành công.");
+                    await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+                    await _cacheService.AddToTrackingSetAsync(cacheKey, HEALTHCHECK_CACHE_SET);
+                    await InvalidateAllCachesAsync();
+
+                    return result;
                 }
-
-                var result = BaseListResponse<HealthCheckResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách buổi khám thành công.");
-                await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
-                await _cacheService.AddToTrackingSetAsync(cacheKey, HEALTHCHECK_CACHE_SET);
-                await InvalidateAllCachesAsync();
-
-                return result;
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Lỗi khi lấy danh sách buổi khám.");
+                    return BaseListResponse<HealthCheckResponse>.ErrorResult("Lỗi lấy danh sách buổi khám.");
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi lấy danh sách buổi khám.");
-                return BaseListResponse<HealthCheckResponse>.ErrorResult("Lỗi lấy danh sách buổi khám.");
-            }
-        }
 
-        public async Task<BaseResponse<HealthCheckDetailResponse>> GetHealthCheckDetailAsync(Guid healthCheckId, CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<HealthCheckDetailResponse>> GetHealthCheckDetailAsync(
+            Guid healthCheckId,
+            CancellationToken cancellationToken = default)
         {
             try
             {
@@ -150,6 +160,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .Include(hc => hc.HealthCheckClasses).ThenInclude(hcc => hcc.SchoolClass)
                     .Include(hc => hc.HealthCheckItemAssignments).ThenInclude(hia => hia.HealthCheckItem)
                     .Include(hc => hc.HealthCheckAssignments).ThenInclude(ha => ha.Nurse)
+                    .Include(hc => hc.HealthCheckAssignments).ThenInclude(ha => ha.HealthCheckItems)
                     .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted, cancellationToken);
 
                 if (healthCheck == null)
@@ -162,14 +173,17 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     .Where(c => c.HealthCheckId == healthCheckId && !c.IsDeleted)
                     .ToListAsync(cancellationToken);
 
+                // Ánh xạ itemNurseAssignments từ HealthCheckAssignments và HealthCheckItems
                 var itemNurseAssignments = healthCheck.HealthCheckItemAssignments
                     .Where(hia => !hia.IsDeleted)
                     .Select(hia => new ItemNurseAssignmentHealthCheck
                     {
                         HealthCheckItemId = hia.HealthCheckItemId,
                         HealthCheckItemName = hia.HealthCheckItem?.Name ?? "Unknown Item",
-                        NurseId = healthCheck.HealthCheckAssignments.FirstOrDefault(a => a.HealthCheckItemId == hia.HealthCheckItemId && !a.IsDeleted)?.NurseId,
-                        NurseName = healthCheck.HealthCheckAssignments.FirstOrDefault(a => a.HealthCheckItemId == hia.HealthCheckItemId && !a.IsDeleted)?.Nurse?.FullName ?? "Chưa phân công"
+                        NurseId = healthCheck.HealthCheckAssignments
+                            .FirstOrDefault(a => a.HealthCheckItems.Any(hci => hci.Id == hia.HealthCheckItemId) && !a.IsDeleted)?.NurseId,
+                        NurseName = healthCheck.HealthCheckAssignments
+                            .FirstOrDefault(a => a.HealthCheckItems.Any(hci => hci.Id == hia.HealthCheckItemId) && !a.IsDeleted)?.Nurse?.FullName ?? "Chưa phân công"
                     }).ToList();
 
                 // Lấy danh sách HealthCheckItems
@@ -183,7 +197,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         Category = hia.HealthCheckItem != null ? hia.HealthCheckItem.Categories.ToString() : ""
                     }).DistinctBy(i => i.Id).ToList();
 
-                // Tính toán consents, xử lý trạng thái WaitingForParentConsent
+                // Tính toán consents
                 var totalConsents = consents.Count;
                 var confirmedConsents = consents.Count(c => string.Equals(c.Status, "Confirmed", StringComparison.OrdinalIgnoreCase));
                 var pendingConsents = consents.Count(c => string.Equals(c.Status, "WaitingForParentConsent", StringComparison.OrdinalIgnoreCase));
@@ -685,8 +699,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseResponse<bool>> AssignNurseToHealthCheckAsync(
-    AssignNurseToHealthCheckRequest request,
-    CancellationToken cancellationToken = default)
+            AssignNurseToHealthCheckRequest request,
+            CancellationToken cancellationToken = default)
         {
             try
             {
@@ -714,17 +728,17 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         return BaseResponse<bool>.ErrorResult("Buổi khám không ở trạng thái hợp lệ để phân công y tá (phải là WaitingForParentConsent hoặc Scheduled).");
                     }
 
-                    // Lấy danh sách HealthCheckItemId từ request
                     var requestItemIds = request.Assignments.Select(a => a.HealthCheckItemId).Distinct().ToList();
                     var requestNurseIds = request.Assignments.Select(a => a.NurseId).Distinct().ToList();
 
-                    // Lấy tất cả phân công hiện tại cho HealthCheckId
+                    // Log danh sách HealthCheckItemId trong request để debug
+                    _logger.LogInformation("Received HealthCheckItemIds: {ItemIds}", string.Join(", ", requestItemIds));
+
                     var existingAssignments = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
                         .Include(a => a.HealthCheckItems)
                         .Where(a => a.HealthCheckId == request.HealthCheckId && !a.IsDeleted)
                         .ToListAsync(cancellationToken);
 
-                    // Xóa các HealthCheckItemId trong request khỏi các y tá khác
                     foreach (var assignment in existingAssignments)
                     {
                         var itemsToRemove = assignment.HealthCheckItems
@@ -747,15 +761,12 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         }
                     }
 
-                    // Nhóm các HealthCheckItemId theo NurseId từ request
                     var assignmentsByNurse = request.Assignments
                         .GroupBy(a => a.NurseId)
                         .ToDictionary(g => g.Key, g => g.Select(a => a.HealthCheckItemId).ToList());
 
-                    // Thêm hoặc cập nhật phân công mới
                     foreach (var nurseId in assignmentsByNurse.Keys)
                     {
-                        // Kiểm tra y tá
                         var nurse = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
                             .FirstOrDefaultAsync(u => u.Id == nurseId && u.UserRoles.Any(ur => ur.Role.Name == "SCHOOLNURSE") && !u.IsDeleted, cancellationToken);
                         if (nurse == null)
@@ -764,13 +775,11 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             return BaseResponse<bool>.ErrorResult($"Y tá {nurseId} không tồn tại hoặc không có vai SCHOOLNURSE.");
                         }
 
-                        // Kiểm tra các HealthCheckItemId
                         var itemIds = assignmentsByNurse[nurseId];
                         var healthCheckItems = await _unitOfWork.GetRepositoryByEntity<HealthCheckItem>().GetQueryable()
                             .Where(hci => itemIds.Contains(hci.Id) && !hci.IsDeleted)
                             .ToListAsync(cancellationToken);
 
-                        // Kiểm tra xem tất cả HealthCheckItemId có thuộc buổi khám không
                         foreach (var itemId in itemIds)
                         {
                             var itemExists = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
@@ -782,13 +791,11 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             }
                         }
 
-                        // Tìm phân công hiện tại của y tá
                         var existingNurseAssignment = existingAssignments
                             .FirstOrDefault(a => a.NurseId == nurseId && !a.IsDeleted);
 
                         if (existingNurseAssignment != null)
                         {
-                            // Cập nhật phân công hiện tại
                             foreach (var item in healthCheckItems)
                             {
                                 if (!existingNurseAssignment.HealthCheckItems.Any(i => i.Id == item.Id))
@@ -804,13 +811,11 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         }
                         else
                         {
-                            // Thêm phân công mới
                             var newAssignment = new HealthCheckAssignment
                             {
                                 Id = Guid.NewGuid(),
                                 HealthCheckId = request.HealthCheckId,
                                 NurseId = nurseId,
-                                HealthCheckItemId = Guid.Empty,
                                 HealthCheckItems = healthCheckItems.Any() ? healthCheckItems : new List<HealthCheckItem>(),
                                 AssignedDate = DateTime.UtcNow,
                                 CreatedDate = DateTime.UtcNow,
@@ -825,7 +830,6 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-                    // Xóa cache
                     var cacheKey = _cacheService.GenerateCacheKey("healthcheck_detail", request.HealthCheckId.ToString());
                     await _cacheService.RemoveAsync(cacheKey);
                     _logger.LogDebug("Đã xóa cache cụ thể cho healthcheck detail: {CacheKey}", cacheKey);
@@ -835,7 +839,8 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     await _cacheService.RemoveAsync(nurseAssignmentCacheKey);
                     _logger.LogDebug("Đã xóa cache nurse assignment statuses: {CacheKey}", nurseAssignmentCacheKey);
 
-                    await InvalidateAllCachesAsync();
+                    // Chỉ gọi InvalidateAllCachesAsync nếu thực sự cần
+                    // await InvalidateAllCachesAsync();
 
                     return BaseResponse<bool>.SuccessResult(true, "Phân công y tá thành công.");
                 }, cancellationToken);
@@ -848,7 +853,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
         public async Task<BaseResponse<bool>> ReassignNurseToHealthCheckAsync(
-    Guid healthCheckId, ReAssignNurseToHealthCheckRequest request, CancellationToken cancellationToken = default)
+           Guid healthCheckId, ReAssignNurseToHealthCheckRequest request, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -974,8 +979,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             {
                                 Id = Guid.NewGuid(),
                                 HealthCheckId = healthCheckId,
-                                NurseId = nurseId,
-                                HealthCheckItemId = Guid.Empty,
+                                NurseId = nurseId,                                
                                 HealthCheckItems = healthCheckItems.Any() ? healthCheckItems : new List<HealthCheckItem>(),
                                 AssignedDate = DateTime.UtcNow,
                                 CreatedDate = DateTime.UtcNow,
@@ -1010,9 +1014,11 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                 _logger.LogError(ex, "Lỗi khi tái phân công y tá cho buổi khám {HealthCheckId}. InnerException: {InnerException}", healthCheckId, ex.InnerException?.ToString() ?? "Không có InnerException");
                 return BaseResponse<bool>.ErrorResult($"Lỗi khi tái phân công y tá: {ex.Message}");
             }
-        }
+        }       
 
-        public async Task<BaseResponse<bool>> CompleteHealthCheckAsync(Guid healthCheckId, CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<bool>> CompleteHealthCheckAsync(
+            Guid healthCheckId,
+            CancellationToken cancellationToken = default)
         {
             try
             {
@@ -1335,6 +1341,121 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
 
         #region HealthCheck Flow
 
+        public async Task<BaseResponse<List<HealthCheckItemResultResponse>>> GetHealthCheckResultsAsync(
+            Guid healthCheckId, Guid? studentId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                // Kiểm tra buổi khám có tồn tại không
+                var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                    .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted, cancellationToken);
+                if (healthCheck == null)
+                {
+                    _logger.LogWarning("Buổi khám không tồn tại: {HealthCheckId}", healthCheckId);
+                    return BaseResponse<List<HealthCheckItemResultResponse>>.ErrorResult("Buổi khám không tồn tại.");
+                }
+
+                // Lấy danh sách học sinh được phân công
+                var assignedStudentsQuery = _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                    .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted);
+
+                // Lọc theo studentId nếu có
+                if (studentId.HasValue)
+                {
+                    assignedStudentsQuery = assignedStudentsQuery.Where(u => u.Id == studentId.Value);
+                }
+
+                var assignedStudents = await assignedStudentsQuery.ToListAsync(cancellationToken);
+
+                // Nếu studentId được cung cấp nhưng không tìm thấy học sinh
+                if (studentId.HasValue && !assignedStudents.Any())
+                {
+                    _logger.LogWarning("Học sinh không tồn tại: {StudentId}", studentId);
+                    return BaseResponse<List<HealthCheckItemResultResponse>>.ErrorResult("Học sinh không tồn tại.");
+                }
+
+                // Lấy danh sách hạng mục kiểm tra của buổi khám
+                var healthCheckItems = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                    .Include(hia => hia.HealthCheckItem)
+                    .Where(hia => hia.HealthCheckId == healthCheckId && !hia.IsDeleted)
+                    .Select(hia => hia.HealthCheckItem)
+                    .ToListAsync(cancellationToken);
+
+                var results = new List<HealthCheckItemResultResponse>();
+
+                foreach (var student in assignedStudents)
+                {
+                    // Lấy hoặc tạo HealthCheckResult cho học sinh
+                    var healthCheckResult = await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().GetQueryable()
+                        .Include(hcr => hcr.ResultItems)
+                        .ThenInclude(ri => ri.HealthCheckItem)
+                        .FirstOrDefaultAsync(hcr => hcr.HealthCheckId == healthCheckId && hcr.UserId == student.Id && !hcr.IsDeleted, cancellationToken);
+
+                    if (healthCheckResult == null)
+                    {
+                        // Tạo mới HealthCheckResult nếu chưa tồn tại, với giá trị mặc định cho OverallAssessment
+                        healthCheckResult = new HealthCheckResult
+                        {
+                            Id = Guid.NewGuid(),
+                            UserId = student.Id,
+                            HealthCheckId = healthCheckId,
+                            OverallAssessment = "Chưa đánh giá", // Gán giá trị mặc định
+                            Recommendations = "Không có khuyến nghị", // Gán giá trị mặc định nếu cột này cũng bắt buộc
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().AddAsync(healthCheckResult);
+                        await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    }
+
+                    // Lấy danh sách HealthCheckResultItem cho học sinh
+                    var resultItems = await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().GetQueryable()
+                        .Include(ri => ri.HealthCheckItem)
+                        .Where(ri => ri.HealthCheckResultId == healthCheckResult.Id && !ri.IsDeleted)
+                        .ToListAsync(cancellationToken);
+
+                    // Duyệt qua từng hạng mục kiểm tra để tạo phản hồi
+                    foreach (var healthCheckItem in healthCheckItems)
+                    {
+                        var itemResult = resultItems.FirstOrDefault(ri => ri.HealthCheckItemId == healthCheckItem.Id);
+                        var resultResponse = new HealthCheckItemResultResponse
+                        {
+                            Id = itemResult?.Id ?? healthCheckResult.Id, // Sử dụng Id của HealthCheckResultItem nếu có, nếu không dùng Id của HealthCheckResult
+                            UserId = student.Id,
+                            StudentName = student.FullName,
+                            HealthCheckId = healthCheckId,
+                            HealthCheckItemId = healthCheckItem.Id,
+                            HealthCheckItemName = healthCheckItem.Name,
+                            ResultStatus = itemResult != null ? "Complete" : "NotChecked", // Chỉ có 2 trạng thái: Complete hoặc NotChecked
+                            ResultItems = itemResult != null
+                                ? new List<HealthCheckResultItemResponse> { new HealthCheckResultItemResponse
+                        {
+                            Id = itemResult.Id,
+                            HealthCheckResultId = itemResult.HealthCheckResultId,
+                            HealthCheckItemId = itemResult.HealthCheckItemId,
+                            HealthCheckItemName = itemResult.HealthCheckItem?.Name ?? "Unknown",
+                            Value = itemResult.Value,
+                            IsNormal = itemResult.IsNormal,
+                            Notes = itemResult.Notes
+                        }}
+                                : new List<HealthCheckResultItemResponse>()
+                        };
+
+                        results.Add(resultResponse);
+                    }
+                }
+
+                await InvalidateAllCachesAsync();
+
+                return BaseResponse<List<HealthCheckItemResultResponse>>.SuccessResult(results, "Lấy kết quả kiểm tra sức khỏe thành công.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy kết quả kiểm tra sức khỏe: HealthCheckId={HealthCheckId}, StudentId={StudentId}", healthCheckId, studentId);
+                return BaseResponse<List<HealthCheckItemResultResponse>>.ErrorResult($"Lỗi khi lấy kết quả kiểm tra sức khỏe: {ex.Message}");
+            }
+        }
+
         public async Task<BaseResponse<VisionRecordResponseHealth>> SaveLeftEyeCheckAsync(
              Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default)
         {
@@ -1401,13 +1522,13 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                     }
 
                     // Kiểm tra xem y tá có được phân công cho hạng mục này không
-                    var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
-                        .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.HealthCheckItemId == request.HealthCheckItemId && a.NurseId == nurseId && !a.IsDeleted, cancellationToken);
-                    if (assignment == null)
-                    {
-                        _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
-                        return BaseResponse<VisionRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
-                    }
+                    //var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                    //    .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.HealthCheckItemId == request.HealthCheckItemId && a.NurseId == nurseId && !a.IsDeleted, cancellationToken);
+                    //if (assignment == null)
+                    //{
+                    //    _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
+                    //    return BaseResponse<VisionRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
+                    //}
 
                     // Tìm hoặc tạo VisionRecord
                     var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
@@ -1609,14 +1730,14 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                         return BaseResponse<VisionRecordResponseHealth>.ErrorResult("Không thể xác định ID y tá.");
                     }
 
-                    // Kiểm tra xem y tá có được phân công cho hạng mục này không
-                    var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
-                        .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.HealthCheckItemId == request.HealthCheckItemId && a.NurseId == nurseId && !a.IsDeleted, cancellationToken);
-                    if (assignment == null)
-                    {
-                        _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
-                        return BaseResponse<VisionRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
-                    }
+                    //// Kiểm tra xem y tá có được phân công cho hạng mục này không
+                    //var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                    //    .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.HealthCheckItemId == request.HealthCheckItemId && a.NurseId == nurseId && !a.IsDeleted, cancellationToken);
+                    //if (assignment == null)
+                    //{
+                    //    _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
+                    //    return BaseResponse<VisionRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
+                    //}
 
                     // Tìm hoặc tạo VisionRecord
                     var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
@@ -1752,141 +1873,1225 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
         }
 
 
-        //public async Task<BaseResponse<HearingRecordResponse>> SaveHearingCheckAsync(
-        //    Guid healthCheckId,
-        //    SaveHearingCheckRequest request,
-        //    CancellationToken cancellationToken = default)
-        //{
-        //    try
-        //    {
-        //        var validationResult = await _saveHearingCheckValidator.ValidateAsync(request, cancellationToken);
-        //        if (!validationResult.IsValid)
-        //        {
-        //            string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
-        //            _logger.LogWarning("Validation failed for SaveHearingCheckRequest: {Errors}", errors);
-        //            return BaseResponse<HearingRecordResponse>.ErrorResult(errors);
-        //        }
+        public async Task<BaseResponse<HearingRecordResponseHealth>> SaveLeftEarCheckAsync(
+            Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    _logger.LogError("Request is null in SaveLeftEarCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Dữ liệu yêu cầu không hợp lệ.");
+                }
 
-        //        return await _unitOfWork.ExecuteInTransactionAsync(async () =>
-        //        {
-        //            // Kiểm tra buổi khám
-        //            var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
-        //                .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted && hc.Status == "Scheduled", cancellationToken);
-        //            if (healthCheck == null)
-        //            {
-        //                _logger.LogWarning("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled: {HealthCheckId}", healthCheckId);
-        //                return BaseResponse<HearingRecordResponse>.ErrorResult("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled.");
-        //            }
+                if (_saveHearingCheckValidator == null)
+                {
+                    _logger.LogError("Validator is null in SaveLeftEarCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Cấu hình validator không hợp lệ.");
+                }
 
-        //            // Kiểm tra quyền y tá
-        //            var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
-        //            if (!Guid.TryParse(userIdClaim, out var nurseId))
-        //            {
-        //                _logger.LogError("Không thể xác định ID y tá từ claims.");
-        //                throw new UnauthorizedAccessException("Không thể xác định ID y tá.");
-        //            }
+                var validationResult = await _saveHearingCheckValidator.ValidateAsync(request, cancellationToken);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Validation failed for SaveVisionCheckRequest: {Errors}", errors);
+                    return BaseResponse<HearingRecordResponseHealth>.ErrorResult(errors);
+                }
 
-        //            // Kiểm tra y tá được phân công cho hạng mục kiểm tra thính lực
-        //            var itemAssignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
-        //                .Include(hia => hia.HealthCheckItem)
-        //                .FirstOrDefaultAsync(hia => hia.HealthCheckId == healthCheckId
-        //                    && hia.HealthCheckItem.Categories == HealthCheckItemName.Hearing
-        //                    && !hia.IsDeleted, cancellationToken);
-        //            if (itemAssignment == null)
-        //            {
-        //                _logger.LogWarning("Hạng mục kiểm tra thính lực không thuộc buổi khám: {HealthCheckId}", healthCheckId);
-        //                return BaseResponse<HearingRecordResponse>.ErrorResult("Hạng mục kiểm tra thính lực không thuộc buổi khám này.");
-        //            }
+                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                {
+                    var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                        .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted && hc.Status == "Scheduled", cancellationToken);
+                    if (healthCheck == null)
+                    {
+                        _logger.LogWarning("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled: {HealthCheckId}", healthCheckId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled.");
+                    }
 
-        //            var nurseAssignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
-        //                .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId
-        //                    && a.HealthCheckItemId == itemAssignment.HealthCheckItemId
-        //                    && a.NurseId == nurseId
-        //                    && !a.IsDeleted, cancellationToken);
-        //            if (nurseAssignment == null)
-        //            {
-        //                _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục kiểm tra thính lực trong buổi khám: {HealthCheckId}", nurseId, healthCheckId);
-        //                return BaseResponse<HearingRecordResponse>.ErrorResult("Bạn không được phân công thực hiện kiểm tra thính lực cho buổi khám này.");
-        //            }
+                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == request.StudentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                    if (student == null)
+                    {
+                        _logger.LogWarning("Học sinh không tồn tại: {StudentId}", request.StudentId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Học sinh không tồn tại.");
+                    }
 
-        //            // Kiểm tra học sinh và consent
-        //            var consent = await _unitOfWork.GetRepositoryByEntity<HealthCheckConsent>().GetQueryable()
-        //                .FirstOrDefaultAsync(c => c.HealthCheckId == healthCheckId
-        //                    && c.StudentId == request.StudentId
-        //                    && c.Status == "Confirmed"
-        //                    && !c.IsDeleted, cancellationToken);
-        //            if (consent == null)
-        //            {
-        //                _logger.LogWarning("Học sinh {StudentId} không được phép tham gia buổi khám: {HealthCheckId}", request.StudentId, healthCheckId);
-        //                return BaseResponse<HearingRecordResponse>.ErrorResult("Học sinh không được phép tham gia buổi khám này.");
-        //            }
+                    var itemAssignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                        .Include(hia => hia.HealthCheckItem)
+                        .FirstOrDefaultAsync(hia => hia.HealthCheckId == healthCheckId && hia.HealthCheckItemId == request.HealthCheckItemId && !hia.IsDeleted, cancellationToken);
+                    if (itemAssignment == null || itemAssignment.HealthCheckItem == null || itemAssignment.HealthCheckItem.Categories != HealthCheckItemName.Hearing)
+                    {
+                        _logger.LogWarning("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám: HealthCheckId={HealthCheckId}, HealthCheckItemId={HealthCheckItemId}", healthCheckId, request.HealthCheckItemId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám.");
+                    }
 
-        //            // Tạo hoặc cập nhật HealthCheckResult
-        //            var healthCheckResult = await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().GetQueryable()
-        //                .FirstOrDefaultAsync(hcr => hcr.HealthCheckId == healthCheckId
-        //                    && hcr.UserId == request.StudentId
-        //                    && !hcr.IsDeleted, cancellationToken);
-        //            if (healthCheckResult == null)
-        //            {
-        //                healthCheckResult = new HealthCheckResult
-        //                {
-        //                    Id = Guid.NewGuid(),
-        //                    HealthCheckId = healthCheckId,
-        //                    UserId = request.StudentId,
-        //                    CreatedDate = DateTime.UtcNow,
-        //                    IsDeleted = false
-        //                };
-        //                await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().AddAsync(healthCheckResult);
-        //            }
+                    var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var nurseId))
+                    {
+                        _logger.LogError("Không thể xác định ID y tá.");
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Không thể xác định ID y tá.");
+                    }
 
-        //            // Tạo bản ghi HearingRecord
-        //            var hearingRecord = new HearingRecord
-        //            {
-        //                Id = Guid.NewGuid(),
-        //                MedicalRecordId = (await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
-        //                    .FirstOrDefaultAsync(mr => mr.UserId == request.StudentId && !mr.IsDeleted, cancellationToken))?.Id
-        //                    ?? throw new Exception("Học sinh không có hồ sơ y tế."),
-        //                HealthCheckId = healthCheckId,
-        //                LeftEar = request.LeftEar,
-        //                RightEar = request.RightEar,
-        //                CheckDate = DateTime.UtcNow,
-        //                Comments = request.Comments,
-        //                RecordedBy = nurseId,
-        //                CreatedDate = DateTime.UtcNow,
-        //                IsDeleted = false
-        //            };
-        //            await _unitOfWork.GetRepositoryByEntity<HearingRecord>().AddAsync(hearingRecord);
+                    var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                        .Include(a => a.HealthCheckItems)
+                        .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.NurseId == nurseId && !a.IsDeleted && a.HealthCheckItems.Any(hci => hci.Id == request.HealthCheckItemId), cancellationToken);
+                    if (assignment == null)
+                    {
+                        _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
+                    }
 
-        //            // Tạo bản ghi HealthCheckResultItem
-        //            var resultItem = new HealthCheckResultItem
-        //            {
-        //                Id = Guid.NewGuid(),
-        //                HealthCheckResultId = healthCheckResult.Id,
-        //                HealthCheckItemId = itemAssignment.HealthCheckItemId,
-        //                IsNormal = request.LeftEar == "Normal" && request.RightEar == "Normal", // Ví dụ điều kiện bình thường
-        //                Notes = request.Comments,
-        //                CreatedDate = DateTime.UtcNow,
-        //                IsDeleted = false
-        //            };
-        //            await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().AddAsync(resultItem);
+                    var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(mr => mr.UserId == request.StudentId && !mr.IsDeleted, cancellationToken);
+                    if (medicalRecord == null)
+                    {
+                        _logger.LogWarning("Học sinh chưa có hồ sơ y tế: {StudentId}", request.StudentId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Học sinh chưa có hồ sơ y tế.");
+                    }
 
-        //            // Cập nhật HasAbnormality trong HealthCheckResult
-        //            healthCheckResult.HasAbnormality |= !resultItem.IsNormal;
-        //            await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().UpdateAsync(healthCheckResult);
+                    var hearingRecord = await _unitOfWork.GetRepositoryByEntity<HearingRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(hr => hr.MedicalRecordId == medicalRecord.Id && hr.HealthCheckId == healthCheckId && !hr.IsDeleted, cancellationToken);
 
-        //            await _unitOfWork.SaveChangesAsync(cancellationToken);
-        //            await InvalidateHealthCheckCachesAsync(healthCheckId);
+                    string previousRightEar = null;
+                    if (hearingRecord == null)
+                    {
+                        var previousHearingRecord = await _unitOfWork.GetRepositoryByEntity<HearingRecord>().GetQueryable()
+                            .Where(hr => hr.MedicalRecordId == medicalRecord.Id && !hr.IsDeleted)
+                            .OrderByDescending(hr => hr.CheckDate)
+                            .FirstOrDefaultAsync(cancellationToken);
+                        previousRightEar = previousHearingRecord?.RightEar;
+                    }
+                    else
+                    {
+                        previousRightEar = hearingRecord.RightEar;
+                    }
 
-        //            var response = _mapper.Map<HearingRecordResponse>(hearingRecord);
-        //            return BaseResponse<HearingRecordResponse>.SuccessResult(response, "Lưu kết quả kiểm tra thính lực thành công.");
-        //        }, cancellationToken);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogError(ex, "Lỗi khi lưu kết quả kiểm tra thính lực cho buổi khám: {HealthCheckId}, học sinh: {StudentId}", healthCheckId, request.StudentId);
-        //        return BaseResponse<HearingRecordResponse>.ErrorResult($"Lỗi khi lưu kết quả kiểm tra thính lực: {ex.Message}");
-        //    }
-        //}
+                    // Chuyển đổi decimal? sang string (giả sử Value là số decibel hoặc trạng thái)
+                    string leftEarValue = request.Value switch
+                    {
+                        null => "normal",
+                        <= 20 => "normal",
+                        <= 40 => "mild",
+                        <= 60 => "moderate",
+                        _ => "severe"
+                    };
+
+                    if (hearingRecord == null)
+                    {
+                        hearingRecord = new HearingRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            HealthCheckId = healthCheckId,
+                            LeftEar = leftEarValue,
+                            RightEar = previousRightEar,
+                            CheckDate = DateTime.UtcNow,
+                            Comments = request.Comments,
+                            RecordedBy = nurseId,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HearingRecord>().AddAsync(hearingRecord);
+                    }
+                    else
+                    {
+                        hearingRecord.LeftEar = leftEarValue;
+                        hearingRecord.Comments = request.Comments ?? hearingRecord.Comments;
+                        hearingRecord.CheckDate = DateTime.UtcNow;
+                        hearingRecord.RecordedBy = nurseId;
+                        hearingRecord.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<HearingRecord>().UpdateAsync(hearingRecord);
+                    }
+
+                    var healthCheckResult = await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().GetQueryable()
+                        .FirstOrDefaultAsync(hcr => hcr.HealthCheckId == healthCheckId && hcr.UserId == request.StudentId && !hcr.IsDeleted, cancellationToken);
+                    if (healthCheckResult == null)
+                    {
+                        healthCheckResult = new HealthCheckResult
+                        {
+                            Id = Guid.NewGuid(),
+                            UserId = request.StudentId,
+                            HealthCheckId = healthCheckId,
+                            OverallAssessment = "Chưa đánh giá",
+                            Recommendations = "Không có khuyến nghị",
+                            HasAbnormality = false,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().AddAsync(healthCheckResult);
+                    }
+
+                    var resultItem = await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().GetQueryable()
+                        .FirstOrDefaultAsync(ri => ri.HealthCheckResultId == healthCheckResult.Id && ri.HealthCheckItemId == request.HealthCheckItemId && !ri.IsDeleted, cancellationToken);
+
+                    double? requestValueAsDouble = request.Value.HasValue ? Convert.ToDouble(request.Value.Value) : null;
+
+                    bool isNormal = false;
+                    if (requestValueAsDouble.HasValue && itemAssignment.HealthCheckItem.MinValue.HasValue && itemAssignment.HealthCheckItem.MaxValue.HasValue)
+                    {
+                        isNormal = itemAssignment.HealthCheckItem.MinValue.Value <= requestValueAsDouble.Value && requestValueAsDouble.Value <= itemAssignment.HealthCheckItem.MaxValue.Value;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("MinValue hoặc MaxValue không được thiết lập cho HealthCheckItemId: {HealthCheckItemId}", request.HealthCheckItemId);
+                    }
+
+                    if (resultItem == null)
+                    {
+                        resultItem = new HealthCheckResultItem
+                        {
+                            Id = Guid.NewGuid(),
+                            HealthCheckResultId = healthCheckResult.Id,
+                            HealthCheckItemId = request.HealthCheckItemId,
+                            Value = requestValueAsDouble,
+                            IsNormal = isNormal,
+                            Notes = request.Comments,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().AddAsync(resultItem);
+                    }
+                    else
+                    {
+                        resultItem.Value = requestValueAsDouble;
+                        resultItem.IsNormal = isNormal;
+                        resultItem.Notes = request.Comments ?? resultItem.Notes;
+                        resultItem.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().UpdateAsync(resultItem);
+                    }
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    await InvalidateAllCachesAsync();
+
+                    var response = _mapper.Map<HearingRecordResponseHealth>(hearingRecord);
+                    if (response == null)
+                    {
+                        _logger.LogError("Lỗi khi ánh xạ HearingRecord sang HearingRecordResponseHealth: HearingRecordId={HearingRecordId}", hearingRecord.Id);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Lỗi khi ánh xạ dữ liệu kết quả kiểm tra tai trái.");
+                    }
+
+                    return BaseResponse<HearingRecordResponseHealth>.SuccessResult(response, "Lưu kết quả kiểm tra tai trái thành công.");
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lưu kết quả kiểm tra tai trái: HealthCheckId={HealthCheckId}, StudentId={StudentId}", healthCheckId, request?.StudentId);
+                return BaseResponse<HearingRecordResponseHealth>.ErrorResult($"Lỗi khi lưu kết quả kiểm tra tai trái: {ex.Message}");
+            }
+        }
+
+        public async Task<BaseResponse<HearingRecordResponseHealth>> SaveRightEarCheckAsync(
+             Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    _logger.LogError("Request is null in SaveRightEarCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Dữ liệu yêu cầu không hợp lệ.");
+                }
+
+                if (_saveHearingCheckValidator == null)
+                {
+                    _logger.LogError("Validator is null in SaveRightEarCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Cấu hình validator không hợp lệ.");
+                }
+
+                var validationResult = await _saveHearingCheckValidator.ValidateAsync(request, cancellationToken);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Validation failed for SaveVisionCheckRequest: {Errors}", errors);
+                    return BaseResponse<HearingRecordResponseHealth>.ErrorResult(errors);
+                }
+
+                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                {
+                    var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                        .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted && hc.Status == "Scheduled", cancellationToken);
+                    if (healthCheck == null)
+                    {
+                        _logger.LogWarning("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled: {HealthCheckId}", healthCheckId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled.");
+                    }
+
+                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == request.StudentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                    if (student == null)
+                    {
+                        _logger.LogWarning("Học sinh không tồn tại: {StudentId}", request.StudentId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Học sinh không tồn tại.");
+                    }
+
+                    var itemAssignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                        .Include(hia => hia.HealthCheckItem)
+                        .FirstOrDefaultAsync(hia => hia.HealthCheckId == healthCheckId && hia.HealthCheckItemId == request.HealthCheckItemId && !hia.IsDeleted, cancellationToken);
+                    if (itemAssignment == null || itemAssignment.HealthCheckItem == null || itemAssignment.HealthCheckItem.Categories != HealthCheckItemName.Hearing)
+                    {
+                        _logger.LogWarning("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám: HealthCheckId={HealthCheckId}, HealthCheckItemId={HealthCheckItemId}", healthCheckId, request.HealthCheckItemId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám.");
+                    }
+
+                    var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var nurseId))
+                    {
+                        _logger.LogError("Không thể xác định ID y tá.");
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Không thể xác định ID y tá.");
+                    }
+
+                    var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                        .Include(a => a.HealthCheckItems)
+                        .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.NurseId == nurseId && !a.IsDeleted && a.HealthCheckItems.Any(hci => hci.Id == request.HealthCheckItemId), cancellationToken);
+                    if (assignment == null)
+                    {
+                        _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
+                    }
+
+                    var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(mr => mr.UserId == request.StudentId && !mr.IsDeleted, cancellationToken);
+                    if (medicalRecord == null)
+                    {
+                        _logger.LogWarning("Học sinh chưa có hồ sơ y tế: {StudentId}", request.StudentId);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Học sinh chưa có hồ sơ y tế.");
+                    }
+
+                    var hearingRecord = await _unitOfWork.GetRepositoryByEntity<HearingRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(hr => hr.MedicalRecordId == medicalRecord.Id && hr.HealthCheckId == healthCheckId && !hr.IsDeleted, cancellationToken);
+
+                    string previousLeftEar = null;
+                    if (hearingRecord == null)
+                    {
+                        var previousHearingRecord = await _unitOfWork.GetRepositoryByEntity<HearingRecord>().GetQueryable()
+                            .Where(hr => hr.MedicalRecordId == medicalRecord.Id && !hr.IsDeleted)
+                            .OrderByDescending(hr => hr.CheckDate)
+                            .FirstOrDefaultAsync(cancellationToken);
+                        previousLeftEar = previousHearingRecord?.LeftEar;
+                    }
+                    else
+                    {
+                        previousLeftEar = hearingRecord.LeftEar;
+                    }
+
+                    // Chuyển đổi decimal? sang string
+                    string rightEarValue = request.Value switch
+                    {
+                        null => "normal",
+                        <= 20 => "normal",
+                        <= 40 => "mild",
+                        <= 60 => "moderate",
+                        _ => "severe"
+                    };
+
+                    if (hearingRecord == null)
+                    {
+                        hearingRecord = new HearingRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            HealthCheckId = healthCheckId,
+                            LeftEar = previousLeftEar,
+                            RightEar = rightEarValue,
+                            CheckDate = DateTime.UtcNow,
+                            Comments = request.Comments,
+                            RecordedBy = nurseId,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HearingRecord>().AddAsync(hearingRecord);
+                    }
+                    else
+                    {
+                        hearingRecord.RightEar = rightEarValue;
+                        hearingRecord.Comments = request.Comments ?? hearingRecord.Comments;
+                        hearingRecord.CheckDate = DateTime.UtcNow;
+                        hearingRecord.RecordedBy = nurseId;
+                        hearingRecord.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<HearingRecord>().UpdateAsync(hearingRecord);
+                    }
+
+                    var healthCheckResult = await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().GetQueryable()
+                        .FirstOrDefaultAsync(hcr => hcr.HealthCheckId == healthCheckId && hcr.UserId == request.StudentId && !hcr.IsDeleted, cancellationToken);
+                    if (healthCheckResult == null)
+                    {
+                        healthCheckResult = new HealthCheckResult
+                        {
+                            Id = Guid.NewGuid(),
+                            UserId = request.StudentId,
+                            HealthCheckId = healthCheckId,
+                            OverallAssessment = "Chưa đánh giá",
+                            Recommendations = "Không có khuyến nghị",
+                            HasAbnormality = false,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().AddAsync(healthCheckResult);
+                    }
+
+                    var resultItem = await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().GetQueryable()
+                        .FirstOrDefaultAsync(ri => ri.HealthCheckResultId == healthCheckResult.Id && ri.HealthCheckItemId == request.HealthCheckItemId && !ri.IsDeleted, cancellationToken);
+
+                    double? requestValueAsDouble = request.Value.HasValue ? Convert.ToDouble(request.Value.Value) : null;
+
+                    bool isNormal = false;
+                    if (requestValueAsDouble.HasValue && itemAssignment.HealthCheckItem.MinValue.HasValue && itemAssignment.HealthCheckItem.MaxValue.HasValue)
+                    {
+                        isNormal = itemAssignment.HealthCheckItem.MinValue.Value <= requestValueAsDouble.Value && requestValueAsDouble.Value <= itemAssignment.HealthCheckItem.MaxValue.Value;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("MinValue hoặc MaxValue không được thiết lập cho HealthCheckItemId: {HealthCheckItemId}", request.HealthCheckItemId);
+                    }
+
+                    if (resultItem == null)
+                    {
+                        resultItem = new HealthCheckResultItem
+                        {
+                            Id = Guid.NewGuid(),
+                            HealthCheckResultId = healthCheckResult.Id,
+                            HealthCheckItemId = request.HealthCheckItemId,
+                            Value = requestValueAsDouble,
+                            IsNormal = isNormal,
+                            Notes = request.Comments,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().AddAsync(resultItem);
+                    }
+                    else
+                    {
+                        resultItem.Value = requestValueAsDouble;
+                        resultItem.IsNormal = isNormal;
+                        resultItem.Notes = request.Comments ?? resultItem.Notes;
+                        resultItem.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().UpdateAsync(resultItem);
+                    }
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    await InvalidateAllCachesAsync();
+
+                    var response = _mapper.Map<HearingRecordResponseHealth>(hearingRecord);
+                    if (response == null)
+                    {
+                        _logger.LogError("Lỗi khi ánh xạ HearingRecord sang HearingRecordResponseHealth: HearingRecordId={HearingRecordId}", hearingRecord.Id);
+                        return BaseResponse<HearingRecordResponseHealth>.ErrorResult("Lỗi khi ánh xạ dữ liệu kết quả kiểm tra tai phải.");
+                    }
+
+                    return BaseResponse<HearingRecordResponseHealth>.SuccessResult(response, "Lưu kết quả kiểm tra tai phải thành công.");
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lưu kết quả kiểm tra tai phải: HealthCheckId={HealthCheckId}, StudentId={StudentId}", healthCheckId, request?.StudentId);
+                return BaseResponse<HearingRecordResponseHealth>.ErrorResult($"Lỗi khi lưu kết quả kiểm tra tai phải: {ex.Message}");
+            }
+        }
+
+        public async Task<BaseResponse<PhysicalRecordResponseHealth>> SaveHeightCheckAsync(
+             Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    _logger.LogError("Request is null in SaveHeightCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Dữ liệu yêu cầu không hợp lệ.");
+                }
+
+                if (_saveVisionCheckValidator == null)
+                {
+                    _logger.LogError("Validator is null in SaveHeightCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Cấu hình validator không hợp lệ.");
+                }
+
+                var validationResult = await _saveVisionCheckValidator.ValidateAsync(request, cancellationToken);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Validation failed for SaveVisionCheckRequest: {Errors}", errors);
+                    return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult(errors);
+                }
+
+                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                {
+                    var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                        .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted && hc.Status == "Scheduled", cancellationToken);
+                    if (healthCheck == null)
+                    {
+                        _logger.LogWarning("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled: {HealthCheckId}", healthCheckId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled.");
+                    }
+
+                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == request.StudentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                    if (student == null)
+                    {
+                        _logger.LogWarning("Học sinh không tồn tại: {StudentId}", request.StudentId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Học sinh không tồn tại.");
+                    }
+
+                    var itemAssignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                        .Include(hia => hia.HealthCheckItem)
+                        .FirstOrDefaultAsync(hia => hia.HealthCheckId == healthCheckId && hia.HealthCheckItemId == request.HealthCheckItemId && !hia.IsDeleted, cancellationToken);
+                    if (itemAssignment == null || itemAssignment.HealthCheckItem == null || itemAssignment.HealthCheckItem.Categories != HealthCheckItemName.Height)
+                    {
+                        _logger.LogWarning("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám: HealthCheckId={HealthCheckId}, HealthCheckItemId={HealthCheckItemId}", healthCheckId, request.HealthCheckItemId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám.");
+                    }
+
+                    var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var nurseId))
+                    {
+                        _logger.LogError("Không thể xác định ID y tá.");
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Không thể xác định ID y tá.");
+                    }
+
+                    var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                        .Include(a => a.HealthCheckItems)
+                        .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.NurseId == nurseId && !a.IsDeleted && a.HealthCheckItems.Any(hci => hci.Id == request.HealthCheckItemId), cancellationToken);
+                    if (assignment == null)
+                    {
+                        _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
+                    }
+
+                    var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(mr => mr.UserId == request.StudentId && !mr.IsDeleted, cancellationToken);
+                    if (medicalRecord == null)
+                    {
+                        _logger.LogWarning("Học sinh chưa có hồ sơ y tế: {StudentId}", request.StudentId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Học sinh chưa có hồ sơ y tế.");
+                    }
+
+                    var physicalRecord = await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(pr => pr.MedicalRecordId == medicalRecord.Id && pr.HealthCheckId == healthCheckId && !pr.IsDeleted, cancellationToken);
+
+                    decimal? previousWeight = null;
+                    if (physicalRecord == null)
+                    {
+                        var previousPhysicalRecord = await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().GetQueryable()
+                            .Where(pr => pr.MedicalRecordId == medicalRecord.Id && !pr.IsDeleted)
+                            .OrderByDescending(pr => pr.CheckDate)
+                            .FirstOrDefaultAsync(cancellationToken);
+                        previousWeight = previousPhysicalRecord?.Weight;
+                    }
+                    else
+                    {
+                        previousWeight = physicalRecord.Weight;
+                    }
+
+                    decimal heightValue = request.Value ?? 0;
+                    decimal bmi = previousWeight.HasValue && heightValue > 0 ? previousWeight.Value / ((heightValue / 100) * (heightValue / 100)) : 0;
+
+                    if (physicalRecord == null)
+                    {
+                        physicalRecord = new PhysicalRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            HealthCheckId = healthCheckId,
+                            Height = heightValue,
+                            Weight = previousWeight ?? 0,
+                            BMI = bmi,
+                            CheckDate = DateTime.UtcNow,
+                            Comments = request.Comments,
+                            RecordedBy = nurseId,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().AddAsync(physicalRecord);
+                    }
+                    else
+                    {
+                        physicalRecord.Height = heightValue;
+                        physicalRecord.BMI = previousWeight.HasValue && heightValue > 0 ? previousWeight.Value / ((heightValue / 100) * (heightValue / 100)) : physicalRecord.BMI;
+                        physicalRecord.Comments = request.Comments ?? physicalRecord.Comments;
+                        physicalRecord.CheckDate = DateTime.UtcNow;
+                        physicalRecord.RecordedBy = nurseId;
+                        physicalRecord.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().UpdateAsync(physicalRecord);
+                    }
+
+                    var healthCheckResult = await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().GetQueryable()
+                        .FirstOrDefaultAsync(hcr => hcr.HealthCheckId == healthCheckId && hcr.UserId == request.StudentId && !hcr.IsDeleted, cancellationToken);
+                    if (healthCheckResult == null)
+                    {
+                        healthCheckResult = new HealthCheckResult
+                        {
+                            Id = Guid.NewGuid(),
+                            UserId = request.StudentId,
+                            HealthCheckId = healthCheckId,
+                            OverallAssessment = "Chưa đánh giá",
+                            Recommendations = "Không có khuyến nghị",
+                            HasAbnormality = false,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().AddAsync(healthCheckResult);
+                    }
+
+                    var resultItem = await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().GetQueryable()
+                        .FirstOrDefaultAsync(ri => ri.HealthCheckResultId == healthCheckResult.Id && ri.HealthCheckItemId == request.HealthCheckItemId && !ri.IsDeleted, cancellationToken);
+
+                    double? requestValueAsDouble = request.Value.HasValue ? Convert.ToDouble(request.Value.Value) : null;
+
+                    bool isNormal = false;
+                    if (requestValueAsDouble.HasValue && itemAssignment.HealthCheckItem.MinValue.HasValue && itemAssignment.HealthCheckItem.MaxValue.HasValue)
+                    {
+                        isNormal = itemAssignment.HealthCheckItem.MinValue.Value <= requestValueAsDouble.Value && requestValueAsDouble.Value <= itemAssignment.HealthCheckItem.MaxValue.Value;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("MinValue hoặc MaxValue không được thiết lập cho HealthCheckItemId: {HealthCheckItemId}", request.HealthCheckItemId);
+                    }
+
+                    if (resultItem == null)
+                    {
+                        resultItem = new HealthCheckResultItem
+                        {
+                            Id = Guid.NewGuid(),
+                            HealthCheckResultId = healthCheckResult.Id,
+                            HealthCheckItemId = request.HealthCheckItemId,
+                            Value = requestValueAsDouble,
+                            IsNormal = isNormal,
+                            Notes = request.Comments,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().AddAsync(resultItem);
+                    }
+                    else
+                    {
+                        resultItem.Value = requestValueAsDouble;
+                        resultItem.IsNormal = isNormal;
+                        resultItem.Notes = request.Comments ?? resultItem.Notes;
+                        resultItem.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().UpdateAsync(resultItem);
+                    }
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    await InvalidateAllCachesAsync();
+
+                    var response = _mapper.Map<PhysicalRecordResponseHealth>(physicalRecord);
+                    if (response == null)
+                    {
+                        _logger.LogError("Lỗi khi ánh xạ PhysicalRecord sang PhysicalRecordResponseHealth: PhysicalRecordId={PhysicalRecordId}", physicalRecord.Id);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Lỗi khi ánh xạ dữ liệu kết quả kiểm tra chiều cao.");
+                    }
+
+                    return BaseResponse<PhysicalRecordResponseHealth>.SuccessResult(response, "Lưu kết quả kiểm tra chiều cao thành công.");
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lưu kết quả kiểm tra chiều cao: HealthCheckId={HealthCheckId}, StudentId={StudentId}", healthCheckId, request?.StudentId);
+                return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult($"Lỗi khi lưu kết quả kiểm tra chiều cao: {ex.Message}");
+            }
+        }
+
+        public async Task<BaseResponse<PhysicalRecordResponseHealth>> SaveWeightCheckAsync(
+            Guid healthCheckId, SaveVisionCheckRequest request, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    _logger.LogError("Request is null in SaveWeightCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Dữ liệu yêu cầu không hợp lệ.");
+                }
+
+                if (_saveVisionCheckValidator == null)
+                {
+                    _logger.LogError("Validator is null in SaveWeightCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Cấu hình validator không hợp lệ.");
+                }
+
+                var validationResult = await _saveVisionCheckValidator.ValidateAsync(request, cancellationToken);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Validation failed for SaveVisionCheckRequest: {Errors}", errors);
+                    return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult(errors);
+                }
+
+                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                {
+                    var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                        .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted && hc.Status == "Scheduled", cancellationToken);
+                    if (healthCheck == null)
+                    {
+                        _logger.LogWarning("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled: {HealthCheckId}", healthCheckId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled.");
+                    }
+
+                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == request.StudentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                    if (student == null)
+                    {
+                        _logger.LogWarning("Học sinh không tồn tại: {StudentId}", request.StudentId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Học sinh không tồn tại.");
+                    }
+
+                    var itemAssignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                        .Include(hia => hia.HealthCheckItem)
+                        .FirstOrDefaultAsync(hia => hia.HealthCheckId == healthCheckId && hia.HealthCheckItemId == request.HealthCheckItemId && !hia.IsDeleted, cancellationToken);
+                    if (itemAssignment == null || itemAssignment.HealthCheckItem == null || itemAssignment.HealthCheckItem.Categories != HealthCheckItemName.Weight)
+                    {
+                        _logger.LogWarning("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám: HealthCheckId={HealthCheckId}, HealthCheckItemId={HealthCheckItemId}", healthCheckId, request.HealthCheckItemId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám.");
+                    }
+
+                    var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var nurseId))
+                    {
+                        _logger.LogError("Không thể xác định ID y tá.");
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Không thể xác định ID y tá.");
+                    }
+
+                    var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                        .Include(a => a.HealthCheckItems)
+                        .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.NurseId == nurseId && !a.IsDeleted && a.HealthCheckItems.Any(hci => hci.Id == request.HealthCheckItemId), cancellationToken);
+                    if (assignment == null)
+                    {
+                        _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
+                    }
+
+                    var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(mr => mr.UserId == request.StudentId && !mr.IsDeleted, cancellationToken);
+                    if (medicalRecord == null)
+                    {
+                        _logger.LogWarning("Học sinh chưa có hồ sơ y tế: {StudentId}", request.StudentId);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Học sinh chưa có hồ sơ y tế.");
+                    }
+
+                    var physicalRecord = await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(pr => pr.MedicalRecordId == medicalRecord.Id && pr.HealthCheckId == healthCheckId && !pr.IsDeleted, cancellationToken);
+
+                    decimal? previousHeight = null;
+                    if (physicalRecord == null)
+                    {
+                        var previousPhysicalRecord = await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().GetQueryable()
+                            .Where(pr => pr.MedicalRecordId == medicalRecord.Id && !pr.IsDeleted)
+                            .OrderByDescending(pr => pr.CheckDate)
+                            .FirstOrDefaultAsync(cancellationToken);
+                        previousHeight = previousPhysicalRecord?.Height;
+                    }
+                    else
+                    {
+                        previousHeight = physicalRecord.Height;
+                    }
+
+                    decimal weightValue = request.Value ?? 0;
+                    decimal bmi = weightValue > 0 && previousHeight.HasValue && previousHeight.Value > 0 ? weightValue / ((previousHeight.Value / 100) * (previousHeight.Value / 100)) : 0;
+
+                    if (physicalRecord == null)
+                    {
+                        physicalRecord = new PhysicalRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            HealthCheckId = healthCheckId,
+                            Height = previousHeight ?? 0,
+                            Weight = weightValue,
+                            BMI = bmi,
+                            CheckDate = DateTime.UtcNow,
+                            Comments = request.Comments,
+                            RecordedBy = nurseId,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().AddAsync(physicalRecord);
+                    }
+                    else
+                    {
+                        physicalRecord.Weight = weightValue;
+                        physicalRecord.BMI = weightValue > 0 && physicalRecord.Height > 0 ? weightValue / ((physicalRecord.Height / 100) * (physicalRecord.Height / 100)) : physicalRecord.BMI;
+                        physicalRecord.Comments = request.Comments ?? physicalRecord.Comments;
+                        physicalRecord.CheckDate = DateTime.UtcNow;
+                        physicalRecord.RecordedBy = nurseId;
+                        physicalRecord.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<PhysicalRecord>().UpdateAsync(physicalRecord);
+                    }
+
+                    var healthCheckResult = await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().GetQueryable()
+                        .FirstOrDefaultAsync(hcr => hcr.HealthCheckId == healthCheckId && hcr.UserId == request.StudentId && !hcr.IsDeleted, cancellationToken);
+                    if (healthCheckResult == null)
+                    {
+                        healthCheckResult = new HealthCheckResult
+                        {
+                            Id = Guid.NewGuid(),
+                            UserId = request.StudentId,
+                            HealthCheckId = healthCheckId,
+                            OverallAssessment = "Chưa đánh giá",
+                            Recommendations = "Không có khuyến nghị",
+                            HasAbnormality = false,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().AddAsync(healthCheckResult);
+                    }
+
+                    var resultItem = await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().GetQueryable()
+                        .FirstOrDefaultAsync(ri => ri.HealthCheckResultId == healthCheckResult.Id && ri.HealthCheckItemId == request.HealthCheckItemId && !ri.IsDeleted, cancellationToken);
+
+                    double? requestValueAsDouble = request.Value.HasValue ? Convert.ToDouble(request.Value.Value) : null;
+
+                    bool isNormal = false;
+                    if (requestValueAsDouble.HasValue && itemAssignment.HealthCheckItem.MinValue.HasValue && itemAssignment.HealthCheckItem.MaxValue.HasValue)
+                    {
+                        isNormal = itemAssignment.HealthCheckItem.MinValue.Value <= requestValueAsDouble.Value && requestValueAsDouble.Value <= itemAssignment.HealthCheckItem.MaxValue.Value;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("MinValue hoặc MaxValue không được thiết lập cho HealthCheckItemId: {HealthCheckItemId}", request.HealthCheckItemId);
+                    }
+
+                    if (resultItem == null)
+                    {
+                        resultItem = new HealthCheckResultItem
+                        {
+                            Id = Guid.NewGuid(),
+                            HealthCheckResultId = healthCheckResult.Id,
+                            HealthCheckItemId = request.HealthCheckItemId,
+                            Value = requestValueAsDouble,
+                            IsNormal = isNormal,
+                            Notes = request.Comments,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().AddAsync(resultItem);
+                    }
+                    else
+                    {
+                        resultItem.Value = requestValueAsDouble;
+                        resultItem.IsNormal = isNormal;
+                        resultItem.Notes = request.Comments ?? resultItem.Notes;
+                        resultItem.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().UpdateAsync(resultItem);
+                    }
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    await InvalidateAllCachesAsync();
+
+                    var response = _mapper.Map<PhysicalRecordResponseHealth>(physicalRecord);
+                    if (response == null)
+                    {
+                        _logger.LogError("Lỗi khi ánh xạ PhysicalRecord sang PhysicalRecordResponseHealth: PhysicalRecordId={PhysicalRecordId}", physicalRecord.Id);
+                        return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Lỗi khi ánh xạ dữ liệu kết quả kiểm tra cân nặng.");
+                    }
+
+                    return BaseResponse<PhysicalRecordResponseHealth>.SuccessResult(response, "Lưu kết quả kiểm tra cân nặng thành công.");
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lưu kết quả kiểm tra cân nặng: HealthCheckId={HealthCheckId}, StudentId={StudentId}", healthCheckId, request?.StudentId);
+                return BaseResponse<PhysicalRecordResponseHealth>.ErrorResult($"Lỗi khi lưu kết quả kiểm tra cân nặng: {ex.Message}");
+            }
+        }
+
+        public async Task<BaseResponse<VitalSignRecordResponseHealth>> SaveBloodPressureCheckAsync(
+            Guid healthCheckId,
+            SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    _logger.LogError("Request is null in SaveBloodPressureCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Dữ liệu yêu cầu không hợp lệ.");
+                }
+
+                if (_saveVisionCheckValidator == null)
+                {
+                    _logger.LogError("Validator is null in SaveBloodPressureCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Cấu hình validator không hợp lệ.");
+                }
+
+                var validationResult = await _saveVisionCheckValidator.ValidateAsync(request, cancellationToken);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Validation failed for SaveVitalSignCheckRequest: {Errors}", errors);
+                    return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult(errors);
+                }
+
+                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                {
+                    var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                        .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted && hc.Status == "Scheduled", cancellationToken);
+                    if (healthCheck == null)
+                    {
+                        _logger.LogWarning("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled: {HealthCheckId}", healthCheckId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled.");
+                    }
+
+                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == request.StudentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                    if (student == null)
+                    {
+                        _logger.LogWarning("Học sinh không tồn tại: {StudentId}", request.StudentId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Học sinh không tồn tại.");
+                    }
+
+                    var itemAssignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                        .Include(hia => hia.HealthCheckItem)
+                        .FirstOrDefaultAsync(hia => hia.HealthCheckId == healthCheckId && hia.HealthCheckItemId == request.HealthCheckItemId && !hia.IsDeleted, cancellationToken);
+                    if (itemAssignment == null || itemAssignment.HealthCheckItem == null || itemAssignment.HealthCheckItem.Categories != HealthCheckItemName.Vital)
+                    {
+                        _logger.LogWarning("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám: HealthCheckId={HealthCheckId}, HealthCheckItemId={HealthCheckItemId}", healthCheckId, request.HealthCheckItemId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám.");
+                    }
+
+                    var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var nurseId))
+                    {
+                        _logger.LogError("Không thể xác định ID y tá.");
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Không thể xác định ID y tá.");
+                    }
+
+                    var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                        .Include(a => a.HealthCheckItems)
+                        .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.NurseId == nurseId && !a.IsDeleted && a.HealthCheckItems.Any(hci => hci.Id == request.HealthCheckItemId), cancellationToken);
+                    if (assignment == null)
+                    {
+                        _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
+                    }
+
+                    var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(mr => mr.UserId == request.StudentId && !mr.IsDeleted, cancellationToken);
+                    if (medicalRecord == null)
+                    {
+                        _logger.LogWarning("Học sinh chưa có hồ sơ y tế: {StudentId}", request.StudentId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Học sinh chưa có hồ sơ y tế.");
+                    }
+
+                    var vitalSignRecord = await _unitOfWork.GetRepositoryByEntity<VitalSignRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(vsr => vsr.MedicalRecordId == medicalRecord.Id && vsr.HealthCheckId == healthCheckId && !vsr.IsDeleted, cancellationToken);
+
+                    double? previousHeartRate = null;
+                    if (vitalSignRecord == null)
+                    {
+                        var previousVitalSignRecord = await _unitOfWork.GetRepositoryByEntity<VitalSignRecord>().GetQueryable()
+                            .Where(vsr => vsr.MedicalRecordId == medicalRecord.Id && !vsr.IsDeleted)
+                            .OrderByDescending(vsr => vsr.CheckDate)
+                            .FirstOrDefaultAsync(cancellationToken);
+                        previousHeartRate = previousVitalSignRecord?.HeartRate;
+                    }
+                    else
+                    {
+                        previousHeartRate = vitalSignRecord.HeartRate;
+                    }
+
+                    double? bloodPressureValue = request.Value.HasValue ? Convert.ToDouble(request.Value.Value) : null;
+
+                    if (vitalSignRecord == null)
+                    {
+                        vitalSignRecord = new VitalSignRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            HealthCheckId = healthCheckId,
+                            BloodPressure = bloodPressureValue,
+                            HeartRate = previousHeartRate,
+                            CheckDate = DateTime.UtcNow,
+                            Comments = request.Comments,
+                            RecordedBy = nurseId,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<VitalSignRecord>().AddAsync(vitalSignRecord);
+                    }
+                    else
+                    {
+                        vitalSignRecord.BloodPressure = bloodPressureValue;
+                        vitalSignRecord.Comments = request.Comments ?? vitalSignRecord.Comments;
+                        vitalSignRecord.CheckDate = DateTime.UtcNow;
+                        vitalSignRecord.RecordedBy = nurseId;
+                        vitalSignRecord.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<VitalSignRecord>().UpdateAsync(vitalSignRecord);
+                    }
+
+                    var healthCheckResult = await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().GetQueryable()
+                        .FirstOrDefaultAsync(hcr => hcr.HealthCheckId == healthCheckId && hcr.UserId == request.StudentId && !hcr.IsDeleted, cancellationToken);
+                    if (healthCheckResult == null)
+                    {
+                        healthCheckResult = new HealthCheckResult
+                        {
+                            Id = Guid.NewGuid(),
+                            UserId = request.StudentId,
+                            HealthCheckId = healthCheckId,
+                            OverallAssessment = "Chưa đánh giá",
+                            Recommendations = "Không có khuyến nghị",
+                            HasAbnormality = false,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().AddAsync(healthCheckResult);
+                    }
+
+                    var resultItem = await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().GetQueryable()
+                        .FirstOrDefaultAsync(ri => ri.HealthCheckResultId == healthCheckResult.Id && ri.HealthCheckItemId == request.HealthCheckItemId && !ri.IsDeleted, cancellationToken);
+
+                    double? requestValueAsDouble = request.Value.HasValue ? Convert.ToDouble(request.Value.Value) : null;
+
+                    bool isNormal = false;
+                    if (requestValueAsDouble.HasValue && itemAssignment.HealthCheckItem.MinValue.HasValue && itemAssignment.HealthCheckItem.MaxValue.HasValue)
+                    {
+                        isNormal = itemAssignment.HealthCheckItem.MinValue.Value <= requestValueAsDouble.Value && requestValueAsDouble.Value <= itemAssignment.HealthCheckItem.MaxValue.Value;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("MinValue hoặc MaxValue không được thiết lập cho HealthCheckItemId: {HealthCheckItemId}", request.HealthCheckItemId);
+                    }
+
+                    if (resultItem == null)
+                    {
+                        resultItem = new HealthCheckResultItem
+                        {
+                            Id = Guid.NewGuid(),
+                            HealthCheckResultId = healthCheckResult.Id,
+                            HealthCheckItemId = request.HealthCheckItemId,
+                            Value = requestValueAsDouble,
+                            IsNormal = isNormal,
+                            Notes = request.Comments,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().AddAsync(resultItem);
+                    }
+                    else
+                    {
+                        resultItem.Value = requestValueAsDouble;
+                        resultItem.IsNormal = isNormal;
+                        resultItem.Notes = request.Comments ?? resultItem.Notes;
+                        resultItem.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().UpdateAsync(resultItem);
+                    }
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    await InvalidateAllCachesAsync();
+
+                    var response = _mapper.Map<VitalSignRecordResponseHealth>(vitalSignRecord);
+                    if (response == null)
+                    {
+                        _logger.LogError("Lỗi khi ánh xạ VitalSignRecord sang VitalSignRecordResponseHealth: VitalSignRecordId={VitalSignRecordId}", vitalSignRecord.Id);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Lỗi khi ánh xạ dữ liệu kết quả kiểm tra huyết áp.");
+                    }
+
+                    return BaseResponse<VitalSignRecordResponseHealth>.SuccessResult(response, "Lưu kết quả kiểm tra huyết áp thành công.");
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lưu kết quả kiểm tra huyết áp: HealthCheckId={HealthCheckId}, StudentId={StudentId}", healthCheckId, request?.StudentId);
+                return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult($"Lỗi khi lưu kết quả kiểm tra huyết áp: {ex.Message}");
+            }
+        }
+
+        public async Task<BaseResponse<VitalSignRecordResponseHealth>> SaveHeartRateCheckAsync(
+            Guid healthCheckId,
+            SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    _logger.LogError("Request is null in SaveHeartRateCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Dữ liệu yêu cầu không hợp lệ.");
+                }
+
+                if (_saveVisionCheckValidator == null)
+                {
+                    _logger.LogError("Validator is null in SaveHeartRateCheckAsync: HealthCheckId={HealthCheckId}", healthCheckId);
+                    return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Cấu hình validator không hợp lệ.");
+                }
+
+                var validationResult = await _saveVisionCheckValidator.ValidateAsync(request, cancellationToken);
+                if (!validationResult.IsValid)
+                {
+                    string errors = string.Join(", ", validationResult.Errors.Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Validation failed for SaveVitalSignCheckRequest: {Errors}", errors);
+                    return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult(errors);
+                }
+
+                return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                {
+                    var healthCheck = await _unitOfWork.GetRepositoryByEntity<HealthCheck>().GetQueryable()
+                        .FirstOrDefaultAsync(hc => hc.Id == healthCheckId && !hc.IsDeleted && hc.Status == "Scheduled", cancellationToken);
+                    if (healthCheck == null)
+                    {
+                        _logger.LogWarning("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled: {HealthCheckId}", healthCheckId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Buổi khám không tồn tại hoặc không ở trạng thái Scheduled.");
+                    }
+
+                    var student = await _unitOfWork.GetRepositoryByEntity<ApplicationUser>().GetQueryable()
+                        .FirstOrDefaultAsync(u => u.Id == request.StudentId && u.UserRoles.Any(ur => ur.Role.Name == "STUDENT") && !u.IsDeleted, cancellationToken);
+                    if (student == null)
+                    {
+                        _logger.LogWarning("Học sinh không tồn tại: {StudentId}", request.StudentId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Học sinh không tồn tại.");
+                    }
+
+                    var itemAssignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckItemAssignment>().GetQueryable()
+                        .Include(hia => hia.HealthCheckItem)
+                        .FirstOrDefaultAsync(hia => hia.HealthCheckId == healthCheckId && hia.HealthCheckItemId == request.HealthCheckItemId && !hia.IsDeleted, cancellationToken);
+                    if (itemAssignment == null || itemAssignment.HealthCheckItem == null || itemAssignment.HealthCheckItem.Categories != HealthCheckItemName.Vital)
+                    {
+                        _logger.LogWarning("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám: HealthCheckId={HealthCheckId}, HealthCheckItemId={HealthCheckItemId}", healthCheckId, request.HealthCheckItemId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Hạng mục kiểm tra không hợp lệ, không tồn tại hoặc không thuộc buổi khám.");
+                    }
+
+                    var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirst("uid")?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var nurseId))
+                    {
+                        _logger.LogError("Không thể xác định ID y tá.");
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Không thể xác định ID y tá.");
+                    }
+
+                    var assignment = await _unitOfWork.GetRepositoryByEntity<HealthCheckAssignment>().GetQueryable()
+                        .Include(a => a.HealthCheckItems)
+                        .FirstOrDefaultAsync(a => a.HealthCheckId == healthCheckId && a.NurseId == nurseId && !a.IsDeleted && a.HealthCheckItems.Any(hci => hci.Id == request.HealthCheckItemId), cancellationToken);
+                    if (assignment == null)
+                    {
+                        _logger.LogWarning("Y tá {NurseId} không được phân công cho hạng mục {HealthCheckItemId}", nurseId, request.HealthCheckItemId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Y tá không được phân công cho hạng mục này.");
+                    }
+
+                    var medicalRecord = await _unitOfWork.GetRepositoryByEntity<MedicalRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(mr => mr.UserId == request.StudentId && !mr.IsDeleted, cancellationToken);
+                    if (medicalRecord == null)
+                    {
+                        _logger.LogWarning("Học sinh chưa có hồ sơ y tế: {StudentId}", request.StudentId);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Học sinh chưa có hồ sơ y tế.");
+                    }
+
+                    var vitalSignRecord = await _unitOfWork.GetRepositoryByEntity<VitalSignRecord>().GetQueryable()
+                        .FirstOrDefaultAsync(vsr => vsr.MedicalRecordId == medicalRecord.Id && vsr.HealthCheckId == healthCheckId && !vsr.IsDeleted, cancellationToken);
+
+                    double? previousBloodPressure = null;
+                    if (vitalSignRecord == null)
+                    {
+                        var previousVitalSignRecord = await _unitOfWork.GetRepositoryByEntity<VitalSignRecord>().GetQueryable()
+                            .Where(vsr => vsr.MedicalRecordId == medicalRecord.Id && !vsr.IsDeleted)
+                            .OrderByDescending(vsr => vsr.CheckDate)
+                            .FirstOrDefaultAsync(cancellationToken);
+                        previousBloodPressure = previousVitalSignRecord?.BloodPressure;
+                    }
+                    else
+                    {
+                        previousBloodPressure = vitalSignRecord.BloodPressure;
+                    }
+
+                    double? heartRateValue = request.Value.HasValue ? Convert.ToDouble(request.Value.Value) : null;
+
+                    if (vitalSignRecord == null)
+                    {
+                        vitalSignRecord = new VitalSignRecord
+                        {
+                            Id = Guid.NewGuid(),
+                            MedicalRecordId = medicalRecord.Id,
+                            HealthCheckId = healthCheckId,
+                            BloodPressure = previousBloodPressure,
+                            HeartRate = heartRateValue,
+                            CheckDate = DateTime.UtcNow,
+                            Comments = request.Comments,
+                            RecordedBy = nurseId,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<VitalSignRecord>().AddAsync(vitalSignRecord);
+                    }
+                    else
+                    {
+                        vitalSignRecord.HeartRate = heartRateValue;
+                        vitalSignRecord.Comments = request.Comments ?? vitalSignRecord.Comments;
+                        vitalSignRecord.CheckDate = DateTime.UtcNow;
+                        vitalSignRecord.RecordedBy = nurseId;
+                        vitalSignRecord.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<VitalSignRecord>().UpdateAsync(vitalSignRecord);
+                    }
+
+                    var healthCheckResult = await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().GetQueryable()
+                        .FirstOrDefaultAsync(hcr => hcr.HealthCheckId == healthCheckId && hcr.UserId == request.StudentId && !hcr.IsDeleted, cancellationToken);
+                    if (healthCheckResult == null)
+                    {
+                        healthCheckResult = new HealthCheckResult
+                        {
+                            Id = Guid.NewGuid(),
+                            UserId = request.StudentId,
+                            HealthCheckId = healthCheckId,
+                            OverallAssessment = "Chưa đánh giá",
+                            Recommendations = "Không có khuyến nghị",
+                            HasAbnormality = false,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResult>().AddAsync(healthCheckResult);
+                    }
+
+                    var resultItem = await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().GetQueryable()
+                        .FirstOrDefaultAsync(ri => ri.HealthCheckResultId == healthCheckResult.Id && ri.HealthCheckItemId == request.HealthCheckItemId && !ri.IsDeleted, cancellationToken);
+
+                    double? requestValueAsDouble = request.Value.HasValue ? Convert.ToDouble(request.Value.Value) : null;
+
+                    bool isNormal = false;
+                    if (requestValueAsDouble.HasValue && itemAssignment.HealthCheckItem.MinValue.HasValue && itemAssignment.HealthCheckItem.MaxValue.HasValue)
+                    {
+                        isNormal = itemAssignment.HealthCheckItem.MinValue.Value <= requestValueAsDouble.Value && requestValueAsDouble.Value <= itemAssignment.HealthCheckItem.MaxValue.Value;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("MinValue hoặc MaxValue không được thiết lập cho HealthCheckItemId: {HealthCheckItemId}", request.HealthCheckItemId);
+                    }
+
+                    if (resultItem == null)
+                    {
+                        resultItem = new HealthCheckResultItem
+                        {
+                            Id = Guid.NewGuid(),
+                            HealthCheckResultId = healthCheckResult.Id,
+                            HealthCheckItemId = request.HealthCheckItemId,
+                            Value = requestValueAsDouble,
+                            IsNormal = isNormal,
+                            Notes = request.Comments,
+                            CreatedDate = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().AddAsync(resultItem);
+                    }
+                    else
+                    {
+                        resultItem.Value = requestValueAsDouble;
+                        resultItem.IsNormal = isNormal;
+                        resultItem.Notes = request.Comments ?? resultItem.Notes;
+                        resultItem.LastUpdatedDate = DateTime.UtcNow;
+                        await _unitOfWork.GetRepositoryByEntity<HealthCheckResultItem>().UpdateAsync(resultItem);
+                    }
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    await InvalidateAllCachesAsync();
+
+                    var response = _mapper.Map<VitalSignRecordResponseHealth>(vitalSignRecord);
+                    if (response == null)
+                    {
+                        _logger.LogError("Lỗi khi ánh xạ VitalSignRecord sang VitalSignRecordResponseHealth: VitalSignRecordId={VitalSignRecordId}", vitalSignRecord.Id);
+                        return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Lỗi khi ánh xạ dữ liệu kết quả kiểm tra nhịp tim.");
+                    }
+
+                    return BaseResponse<VitalSignRecordResponseHealth>.SuccessResult(response, "Lưu kết quả kiểm tra nhịp tim thành công.");
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lưu kết quả kiểm tra nhịp tim: HealthCheckId={HealthCheckId}, StudentId={StudentId}", healthCheckId, request?.StudentId);
+                return BaseResponse<VitalSignRecordResponseHealth>.ErrorResult($"Lỗi khi lưu kết quả kiểm tra nhịp tim: {ex.Message}");
+            }
+        }
 
         #endregion
 

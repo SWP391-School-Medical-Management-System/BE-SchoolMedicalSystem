@@ -17,6 +17,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Stud
         public string ClassName { get; set; }
         public DateTime? UsageDate { get; set; }
         public string DosageUse { get; set; }
+        public bool IsMakeupDose { get; set; }
         public StatusUsage Status { get; set; }
         public string StatusDisplayName { get; set; }
         public string? Reason { get; set; }

@@ -1258,7 +1258,8 @@ public class UserService : IUserService
                 VaccinationRecords = new List<VaccinationRecord>(),
                 VisionRecords = new List<VisionRecord>(),
                 HearingRecords = new List<HearingRecord>(),
-                PhysicalRecords = new List<PhysicalRecord>()
+                PhysicalRecords = new List<PhysicalRecord>(),
+                VitalSignRecords = new List<VitalSignRecord>()
             };
             await medicalRecordRepo.AddAsync(medicalRecord);
 
@@ -2489,7 +2490,8 @@ public class UserService : IUserService
                             VaccinationRecords = new List<VaccinationRecord>(),
                             VisionRecords = new List<VisionRecord>(),
                             HearingRecords = new List<HearingRecord>(),
-                            PhysicalRecords = new List<PhysicalRecord>()
+                            PhysicalRecords = new List<PhysicalRecord>(),
+                            VitalSignRecords = new List<VitalSignRecord>()
                         };
                         await medicalRecordRepo.AddAsync(medicalRecord);
 

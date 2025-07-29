@@ -23,6 +23,9 @@ public class BlogPostService : IBlogPostService
 
     private const string BLOG_POST_CACHE_PREFIX = "blog_post";
     private const string BLOG_POST_LIST_PREFIX = "blog_posts_list";
+    private const string BLOG_COMMENT_CACHE_PREFIX = "blog_comments";
+    private const string BLOG_CACHE_SET = "blog_cache_keys";
+    private const string BLOG_COMMENT_CACHE_SET = "blog_comment_cache_keys";
 
     public BlogPostService(
         IMapper mapper,
@@ -92,7 +95,8 @@ public class BlogPostService : IBlogPostService
             var responses = _mapper.Map<List<BlogPostResponse>>(blogPosts);
 
             var result = BaseListResponse<BlogPostResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách bài viết thành công.");
-            await InvalidateCacheAsync();
+
+            await InvalidateAllCachesAsync();
             return result;
         }
         catch (Exception ex)
@@ -118,7 +122,7 @@ public class BlogPostService : IBlogPostService
                 return BaseResponse<BlogPostResponse>.ErrorResult("Không tìm thấy bài viết.");
 
             var response = BaseResponse<BlogPostResponse>.SuccessResult(_mapper.Map<BlogPostResponse>(blogPost), "Lấy bài viết thành công.");
-            await InvalidateCacheAsync();
+            await InvalidateAllCachesAsync();
             return response;
         }
         catch (Exception ex)
@@ -159,7 +163,7 @@ public class BlogPostService : IBlogPostService
             await _unitOfWork.GetRepositoryByEntity<BlogPost>().AddAsync(blogPost);
             await _unitOfWork.SaveChangesAsync();
 
-            await InvalidateCacheAsync();
+            await InvalidateAllCachesAsync();
             return BaseResponse<BlogPostResponse>.SuccessResult(_mapper.Map<BlogPostResponse>(blogPost), "Tạo bài viết thành công.");
         }
         catch (Exception ex)
@@ -188,7 +192,7 @@ public class BlogPostService : IBlogPostService
             blogPost.IsFeatured = model.IsFeatured ?? blogPost.IsFeatured;
 
             await _unitOfWork.SaveChangesAsync();
-            await InvalidateCacheAsync();
+            await InvalidateAllCachesAsync();
             return BaseResponse<BlogPostResponse>.SuccessResult(_mapper.Map<BlogPostResponse>(blogPost), "Cập nhật bài viết thành công.");
         }
         catch (Exception ex)
@@ -214,7 +218,7 @@ public class BlogPostService : IBlogPostService
             await _unitOfWork.SaveChangesAsync();
             _logger.LogInformation("Lưu thay đổi vào cơ sở dữ liệu cho bài viết ID {Id}", id);
 
-            await InvalidateCacheAsync();
+            await InvalidateAllCachesAsync();
             _logger.LogInformation("Bộ nhớ đệm đã được xóa sau khi xóa bài viết ID {Id}", id);
 
             return BaseResponse<bool>.SuccessResult(true, "Xóa bài viết thành công.");
@@ -252,7 +256,7 @@ public class BlogPostService : IBlogPostService
             var responses = _mapper.Map<List<BlogPostResponse>>(blogPosts);
 
             var result = BaseListResponse<BlogPostResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách bài viết nổi bật thành công.");
-            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+            await InvalidateAllCachesAsync();
             return result;
         }
         catch (Exception ex)
@@ -306,7 +310,8 @@ public class BlogPostService : IBlogPostService
 
             var result = BaseListResponse<BlogCommentResponse>.SuccessResult(responses, totalCount, pageSize, pageIndex, "Lấy danh sách bình luận thành công.");
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
-            await InvalidateCacheAsync();
+
+            await InvalidateAllCachesAsync();
             return result;
         }
         catch (Exception ex)
@@ -408,7 +413,7 @@ public class BlogPostService : IBlogPostService
                 return BaseResponse<BlogCommentResponse>.ErrorResult("Lỗi mapping dữ liệu.");
             }
 
-            await InvalidateCacheAsync();
+            await InvalidateAllCachesAsync();
             return BaseResponse<BlogCommentResponse>.SuccessResult(response, "Tạo bình luận thành công.");
         }
         catch (Exception ex)
@@ -434,7 +439,7 @@ public class BlogPostService : IBlogPostService
             comment.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
-            await InvalidateCacheAsync();
+            await InvalidateAllCachesAsync();
             return BaseResponse<bool>.SuccessResult(true, "Phê duyệt bình luận thành công.");
         }
         catch (Exception ex)
@@ -460,7 +465,7 @@ public class BlogPostService : IBlogPostService
             comment.LastUpdatedDate = DateTime.Now;
 
             await _unitOfWork.SaveChangesAsync();
-            await InvalidateCacheAsync();
+            await InvalidateAllCachesAsync();
             return BaseResponse<bool>.SuccessResult(true, "Xóa bình luận thành công.");
         }
         catch (Exception ex)
@@ -528,5 +533,31 @@ public class BlogPostService : IBlogPostService
             throw; 
         }
     }
+
+    private async Task InvalidateAllCachesAsync()
+    {
+        try
+        {
+            // Invalidate specific tracking sets
+            await Task.WhenAll(
+                _cacheService.InvalidateTrackingSetAsync(BLOG_CACHE_SET),
+                _cacheService.InvalidateTrackingSetAsync(BLOG_COMMENT_CACHE_SET)
+            );
+
+            // Invalidate caches by prefixes
+            await Task.WhenAll(
+                _cacheService.RemoveByPrefixAsync(BLOG_POST_CACHE_PREFIX),
+                _cacheService.RemoveByPrefixAsync(BLOG_POST_LIST_PREFIX),
+                _cacheService.RemoveByPrefixAsync(BLOG_COMMENT_CACHE_PREFIX)
+            );
+
+            _logger.LogDebug("All relevant blog caches invalidated successfully.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error while invalidating all caches for blog.");
+        }
+    }
+
     #endregion
 }

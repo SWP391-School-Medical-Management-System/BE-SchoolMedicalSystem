@@ -4,6 +4,5 @@ public enum MedicalConditionType
 {
     Allergy, // Dị ứng
     ChronicDisease, // Bệnh mãn tính
-    MedicalHistory, // Lịch sử y tế/Tiền sử điều trị
-    VitalSign          // Dấu hiệu sinh tồn (huyết áp, nhịp tim)
+    MedicalHistory, // Lịch sử y tế/Tiền sử điều trị 
 }

@@ -55,6 +55,38 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Mappers
                 .ForMember(dest => dest.CheckDate, opt => opt.MapFrom(src => src.CheckDate))
                 .ForMember(dest => dest.Comments, opt => opt.MapFrom(src => src.Comments))
                 .ForMember(dest => dest.RecordedBy, opt => opt.MapFrom(src => src.RecordedBy));
+
+            CreateMap<HearingRecord, HearingRecordResponseHealth>()
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.MedicalRecordId, opt => opt.MapFrom(src => src.MedicalRecordId))
+                .ForMember(dest => dest.HealthCheckId, opt => opt.MapFrom(src => src.HealthCheckId))
+                .ForMember(dest => dest.LeftEar, opt => opt.MapFrom(src => src.LeftEar))
+                .ForMember(dest => dest.RightEar, opt => opt.MapFrom(src => src.RightEar))
+                .ForMember(dest => dest.CheckDate, opt => opt.MapFrom(src => src.CheckDate))
+                .ForMember(dest => dest.Comments, opt => opt.MapFrom(src => src.Comments))
+                .ForMember(dest => dest.RecordedBy, opt => opt.MapFrom(src => src.RecordedBy));
+
+            CreateMap<PhysicalRecord, PhysicalRecordResponseHealth>()
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.MedicalRecordId, opt => opt.MapFrom(src => src.MedicalRecordId))
+                .ForMember(dest => dest.HealthCheckId, opt => opt.MapFrom(src => src.HealthCheckId))
+                .ForMember(dest => dest.Height, opt => opt.MapFrom(src => src.Height))
+                .ForMember(dest => dest.Weight, opt => opt.MapFrom(src => src.Weight))
+                .ForMember(dest => dest.BMI, opt => opt.MapFrom(src => src.BMI))
+                .ForMember(dest => dest.CheckDate, opt => opt.MapFrom(src => src.CheckDate))
+                .ForMember(dest => dest.Comments, opt => opt.MapFrom(src => src.Comments))
+                .ForMember(dest => dest.RecordedBy, opt => opt.MapFrom(src => src.RecordedBy));
+
+            CreateMap<VitalSignRecord, VitalSignRecordResponseHealth>()
+               .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+               .ForMember(dest => dest.MedicalRecordId, opt => opt.MapFrom(src => src.MedicalRecordId))
+               .ForMember(dest => dest.HealthCheckId, opt => opt.MapFrom(src => src.HealthCheckId))
+               .ForMember(dest => dest.BloodPressure, opt => opt.MapFrom(src => src.BloodPressure))
+               .ForMember(dest => dest.HeartRate, opt => opt.MapFrom(src => src.HeartRate))
+               .ForMember(dest => dest.CheckDate, opt => opt.MapFrom(src => src.CheckDate))
+               .ForMember(dest => dest.Comments, opt => opt.MapFrom(src => src.Comments))
+               .ForMember(dest => dest.RecordedBy, opt => opt.MapFrom(src => src.RecordedBy));
+
         }
     }
 }

@@ -18,10 +18,7 @@ public class MedicalCondition : BaseEntity
     public DateTime? DiagnosisDate { get; set; } // Ngày chẩn đoán (cho lịch sử y tế)
     public string Hospital { get; set; }       // Bệnh viện điều trị
     public string Doctor { get; set; }         // Bác sĩ điều trị
-    public string Notes { get; set; }          // Ghi chú bổ sung
-    public double? SystolicBloodPressure { get; set; } // Huyết áp tâm thu (mmHg)
-    public double? DiastolicBloodPressure { get; set; } // Huyết áp tâm trương (mmHg)
-    public double? HeartRate { get; set; }     // Nhịp tim (bpm)
+    public string Notes { get; set; }          // Ghi chú bổ sung 
 
     public virtual MedicalRecord MedicalRecord { get; set; } // Hồ sơ y tế chứa tình trạng này
     public virtual HealthCheck? HealthCheck { get; set; }

@@ -223,6 +223,12 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(p => p.MedicalRecordId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<MedicalRecord>()
+            .HasMany(m => m.VitalSignRecords)
+            .WithOne(p => p.MedicalRecord)
+            .HasForeignKey(p => p.MedicalRecordId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<PhysicalRecord>()
             .HasOne(p => p.HealthCheck)
             .WithMany(h => h.PhysicalRecords)
@@ -263,6 +269,19 @@ public class ApplicationDbContext : DbContext
             .HasOne(p => p.RecordedByUser)
             .WithMany()
             .HasForeignKey(p => p.RecordedBy)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<VitalSignRecord>()
+            .HasOne(v => v.HealthCheck)
+            .WithMany(h => h.VitalSignRecords)
+            .HasForeignKey(v => v.HealthCheckId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<VitalSignRecord>()
+            .HasOne(v => v.RecordedByUser)
+            .WithMany()
+            .HasForeignKey(v => v.RecordedBy)
             .OnDelete(DeleteBehavior.NoAction);
 
         #endregion
