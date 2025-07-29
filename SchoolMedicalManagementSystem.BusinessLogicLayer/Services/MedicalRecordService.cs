@@ -111,6 +111,8 @@ public class MedicalRecordService : IMedicalRecordService
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_RECORD_CACHE_SET);
 
+            await InvalidateAllCachesAsync();
+
             return result;
         }
         catch (Exception ex)
@@ -165,6 +167,7 @@ public class MedicalRecordService : IMedicalRecordService
 
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_RECORD_CACHE_SET);
+            await InvalidateAllCachesAsync();
 
             return response;
         }
@@ -262,6 +265,7 @@ public class MedicalRecordService : IMedicalRecordService
 
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, MEDICAL_RECORD_CACHE_SET);
+            await InvalidateAllCachesAsync();
 
             return response;
         }
@@ -756,13 +760,41 @@ public class MedicalRecordService : IMedicalRecordService
             medicalRecord.LastUpdatedBy = isParent ? "PARENT" : "SCHOOLNURSE";
             medicalRecord.LastUpdatedDate = DateTime.Now;
 
+            decimal? leftEarValueAsDecimal = null;
+            if (!string.IsNullOrEmpty(model.LeftEar) && decimal.TryParse(model.LeftEar, out var leftValue))
+            {
+                leftEarValueAsDecimal = leftValue;
+            }
+            string leftEarValue = leftEarValueAsDecimal switch
+            {
+                null => "Not recorded",
+                <= 20 => "normal",
+                <= 40 => "mild",
+                <= 60 => "moderate",
+                _ => "severe"
+            };
+
+            decimal? rightEarValueAsDecimal = null;
+            if (!string.IsNullOrEmpty(model.RightEar) && decimal.TryParse(model.RightEar, out var rightValue))
+            {
+                rightEarValueAsDecimal = rightValue;
+            }
+            string rightEarValue = rightEarValueAsDecimal switch
+            {
+                null => "Not recorded",
+                <= 20 => "normal",
+                <= 40 => "mild",
+                <= 60 => "moderate",
+                _ => "severe"
+            };
+
             // Tạo mới HearingRecord
             var hearingRecord = new HearingRecord
             {
                 Id = Guid.NewGuid(),
                 MedicalRecordId = medicalRecord.Id,
-                LeftEar = model.LeftEar ?? "Not recorded",
-                RightEar = model.RightEar ?? "Not recorded",
+                LeftEar = leftEarValue,
+                RightEar = rightEarValue,
                 CheckDate = model.CheckDateHearing ?? DateTime.Now,
                 Comments = model.CommentsHearing,
                 RecordedBy = currentUserId,
@@ -774,7 +806,6 @@ public class MedicalRecordService : IMedicalRecordService
             await _unitOfWork.SaveChangesAsync();
             await InvalidateAllCachesAsync();
 
-            // Lấy lại dữ liệu để trả về response
             medicalRecord = await recordRepo.GetQueryable()
                 .Include(mr => mr.Student)
                 .Include(mr => mr.HearingRecords.Where(hr => !hr.IsDeleted))

@@ -14,6 +14,7 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Models.Responses.Heal
         public Guid HealthCheckId { get; set; }
         public Guid HealthCheckItemId { get; set; }
         public string HealthCheckItemName { get; set; }
+        public string Unit { get; set; }
         public string ResultStatus { get; set; } // NotChecked, Complete
         public List<HealthCheckResultItemResponse> ResultItems { get; set; }
     }

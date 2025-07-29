@@ -1426,18 +1426,19 @@ namespace SchoolMedicalManagementSystem.BusinessLogicLayer.Services
                             HealthCheckId = healthCheckId,
                             HealthCheckItemId = healthCheckItem.Id,
                             HealthCheckItemName = healthCheckItem.Name,
+                            Unit = healthCheckItem.Unit, // Thêm Unit từ HealthCheckItem
                             ResultStatus = itemResult != null ? "Complete" : "NotChecked", // Chỉ có 2 trạng thái: Complete hoặc NotChecked
                             ResultItems = itemResult != null
                                 ? new List<HealthCheckResultItemResponse> { new HealthCheckResultItemResponse
-                        {
-                            Id = itemResult.Id,
-                            HealthCheckResultId = itemResult.HealthCheckResultId,
-                            HealthCheckItemId = itemResult.HealthCheckItemId,
-                            HealthCheckItemName = itemResult.HealthCheckItem?.Name ?? "Unknown",
-                            Value = itemResult.Value,
-                            IsNormal = itemResult.IsNormal,
-                            Notes = itemResult.Notes
-                        }}
+                                {
+                                    Id = itemResult.Id,
+                                    HealthCheckResultId = itemResult.HealthCheckResultId,
+                                    HealthCheckItemId = itemResult.HealthCheckItemId,
+                                    HealthCheckItemName = itemResult.HealthCheckItem?.Name ?? "Unknown",
+                                    Value = itemResult.Value,
+                                    IsNormal = itemResult.IsNormal,
+                                    Notes = itemResult.Notes
+                                }}
                                 : new List<HealthCheckResultItemResponse>()
                         };
 
