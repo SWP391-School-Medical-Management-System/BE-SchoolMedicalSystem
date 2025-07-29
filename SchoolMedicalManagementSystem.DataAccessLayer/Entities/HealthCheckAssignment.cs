@@ -9,7 +9,6 @@ namespace SchoolMedicalManagementSystem.DataAccessLayer.Entities
     public class HealthCheckAssignment : BaseEntity
     {
         public Guid HealthCheckId { get; set; }
-        public Guid HealthCheckItemId { get; set; }
         public Guid NurseId { get; set; }
         public DateTime AssignedDate { get; set; }
 

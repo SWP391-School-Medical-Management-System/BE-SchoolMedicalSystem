@@ -27,6 +27,7 @@ public class HealthCheck : BaseEntity
     public virtual ICollection<PhysicalRecord> PhysicalRecords { get; set; }
     public virtual ICollection<HearingRecord> HearingRecords { get; set; }
     public virtual ICollection<VisionRecord> VisionRecords { get; set; }
+    public virtual ICollection<VitalSignRecord> VitalSignRecords { get; set; }
     public virtual ICollection<MedicalCondition> MedicalConditions { get; set; }
     public virtual ICollection<HealthCheckClass> HealthCheckClasses { get; set; }
     public virtual ICollection<HealthCheckAssignment> HealthCheckAssignments { get; set; }

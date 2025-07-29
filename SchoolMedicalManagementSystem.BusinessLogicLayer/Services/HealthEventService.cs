@@ -117,6 +117,7 @@ public class HealthEventService : IHealthEventService
 
             await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
             await _cacheService.AddToTrackingSetAsync(cacheKey, HEALTH_EVENT_CACHE_SET);
+            await InvalidateAllCachesAsync();
             _logger.LogDebug("Cached health events list with key: {CacheKey}", cacheKey);
 
             return result;
@@ -167,6 +168,7 @@ public class HealthEventService : IHealthEventService
 
             await _cacheService.SetAsync(cacheKey, response, TimeSpan.FromMinutes(15));
             await _cacheService.AddToTrackingSetAsync(cacheKey, HEALTH_EVENT_CACHE_SET);
+            await InvalidateAllCachesAsync();
             _logger.LogDebug("Cached health event with key: {CacheKey}", cacheKey);
 
             return response;

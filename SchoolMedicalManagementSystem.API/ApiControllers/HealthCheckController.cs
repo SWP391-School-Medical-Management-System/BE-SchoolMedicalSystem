@@ -310,7 +310,6 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
         }
 
         [HttpGet("student/{studentId}")]
-        [Authorize(Roles = "SCHOOLNURSE, MANAGER, PARENT")]
         public async Task<ActionResult<BaseListResponse<HealthCheckResponse>>> GetHealthCheckByStudentId(
             Guid studentId,
             [FromQuery] int pageIndex = 1,
@@ -380,137 +379,153 @@ namespace SchoolMedicalManagementSystem.API.ApiControllers
             }
         }
 
-        //// Lưu kết quả kiểm tra tai trái
-        //[HttpPost("{healthCheckId}/hearing/left")]
-        //[Authorize(Roles = "SCHOOLNURSE")]
-        //public async Task<ActionResult<BaseResponse<HearingRecordResponse>>> SaveLeftEarCheck(
-        //    Guid healthCheckId,
-        //    [FromBody] SaveHearingCheckRequest request,
-        //    CancellationToken cancellationToken = default)
-        //{
-        //    try
-        //    {
-        //        var result = await _healthCheckService.SaveLeftEarCheckAsync(healthCheckId, request, cancellationToken);
-        //        if (!result.Success)
-        //            return BadRequest(result);
+        [HttpPost("{healthCheckId}/hearing/left")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<HearingRecordResponseHealth>>> SaveLeftEarCheck(
+            Guid healthCheckId,
+            [FromBody] SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _healthCheckService.SaveLeftEarCheckAsync(healthCheckId, request, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
 
-        //        return Ok(result);
-        //    }
-        //    catch
-        //    {
-        //        return StatusCode(500, BaseResponse<HearingRecordResponse>.ErrorResult("Lỗi hệ thống."));
-        //    }
-        //}
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<HearingRecordResponseHealth>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
 
-        //// Lưu kết quả kiểm tra tai phải
-        //[HttpPost("{healthCheckId}/hearing/right")]
-        //[Authorize(Roles = "SCHOOLNURSE")]
-        //public async Task<ActionResult<BaseResponse<HearingRecordResponse>>> SaveRightEarCheck(
-        //    Guid healthCheckId,
-        //    [FromBody] SaveHearingCheckRequest request,
-        //    CancellationToken cancellationToken = default)
-        //{
-        //    try
-        //    {
-        //        var result = await _healthCheckService.SaveRightEarCheckAsync(healthCheckId, request, cancellationToken);
-        //        if (!result.Success)
-        //            return BadRequest(result);
+        // Lưu kết quả kiểm tra tai phải
+        [HttpPost("{healthCheckId}/hearing/right")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<HearingRecordResponseHealth>>> SaveRightEarCheck(
+            Guid healthCheckId,
+            [FromBody] SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _healthCheckService.SaveRightEarCheckAsync(healthCheckId, request, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
 
-        //        return Ok(result);
-        //    }
-        //    catch
-        //    {
-        //        return StatusCode(500, BaseResponse<HearingRecordResponse>.ErrorResult("Lỗi hệ thống."));
-        //    }
-        //}
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<HearingRecordResponseHealth>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
 
-        //// Lưu kết quả kiểm tra chiều cao
-        //[HttpPost("{healthCheckId}/physical/height")]
-        //[Authorize(Roles = "SCHOOLNURSE")]
-        //public async Task<ActionResult<BaseResponse<PhysicalRecordResponse>>> SaveHeightCheck(
-        //    Guid healthCheckId,
-        //    [FromBody] SaveHeightCheckRequest request,
-        //    CancellationToken cancellationToken = default)
-        //{
-        //    try
-        //    {
-        //        var result = await _healthCheckService.SaveHeightCheckAsync(healthCheckId, request, cancellationToken);
-        //        if (!result.Success)
-        //            return BadRequest(result);
+        // Lưu kết quả kiểm tra chiều cao
+        [HttpPost("{healthCheckId}/physical/height")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<PhysicalRecordResponseHealth>>> SaveHeightCheck(
+            Guid healthCheckId,
+            [FromBody] SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _healthCheckService.SaveHeightCheckAsync(healthCheckId, request, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
 
-        //        return Ok(result);
-        //    }
-        //    catch
-        //    {
-        //        return StatusCode(500, BaseResponse<PhysicalRecordResponse>.ErrorResult("Lỗi hệ thống."));
-        //    }
-        //}
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
 
-        //// Lưu kết quả kiểm tra cân nặng
-        //[HttpPost("{healthCheckId}/physical/weight")]
-        //[Authorize(Roles = "SCHOOLNURSE")]
-        //public async Task<ActionResult<BaseResponse<PhysicalRecordResponse>>> SaveWeightCheck(
-        //    Guid healthCheckId,
-        //    [FromBody] SaveWeightCheckRequest request,
-        //    CancellationToken cancellationToken = default)
-        //{
-        //    try
-        //    {
-        //        var result = await _healthCheckService.SaveWeightCheckAsync(healthCheckId, request, cancellationToken);
-        //        if (!result.Success)
-        //            return BadRequest(result);
+        // Lưu kết quả kiểm tra cân nặng
+        [HttpPost("{healthCheckId}/physical/weight")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<PhysicalRecordResponseHealth>>> SaveWeightCheck(
+            Guid healthCheckId,
+            [FromBody] SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _healthCheckService.SaveWeightCheckAsync(healthCheckId, request, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
 
-        //        return Ok(result);
-        //    }
-        //    catch
-        //    {
-        //        return StatusCode(500, BaseResponse<PhysicalRecordResponse>.ErrorResult("Lỗi hệ thống."));
-        //    }
-        //}
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<PhysicalRecordResponseHealth>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
 
-        //// Lưu kết quả kiểm tra huyết áp
-        //[HttpPost("{healthCheckId}/vitalsign/blood-pressure")]
-        //[Authorize(Roles = "SCHOOLNURSE")]
-        //public async Task<ActionResult<BaseResponse<MedicalConditionResponse>>> SaveBloodPressureCheck(
-        //    Guid healthCheckId,
-        //    [FromBody] SaveBloodPressureCheckRequest request,
-        //    CancellationToken cancellationToken = default)
-        //{
-        //    try
-        //    {
-        //        var result = await _healthCheckService.SaveBloodPressureCheckAsync(healthCheckId, request, cancellationToken);
-        //        if (!result.Success)
-        //            return BadRequest(result);
+        [HttpPost("{healthCheckId}/vital-sign/blood-pressure")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<VitalSignRecordResponseHealth>>> SaveBloodPressureCheck(
+            Guid healthCheckId,
+            [FromBody] SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _healthCheckService.SaveBloodPressureCheckAsync(healthCheckId, request, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
 
-        //        return Ok(result);
-        //    }
-        //    catch
-        //    {
-        //        return StatusCode(500, BaseResponse<MedicalConditionResponse>.ErrorResult("Lỗi hệ thống."));
-        //    }
-        //}
+        [HttpPost("{healthCheckId}/vital-sign/heart-rate")]
+        [Authorize(Roles = "SCHOOLNURSE")]
+        public async Task<ActionResult<BaseResponse<VitalSignRecordResponseHealth>>> SaveHeartRateCheck(
+            Guid healthCheckId,
+            [FromBody] SaveVisionCheckRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _healthCheckService.SaveHeartRateCheckAsync(healthCheckId, request, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<VitalSignRecordResponseHealth>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
 
-        //// Lưu kết quả kiểm tra nhịp tim
-        //[HttpPost("{healthCheckId}/vitalsign/heart-rate")]
-        //[Authorize(Roles = "SCHOOLNURSE")]
-        //public async Task<ActionResult<BaseResponse<MedicalConditionResponse>>> SaveHeartRateCheck(
-        //    Guid healthCheckId,
-        //    [FromBody] SaveHeartRateCheckRequest request,
-        //    CancellationToken cancellationToken = default)
-        //{
-        //    try
-        //    {
-        //        var result = await _healthCheckService.SaveHeartRateCheckAsync(healthCheckId, request, cancellationToken);
-        //        if (!result.Success)
-        //            return BadRequest(result);
+        [HttpGet("health-check-results")]
+        public async Task<IActionResult> GetHealthCheckResults(
+            [FromQuery] Guid healthCheckId,
+            [FromQuery] Guid? studentId = null,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await _healthCheckService.GetHealthCheckResultsAsync(healthCheckId, studentId, cancellationToken);
+                if (!result.Success)
+                    return BadRequest(result);
 
-        //        return Ok(result);
-        //    }
-        //    catch
-        //    {
-        //        return StatusCode(500, BaseResponse<MedicalConditionResponse>.ErrorResult("Lỗi hệ thống."));
-        //    }
-        //}
+                return Ok(result);
+            }
+            catch
+            {
+                return StatusCode(500, BaseResponse<HealthCheckResultItemResponse>.ErrorResult("Lỗi hệ thống."));
+            }
+        }
+
 
         #endregion
 
